@@ -41,9 +41,9 @@ spec:
           description: MaasClusterStatus defines the observed state of MaasCluster
           type: object
       type: object
-  version: v1alpha3
+  version: v1alpha4
   versions:
-  - name: v1alpha3
+  - name: v1alpha4
     served: true
     storage: true
 status:

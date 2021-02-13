@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1alpha4
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,41 +23,41 @@ import (
 // +kubebuilder:subresource:status
 // +kubebuilder:object:root=true
 
-// MaasClusterSpec defines the desired state of MaasCluster
-type MaasClusterSpec struct {
+// MaasMachineSpec defines the desired state of MaasMachine
+type MaasMachineSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of MaasCluster. Edit MaasCluster_types.go to remove/update
+	// Foo is an example field of MaasMachine. Edit MaasMachine_types.go to remove/update
 	Foo string `json:"foo,omitempty"`
 }
 
-// MaasClusterStatus defines the observed state of MaasCluster
-type MaasClusterStatus struct {
+// MaasMachineStatus defines the observed state of MaasMachine
+type MaasMachineStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 }
 
 // +kubebuilder:object:root=true
 
-// MaasCluster is the Schema for the maasclusters API
-type MaasCluster struct {
+// MaasMachine is the Schema for the maasmachines API
+type MaasMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   MaasClusterSpec   `json:"spec,omitempty"`
-	Status MaasClusterStatus `json:"status,omitempty"`
+	Spec   MaasMachineSpec   `json:"spec,omitempty"`
+	Status MaasMachineStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
-// MaasClusterList contains a list of MaasCluster
-type MaasClusterList struct {
+// MaasMachineList contains a list of MaasMachine
+type MaasMachineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []MaasCluster `json:"items"`
+	Items           []MaasMachine `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&MaasCluster{}, &MaasClusterList{})
+	SchemeBuilder.Register(&MaasMachine{}, &MaasMachineList{})
 }

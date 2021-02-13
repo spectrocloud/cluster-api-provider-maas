@@ -30,7 +30,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	infrastructurev1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrastructurev1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -62,10 +62,10 @@ var _ = BeforeSuite(func(done Done) {
 	Expect(err).ToNot(HaveOccurred())
 	Expect(cfg).ToNot(BeNil())
 
-	err = infrastructurev1alpha3.AddToScheme(scheme.Scheme)
+	err = infrastructurev1alpha4.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = infrastructurev1alpha3.AddToScheme(scheme.Scheme)
+	err = infrastructurev1alpha4.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme

@@ -26,7 +26,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	infrastructurev1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrastructurev1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 	// +kubebuilder:scaffold:imports
 )
@@ -39,7 +39,7 @@ var (
 func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 
-	_ = infrastructurev1alpha3.AddToScheme(scheme)
+	_ = infrastructurev1alpha4.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 

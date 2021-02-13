@@ -24,7 +24,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	infrastructurev1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrastructurev1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -48,6 +48,6 @@ func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error)
 
 func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infrastructurev1alpha3.MaasCluster{}).
+		For(&infrastructurev1alpha4.MaasCluster{}).
 		Complete(r)
 }
