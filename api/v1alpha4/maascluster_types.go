@@ -78,12 +78,12 @@ type MaasCluster struct {
 	Status MaasClusterStatus `json:"status,omitempty"`
 }
 
-func (c *MaasCluster) GetConditions() clusterv1.Conditions {
-	return c.Status.Conditions
+func (in *MaasCluster) GetConditions() clusterv1.Conditions {
+	return in.Status.Conditions
 }
 
-func (c *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
-	c.Status.Conditions = conditions
+func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
+	in.Status.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true
