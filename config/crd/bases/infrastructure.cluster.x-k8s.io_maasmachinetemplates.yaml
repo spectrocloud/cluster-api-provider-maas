@@ -10,8 +10,6 @@ metadata:
 spec:
   group: infrastructure.cluster.x-k8s.io
   names:
-    categories:
-    - cluster-api
     kind: MaasMachineTemplate
     listKind: MaasMachineTemplateList
     plural: maasmachinetemplates
@@ -34,21 +32,12 @@ spec:
           spec:
             description: MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
             properties:
-              template:
-                description: MaasMachineTemplateResource describes the data needed to create a MaasMachine from a template
-                properties:
-                  spec:
-                    description: Spec is the specification of the desired behavior of the machine.
-                    properties:
-                      providerID:
-                        description: ProviderID will be the container name in ProviderID format (maas:////<containername>)
-                        type: string
-                    type: object
-                required:
-                - spec
-                type: object
-            required:
-            - template
+              foo:
+                description: Foo is an example field of MaasMachineTemplate. Edit MaasMachineTemplate_types.go to remove/update
+                type: string
+            type: object
+          status:
+            description: MaasMachineTemplateStatus defines the observed state of MaasMachineTemplate
             type: object
         type: object
     served: true

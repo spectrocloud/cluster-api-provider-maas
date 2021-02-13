@@ -7,4 +7,7 @@ resources:
 - group: infrastructure
   kind: MaasMachine
   version: v1alpha4
+- group: infrastructure
+  kind: MaasMachineTemplate
+  version: v1alpha4
 version: "2"

@@ -14,8 +14,8 @@ type DNSResourcesListOptions struct {
 
 // DNSResourcesList .
 type DNSResourcesList struct {
-	Count      int    `json:"count"`
-	PagesCount int    `json:"pages_count"`
+	Count      int `json:"count"`
+	PagesCount int `json:"pages_count"`
 	//DNSResources      []DNSResource `json:"dnsResources"`
 }
 

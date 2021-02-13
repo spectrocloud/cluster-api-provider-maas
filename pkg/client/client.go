@@ -25,7 +25,7 @@ func NewClient(maasEndpoint string, apiKey string) *Client {
 
 	return &Client{
 		HTTPClient: config.Client(oauth1.NoContext, token),
-		baseURL: fmt.Sprintf("%s/api/2.0", maasEndpoint),
+		baseURL:    fmt.Sprintf("%s/api/2.0", maasEndpoint),
 	}
 }
 
@@ -76,7 +76,6 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 		return fmt.Errorf("unknown error, status code: %d", res.StatusCode)
 	}
 
-
 	// Unmarshall and populate v
 	fullResponse := successResponse{
 		Data: v,
@@ -88,4 +87,3 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 
 	return nil
 }
-

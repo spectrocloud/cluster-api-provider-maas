@@ -5,7 +5,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
-
 )
 
 func TestGetDNSResources(t *testing.T) {

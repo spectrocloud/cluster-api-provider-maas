@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
@@ -110,7 +109,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle non-deleted clusters
-	return r.reconcileNormal(ctx, maasCluster, externalLoadBalancer)
+	return r.reconcileNormal(ctx, maasCluster)
 }
 
 func patchMaasCluster(ctx context.Context, patchHelper *patch.Helper, maasCluster *infrav1.MaasCluster) error {
@@ -134,24 +133,25 @@ func patchMaasCluster(ctx context.Context, patchHelper *patch.Helper, maasCluste
 	)
 }
 
-func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, maasCluster *infrav1.MaasCluster, externalLoadBalancer *maas.LoadBalancer) (ctrl.Result, error) {
-	//Create the maas container hosting the load balancer
-	if err := externalLoadBalancer.Create(ctx); err != nil {
-		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, errors.Wrap(err, "failed to create load balancer")
-	}
-
-	// Set APIEndpoints with the load balancer IP so the Cluster API Cluster Controller can pull it
-	lbip4, err := externalLoadBalancer.IP(ctx)
-	if err != nil {
-		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-		return ctrl.Result{}, errors.Wrap(err, "failed to get ip for the load balancer")
-	}
-
-	maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
-		Host: lbip4,
-		Port: 6443,
-	}
+func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, maasCluster *infrav1.MaasCluster) (ctrl.Result, error) {
+	//	func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, maasCluster *infrav1.MaasCluster, externalLoadBalancer *maas.LoadBalancer) (ctrl.Result, error) {
+	////Create the maas container hosting the load balancer
+	//if err := externalLoadBalancer.Create(ctx); err != nil {
+	//	conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+	//	return ctrl.Result{}, errors.Wrap(err, "failed to create load balancer")
+	//}
+	//
+	//// Set APIEndpoints with the load balancer IP so the Cluster API Cluster Controller can pull it
+	//lbip4, err := externalLoadBalancer.IP(ctx)
+	//if err != nil {
+	//	conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+	//	return ctrl.Result{}, errors.Wrap(err, "failed to get ip for the load balancer")
+	//}
+	//
+	//maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
+	//	Host: lbip4,
+	//	Port: 6443,
+	//}
 
 	// Mark the maasCluster ready
 	maasCluster.Status.Ready = true

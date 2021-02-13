@@ -19,25 +19,26 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 	"math/rand"
 	"os"
 	"time"
 
+	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
+
 	"github.com/spf13/pflag"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
-	expv1 "sigs.k8s.io/cluster-api/exp/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -60,7 +61,6 @@ func init() {
 	_ = scheme.AddToScheme(myscheme)
 	_ = infrav1.AddToScheme(myscheme)
 	_ = clusterv1.AddToScheme(myscheme)
-	_ = expv1.AddToScheme(myscheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -94,7 +94,6 @@ func main() {
 	setupReconcilers(ctx, mgr)
 	setupWebhooks(mgr)
 
-	// +kubebuilder:scaffold:builder
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
@@ -149,6 +148,8 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 		os.Exit(1)
 	}
+
+	// +kubebuilder:scaffold:builder
 
 	//if feature.Gates.Enabled(feature.MachinePool) {
 	//	if err := (&expcontrollers.MaasMachinePoolReconciler{

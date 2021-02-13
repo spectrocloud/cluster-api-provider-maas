@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,21 +20,33 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
 // MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
 type MaasMachineTemplateSpec struct {
-	Template MaasMachineTemplateResource `json:"template"`
+	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
+
+	// Foo is an example field of MaasMachineTemplate. Edit MaasMachineTemplate_types.go to remove/update
+	Foo string `json:"foo,omitempty"`
+}
+
+// MaasMachineTemplateStatus defines the observed state of MaasMachineTemplate
+type MaasMachineTemplateStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
 }
 
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:path=maasmachinetemplates,scope=Namespaced,categories=cluster-api
-// +kubebuilder:storageversion
 
 // MaasMachineTemplate is the Schema for the maasmachinetemplates API
 type MaasMachineTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec MaasMachineTemplateSpec `json:"spec,omitempty"`
+	Spec   MaasMachineTemplateSpec   `json:"spec,omitempty"`
+	Status MaasMachineTemplateStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -48,10 +60,4 @@ type MaasMachineTemplateList struct {
 
 func init() {
 	SchemeBuilder.Register(&MaasMachineTemplate{}, &MaasMachineTemplateList{})
-}
-
-// MaasMachineTemplateResource describes the data needed to create a MaasMachine from a template
-type MaasMachineTemplateResource struct {
-	// Spec is the specification of the desired behavior of the machine.
-	Spec MaasMachineSpec `json:"spec"`
 }
