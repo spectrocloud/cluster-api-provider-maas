@@ -1,0 +1,3 @@
+domain: cluster.x-k8s.io
+repo: github.com/spectrocloud/cluster-api-provider-maas
+version: "2"
