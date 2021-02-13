@@ -18,27 +18,40 @@ package v1alpha4
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
-
-// +kubebuilder:subresource:status
-// +kubebuilder:object:root=true
 
 // MaasMachineSpec defines the desired state of MaasMachine
 type MaasMachineSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// Foo is an example field of MaasMachine. Edit MaasMachine_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// ProviderID will be the container name in ProviderID format (maas:////<containername>)
+	// +optional
+	ProviderID *string `json:"providerID,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
 type MaasMachineStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Ready denotes that the machine (maas container) is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// LoadBalancerConfigured denotes that the machine has been
+	// added to the load balancer
+	// +optional
+	LoadBalancerConfigured bool `json:"loadBalancerConfigured,omitempty"`
+
+	// Addresses contains the associated addresses for the maas machine.
+	// +optional
+	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
+
+	// Conditions defines current service state of the MaasMachine.
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
+// +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
+// +kubebuilder:subresource:status
 
 // MaasMachine is the Schema for the maasmachines API
 type MaasMachine struct {
@@ -47,6 +60,14 @@ type MaasMachine struct {
 
 	Spec   MaasMachineSpec   `json:"spec,omitempty"`
 	Status MaasMachineStatus `json:"status,omitempty"`
+}
+
+func (c *MaasMachine) GetConditions() clusterv1.Conditions {
+	return c.Status.Conditions
+}
+
+func (c *MaasMachine) SetConditions(conditions clusterv1.Conditions) {
+	c.Status.Conditions = conditions
 }
 
 // +kubebuilder:object:root=true
