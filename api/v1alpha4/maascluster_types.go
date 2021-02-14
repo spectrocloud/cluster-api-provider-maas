@@ -29,6 +29,9 @@ const (
 
 // MaasClusterSpec defines the desired state of MaasCluster
 type MaasClusterSpec struct {
+	// DNSDomain configures the MaaS domain to create the cluster on (e.g maas)
+	//DNSDomain string `json:"dnsDomain"`
+
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
@@ -44,7 +47,11 @@ type MaasClusterSpec struct {
 // MaasClusterStatus defines the observed state of MaasCluster
 type MaasClusterStatus struct {
 	// Ready denotes that the maas cluster (infrastructure) is ready.
+	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
+
+	// Network represents the network
+	Network Network `json:"network,omitempty"`
 
 	// FailureDomains don't mean much in CAPMAAS since it's all local, but we can see how the rest of cluster API
 	// will use this if we populate it.
@@ -55,8 +62,15 @@ type MaasClusterStatus struct {
 	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
+// Network encapsulates the Cluster Network
+type Network struct {
+	// DNSName is the Kubernetes api server name
+	DNSName string `json:"dnsName,omitempty"`
+}
+
 // APIEndpoint represents a reachable Kubernetes API endpoint.
 type APIEndpoint struct {
+
 	// Host is the hostname on which the API server is serving.
 	Host string `json:"host"`
 

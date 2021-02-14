@@ -72,10 +72,12 @@ const (
 	// NOTE: When the load balancer provisioning starts the process completes almost immediately and within
 	// the same reconciliation, so the user will always see a transition from no condition to available without
 	// having evidence that the operation is started/is in progress.
-	LoadBalancerAvailableCondition clusterv1.ConditionType = "LoadBalancerAvailable"
+	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
 
 	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a DockerCluster controller detecting
 	// an error while provisioning the container that provides the cluster load balancer.; those kind of
 	// errors are usually transient and failed provisioning are automatically re-tried by the controller.
-	LoadBalancerProvisioningFailedReason = "LoadBalancerProvisioningFailed"
+	LoadBalancerFailedReason = "LoadBalancerFailed"
+
+	WaitForDNSNameReason = "WaitForDNSName"
 )

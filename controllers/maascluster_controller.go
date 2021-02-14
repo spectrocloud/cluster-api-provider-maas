@@ -18,15 +18,19 @@ package controllers
 
 import (
 	"context"
+	"github.com/pkg/errors"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"time"
 
 	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -75,18 +79,22 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//	return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the externalLoadBalancer")
 	//}
 
-	// Initialize the patch helper
-	patchHelper, err := patch.NewHelper(maasCluster, r.Client)
+	// Create the scope.
+	clusterScope, err := scope.NewClusterScope(scope.ClusterScopeParams{
+		Client:         r.Client,
+		Logger:         log,
+		Cluster:        cluster,
+		MaasCluster:    maasCluster,
+		ControllerName: "maascluster",
+	})
 	if err != nil {
-		return ctrl.Result{}, err
+		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)
 	}
-	// Always attempt to Patch the MaasCluster object and status after each reconciliation.
+
+	// Always close the scope when exiting this function so we can persist any AWSCluster changes.
 	defer func() {
-		if err := patchMaasCluster(ctx, patchHelper, maasCluster); err != nil {
-			log.Error(err, "failed to patch MaasCluster")
-			if rerr == nil {
-				rerr = err
-			}
+		if err := clusterScope.Close(); err != nil && rerr == nil {
+			rerr = err
 		}
 	}()
 
@@ -95,68 +103,60 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// In the case of Maas, failure domains don't mean much so we simply copy the Spec into the Status.
 	maasCluster.Status.FailureDomains = maasCluster.Spec.FailureDomains
 
+	// Handle deleted clusters
+	if !maasCluster.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, clusterScope)
+	}
+
+	// Handle non-deleted clusters
+	return r.reconcileNormal(ctx, clusterScope)
+}
+
+func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+	clusterScope.Info("Reconciling MaasCluster delete")
+
+	maasCluster := clusterScope.MaasCluster
+
+	// Cluster is deleted so remove the finalizer.
+	controllerutil.RemoveFinalizer(maasCluster, infrav1.ClusterFinalizer)
+
+	return reconcile.Result{}, nil
+}
+
+func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+	clusterScope.Info("Reconciling MaasCluster")
+
+	maasCluster := clusterScope.MaasCluster
+
 	// Add finalizer first if not exist to avoid the race condition between init and delete
 	if !controllerutil.ContainsFinalizer(maasCluster, infrav1.ClusterFinalizer) {
 		controllerutil.AddFinalizer(maasCluster, infrav1.ClusterFinalizer)
 		return ctrl.Result{}, nil
 	}
 
-	// Handle deleted clusters
-	if !maasCluster.DeletionTimestamp.IsZero() {
-		log.Info("need to implement deletion")
-		return ctrl.Result{}, nil
-		//return r.reconcileDelete(ctx, maasCluster, externalLoadBalancer)
+	dnsService := dns.NewService(clusterScope)
+
+	if err := dnsService.ReconcileLoadbalancers(); err != nil {
+		clusterScope.Error(err, "failed to reconcile load balancer")
+		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerReadyCondition, infrav1.LoadBalancerFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		return reconcile.Result{}, err
 	}
 
-	// Handle non-deleted clusters
-	return r.reconcileNormal(ctx, maasCluster)
-}
-
-func patchMaasCluster(ctx context.Context, patchHelper *patch.Helper, maasCluster *infrav1.MaasCluster) error {
-	// Always update the readyCondition by summarizing the state of other conditions.
-	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(maasCluster,
-		conditions.WithConditions(
-			infrav1.LoadBalancerAvailableCondition,
-		),
-		conditions.WithStepCounterIf(maasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
-	)
-
-	// Patch the object, ignoring conflicts on the conditions owned by this controller.
-	return patchHelper.Patch(
-		ctx,
-		maasCluster,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
-			clusterv1.ReadyCondition,
-			infrav1.LoadBalancerAvailableCondition,
-		}},
-	)
-}
-
-func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, maasCluster *infrav1.MaasCluster) (ctrl.Result, error) {
-	//	func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, maasCluster *infrav1.MaasCluster, externalLoadBalancer *maas.LoadBalancer) (ctrl.Result, error) {
-	////Create the maas container hosting the load balancer
-	//if err := externalLoadBalancer.Create(ctx); err != nil {
-	//	conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-	//	return ctrl.Result{}, errors.Wrap(err, "failed to create load balancer")
-	//}
-	//
-	//// Set APIEndpoints with the load balancer IP so the Cluster API Cluster Controller can pull it
-	//lbip4, err := externalLoadBalancer.IP(ctx)
-	//if err != nil {
-	//	conditions.MarkFalse(maasCluster, infrav1.LoadBalancerAvailableCondition, infrav1.LoadBalancerProvisioningFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
-	//	return ctrl.Result{}, errors.Wrap(err, "failed to get ip for the load balancer")
-	//}
-	//
-	//maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
-	//	Host: lbip4,
-	//	Port: 6443,
-	//}
+	if maasCluster.Status.Network.DNSName == "" {
+		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerReadyCondition, infrav1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
+		clusterScope.Info("Waiting on API server DNS name")
+		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
+	}
 
 	// Mark the maasCluster ready
-	maasCluster.Status.Ready = true
-	conditions.MarkTrue(maasCluster, infrav1.LoadBalancerAvailableCondition)
+	conditions.MarkTrue(maasCluster, infrav1.LoadBalancerReadyCondition)
 
+	maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
+		Host: maasCluster.Status.Network.DNSName,
+		Port: clusterScope.APIServerPort(),
+	}
+
+	//maasCluster.Status.Ready = true
 	return ctrl.Result{}, nil
 }
 

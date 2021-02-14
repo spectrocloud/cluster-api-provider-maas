@@ -110,7 +110,15 @@ spec:
                   type: object
                 description: FailureDomains don't mean much in CAPMAAS since it's all local, but we can see how the rest of cluster API will use this if we populate it.
                 type: object
+              network:
+                description: Network represents the network
+                properties:
+                  dnsName:
+                    description: DNSName is the Kubernetes api server name
+                    type: string
+                type: object
               ready:
+                default: false
                 description: Ready denotes that the maas cluster (infrastructure) is ready.
                 type: boolean
             required:
