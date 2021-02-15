@@ -35,7 +35,10 @@ spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
               providerID:
-                description: ProviderID will be the container name in ProviderID format (maas:////<containername>)
+                description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              systemID:
+                description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
                 type: string
             type: object
           status:
@@ -86,12 +89,27 @@ spec:
                   - type
                   type: object
                 type: array
+              failureMessage:
+                description: FailureMessage will be set in the event that there is a terminal problem reconciling the Machine and will contain a more verbose string suitable for logging and human consumption.
+                type: string
+              failureReason:
+                description: FailureReason will be set in the event that there is a terminal problem reconciling the Machine and will contain a succinct value suitable for machine interpretation.
+                type: string
+              instanceState:
+                description: InstanceState is the state of the AWS instance for this machine.
+                type: string
               loadBalancerConfigured:
                 description: LoadBalancerConfigured denotes that the machine has been added to the load balancer
                 type: boolean
+              machinePowered:
+                description: MachinePowered is if the machine is "Powered" on
+                type: boolean
               ready:
+                default: false
                 description: Ready denotes that the machine (maas container) is ready
                 type: boolean
+            required:
+            - ready
             type: object
         type: object
     served: true

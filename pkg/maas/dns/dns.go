@@ -19,5 +19,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 // ReconcileLoadbalancers reconciles the load balancers for the given cluster.
 func (s *Service) ReconcileLoadbalancers() error {
 	s.scope.V(2).Info("Reconciling DNS")
+
+	s.scope.MaasCluster.Status.Network.DNSName = "cluster1.maas"
 	return nil
 }

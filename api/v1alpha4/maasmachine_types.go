@@ -19,33 +19,58 @@ package v1alpha4
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"sigs.k8s.io/cluster-api/errors"
+)
+
+const (
+	// MachineFinalizer allows MaasMachineReconciler to clean up resources associated with MaasMachine before
+	// removing it from the apiserver.
+	MachineFinalizer = "maascluster.infrastructure.cluster.x-k8s.io"
 )
 
 // MaasMachineSpec defines the desired state of MaasMachine
 type MaasMachineSpec struct {
-	// ProviderID will be the container name in ProviderID format (maas:////<containername>)
+	// ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
+
+	// ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+	// +optional
+	SystemID *string `json:"systemID,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
 type MaasMachineStatus struct {
+
 	// Ready denotes that the machine (maas container) is ready
-	// +optional
+	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
+
+	// InstanceState is the state of the AWS instance for this machine.
+	MachineState *MachineState `json:"instanceState,omitempty"`
+
+	// MachinePowered is if the machine is "Powered" on
+	MachinePowered bool `json:"machinePowered,omitempty"`
 
 	// LoadBalancerConfigured denotes that the machine has been
 	// added to the load balancer
-	// +optional
 	LoadBalancerConfigured bool `json:"loadBalancerConfigured,omitempty"`
 
 	// Addresses contains the associated addresses for the maas machine.
-	// +optional
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 
 	// Conditions defines current service state of the MaasMachine.
-	// +optional
 	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+
+	// FailureReason will be set in the event that there is a terminal problem
+	// reconciling the Machine and will contain a succinct value suitable
+	// for machine interpretation.
+	FailureReason *errors.MachineStatusError `json:"failureReason,omitempty"`
+
+	// FailureMessage will be set in the event that there is a terminal problem
+	// reconciling the Machine and will contain a more verbose string suitable
+	// for logging and human consumption.
+	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
 // +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api

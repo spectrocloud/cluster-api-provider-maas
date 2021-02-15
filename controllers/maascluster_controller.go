@@ -22,6 +22,7 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -42,7 +43,8 @@ import (
 // MaasClusterReconciler reconciles a MaasCluster object
 type MaasClusterReconciler struct {
 	client.Client
-	Log logr.Logger
+	Log      logr.Logger
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
@@ -112,7 +114,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return r.reconcileNormal(ctx, clusterScope)
 }
 
-func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasClusterReconciler) reconcileDelete(_ context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	clusterScope.Info("Reconciling MaasCluster delete")
 
 	maasCluster := clusterScope.MaasCluster
@@ -120,10 +122,12 @@ func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScop
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(maasCluster, infrav1.ClusterFinalizer)
 
+	// TODO(saamalik) implement the recorder stuff (look at aws)
+
 	return reconcile.Result{}, nil
 }
 
-func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	clusterScope.Info("Reconciling MaasCluster")
 
 	maasCluster := clusterScope.MaasCluster
@@ -156,7 +160,7 @@ func (r *MaasClusterReconciler) reconcileNormal(ctx context.Context, clusterScop
 		Port: clusterScope.APIServerPort(),
 	}
 
-	//maasCluster.Status.Ready = true
+	maasCluster.Status.Ready = true
 	return ctrl.Result{}, nil
 }
 

@@ -41,7 +41,10 @@ spec:
                     description: Spec is the specification of the desired behavior of the machine.
                     properties:
                       providerID:
-                        description: ProviderID will be the container name in ProviderID format (maas:////<containername>)
+                        description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+                        type: string
+                      systemID:
+                        description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
                         type: string
                     type: object
                 required:

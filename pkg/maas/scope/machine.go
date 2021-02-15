@@ -1,0 +1,220 @@
+package scope
+
+import (
+	"context"
+	"fmt"
+	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/klog/klogr"
+	"k8s.io/utils/pointer"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"sigs.k8s.io/cluster-api/controllers/noderefutil"
+	capierrors "sigs.k8s.io/cluster-api/errors"
+	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// MachineScopeParams defines the input parameters used to create a new Scope.
+type MachineScopeParams struct {
+	Client         client.Client
+	Logger         logr.Logger
+	Cluster        *clusterv1.Cluster
+	ClusterScope   *ClusterScope
+	Machine        *clusterv1.Machine
+	MaasMachine    *infrav1.MaasMachine
+	ControllerName string
+}
+
+// MachineScope defines the basic context for an actuator to operate upon.
+type MachineScope struct {
+	logr.Logger
+	client      client.Client
+	patchHelper *patch.Helper
+
+	Cluster      *clusterv1.Cluster
+	ClusterScope *ClusterScope
+
+	Machine        *clusterv1.Machine
+	MaasMachine    *infrav1.MaasMachine
+	controllerName string
+}
+
+// NewMachineScope creates a new Scope from the supplied parameters.
+// This is meant to be called for each reconcile iteration.
+func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
+	if params.Logger == nil {
+		params.Logger = klogr.New()
+	}
+
+	//session, serviceLimiters, err := sessionForRegion(params.MaasMachine.Spec.Region, params.Endpoints)
+	//if err != nil {
+	//	return nil, errors.Errorf("failed to create maas session: %v", err)
+	//}
+
+	helper, err := patch.NewHelper(params.MaasMachine, params.Client)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to init patch helper")
+	}
+	return &MachineScope{
+		Logger:         params.Logger,
+		client:         params.Client,
+		Machine:        params.Machine,
+		MaasMachine:    params.MaasMachine,
+		Cluster:        params.Cluster,
+		ClusterScope:   params.ClusterScope,
+		patchHelper:    helper,
+		controllerName: params.ControllerName,
+	}, nil
+}
+
+// PatchObject persists the machine configuration and status.
+func (m *MachineScope) PatchObject() error {
+
+	applicableConditions := []clusterv1.ConditionType{
+		infrav1.MachineDeployedCondition,
+	}
+
+	if m.IsControlPlane() {
+		applicableConditions = append(applicableConditions, infrav1.DNSAttachedCondition)
+	}
+	// Always update the readyCondition by summarizing the state of other conditions.
+	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
+	conditions.SetSummary(m.MaasMachine,
+		conditions.WithConditions(applicableConditions...),
+		conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
+	)
+
+	// Patch the object, ignoring conflicts on the conditions owned by this controller.
+	return m.patchHelper.Patch(
+		context.TODO(),
+		m.MaasMachine,
+		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
+			clusterv1.ReadyCondition,
+			infrav1.MachineDeployedCondition,
+			infrav1.DNSAttachedCondition,
+		}},
+	)
+}
+
+// Close closes the current scope persisting the cluster configuration and status.
+func (m *MachineScope) Close() error {
+	return m.PatchObject()
+}
+
+// SetAddresses sets the AWSMachine address status.
+func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
+	m.MaasMachine.Status.Addresses = addrs
+}
+
+// SetReady sets the MaasMachine Ready Status
+func (m *MachineScope) SetReady() {
+	m.MaasMachine.Status.Ready = true
+}
+
+// SetNotReady sets the MaasMachine Ready Status to false
+func (m *MachineScope) SetNotReady() {
+	m.MaasMachine.Status.Ready = false
+}
+
+// SetFailureMessage sets the MaasMachine status failure message.
+func (m *MachineScope) SetFailureMessage(v error) {
+	m.MaasMachine.Status.FailureMessage = pointer.StringPtr(v.Error())
+}
+
+// SetFailureReason sets the MaasMachine status failure reason.
+func (m *MachineScope) SetFailureReason(v capierrors.MachineStatusError) {
+	m.MaasMachine.Status.FailureReason = &v
+}
+
+// IsControlPlane returns true if the machine is a control plane.
+func (m *MachineScope) IsControlPlane() bool {
+	return util.IsControlPlaneMachine(m.Machine)
+}
+
+// Role returns the machine role from the labels.
+func (m *MachineScope) Role() string {
+	if util.IsControlPlaneMachine(m.Machine) {
+		return "control-plane"
+	}
+	return "node"
+}
+
+// GetInstanceID returns the MaasMachine instance id by parsing Spec.ProviderID.
+func (m *MachineScope) GetInstanceID() *string {
+	parsed, err := noderefutil.NewProviderID(m.GetProviderID())
+	if err != nil {
+		return nil
+	}
+	return pointer.StringPtr(parsed.ID())
+}
+
+// GetProviderID returns the MaasMachine providerID from the spec.
+func (m *MachineScope) GetProviderID() string {
+	if m.MaasMachine.Spec.ProviderID != nil {
+		return *m.MaasMachine.Spec.ProviderID
+	}
+	return ""
+}
+
+// SetProviderID sets the MaasMachine providerID in spec.
+func (m *MachineScope) SetProviderID(systemID, availabilityZone string) {
+	providerID := fmt.Sprintf("maas:///%s/%s", availabilityZone, systemID)
+	m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)
+}
+
+// SetInstanceID sets the MaasMachine systemID in spec.
+func (m *MachineScope) SetSystemID(systemID string) {
+	m.MaasMachine.Spec.SystemID = pointer.StringPtr(systemID)
+}
+
+// GetMachineState returns the MaasMachine instance state from the status.
+func (m *MachineScope) GetMachineState() *infrav1.MachineState {
+	return m.MaasMachine.Status.MachineState
+}
+
+// SetMachineState sets the MaasMachine status instance state.
+func (m *MachineScope) SetMachineState(v infrav1.MachineState) {
+	m.MaasMachine.Status.MachineState = &v
+}
+
+func (m *MachineScope) InstanceIsRunning() bool {
+	state := m.GetMachineState()
+	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
+}
+
+func (m *MachineScope) MachineIsOperational() bool {
+	state := m.GetMachineState()
+	return state != nil && infrav1.MachineOperationalStates.Has(string(*state))
+}
+
+func (m *MachineScope) MachineIsInKnownState() bool {
+	state := m.GetMachineState()
+	return state != nil && infrav1.MachineKnownStates.Has(string(*state))
+}
+
+// GetRawBootstrapData returns the bootstrap data from the secret in the Machine's bootstrap.dataSecretName.
+func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
+	if m.Machine.Spec.Bootstrap.DataSecretName == nil {
+		return nil, errors.New("error retrieving bootstrap data: linked Machine's bootstrap.dataSecretName is nil")
+	}
+
+	namespace := m.Machine.Namespace
+
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{Namespace: namespace, Name: *m.Machine.Spec.Bootstrap.DataSecretName}
+	if err := m.client.Get(context.TODO(), key, secret); err != nil {
+		return nil, errors.Wrapf(err, "failed to retrieve bootstrap data secret for MaasMachine %s/%s", namespace, m.Machine.Name)
+	}
+
+	value, ok := secret.Data["value"]
+	if !ok {
+		return nil, errors.New("error retrieving bootstrap data: secret value key is missing")
+	}
+
+	return value, nil
+}

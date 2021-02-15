@@ -9,9 +9,11 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.6.1
 	golang.org/x/tools v0.0.0-20200616195046-dc31b401abb5 // indirect
+	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v0.20.2
 	k8s.io/klog v1.0.0
+	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
 	sigs.k8s.io/cluster-api v0.3.3
 	sigs.k8s.io/controller-runtime v0.8.2
 )

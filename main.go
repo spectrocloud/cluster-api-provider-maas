@@ -133,17 +133,20 @@ func setupChecks(mgr ctrl.Manager) {
 
 func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 	if err := (&controllers.MaasMachineReconciler{
-		Client: mgr.GetClient(),
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
+		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
 	}).SetupWithManager(ctx, mgr, controller.Options{
 		MaxConcurrentReconciles: concurrency,
 	}); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "reconciler")
+		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
 		os.Exit(1)
 	}
 
 	if err := (&controllers.MaasClusterReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 		os.Exit(1)
