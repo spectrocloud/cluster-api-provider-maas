@@ -56,6 +56,9 @@ type MaasMachineStatus struct {
 	// added to the load balancer
 	LoadBalancerConfigured bool `json:"loadBalancerConfigured,omitempty"`
 
+	// Hostname is the actual MaaS hostname
+	Hostname *string `json:"hostname,omitempty"`
+
 	// Addresses contains the associated addresses for the maas machine.
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 

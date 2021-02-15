@@ -245,6 +245,11 @@ func (in *MaasMachineStatus) DeepCopyInto(out *MaasMachineStatus) {
 		*out = new(MachineState)
 		**out = **in
 	}
+	if in.Hostname != nil {
+		in, out := &in.Hostname, &out.Hostname
+		*out = new(string)
+		**out = **in
+	}
 	if in.Addresses != nil {
 		in, out := &in.Addresses, &out.Addresses
 		*out = make([]apiv1alpha4.MachineAddress, len(*in))

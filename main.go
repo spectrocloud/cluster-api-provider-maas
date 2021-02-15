@@ -21,6 +21,7 @@ import (
 	"flag"
 	"math/rand"
 	"os"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	"time"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
@@ -29,7 +30,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
@@ -50,7 +50,7 @@ var (
 	metricsBindAddr      string
 	enableLeaderElection bool
 	syncPeriod           time.Duration
-	concurrency          int
+	machineConcurrency   int
 	healthAddr           string
 	webhookPort          int
 )
@@ -105,11 +105,11 @@ func main() {
 func initFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&metricsBindAddr, "metrics-bind-addr", ":8080",
 		"The address the metric endpoint binds to.")
-	fs.IntVar(&concurrency, "concurrency", 10,
+	fs.IntVar(&machineConcurrency, "machine-concurrency", 2,
 		"The number of maas machines to process simultaneously")
 	fs.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. Enabling this will ensure there is only one active controller manager.")
-	fs.DurationVar(&syncPeriod, "sync-period", 10*time.Minute,
+	fs.DurationVar(&syncPeriod, "sync-period", 5*time.Minute,
 		"The minimum interval at which watched resources are reconciled (e.g. 15m)")
 	fs.StringVar(&healthAddr, "health-addr", ":9440",
 		"The address the health endpoint binds to.")
@@ -132,13 +132,31 @@ func setupChecks(mgr ctrl.Manager) {
 }
 
 func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
+	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
+	// requiring a connection to a remote cluster
+	tracker, err := remote.NewClusterCacheTracker(
+		ctrl.Log.WithName("remote").WithName("ClusterCacheTracker"),
+		mgr,
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create cluster cache tracker")
+		os.Exit(1)
+	}
+	if err := (&remote.ClusterCacheReconciler{
+		Client:  mgr.GetClient(),
+		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
+		Tracker: tracker,
+	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
+		os.Exit(1)
+	}
+
 	if err := (&controllers.MaasMachineReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
 		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
-	}).SetupWithManager(ctx, mgr, controller.Options{
-		MaxConcurrentReconciles: concurrency,
-	}); err != nil {
+		Tracker:  tracker,
+	}).SetupWithManager(ctx, mgr, concurrency(machineConcurrency)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
 		os.Exit(1)
 	}
@@ -167,9 +185,13 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 	//}
 }
 
-func setupWebhooks(mgr ctrl.Manager) {
+func setupWebhooks(_ ctrl.Manager) {
 	//if err := (&infrav1.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
 	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
 	//	os.Exit(1)
 	//}
+}
+
+func concurrency(c int) controller.Options {
+	return controller.Options{MaxConcurrentReconciles: c}
 }

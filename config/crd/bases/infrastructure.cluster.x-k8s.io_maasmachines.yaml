@@ -95,6 +95,9 @@ spec:
               failureReason:
                 description: FailureReason will be set in the event that there is a terminal problem reconciling the Machine and will contain a succinct value suitable for machine interpretation.
                 type: string
+              hostname:
+                description: Hostname is the actual MaaS hostname
+                type: string
               instanceState:
                 description: InstanceState is the state of the AWS instance for this machine.
                 type: string

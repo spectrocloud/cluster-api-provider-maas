@@ -12,6 +12,7 @@ import (
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/controllers/noderefutil"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -28,6 +29,8 @@ type MachineScopeParams struct {
 	Machine        *clusterv1.Machine
 	MaasMachine    *infrav1.MaasMachine
 	ControllerName string
+
+	Tracker *remote.ClusterCacheTracker
 }
 
 // MachineScope defines the basic context for an actuator to operate upon.
@@ -39,9 +42,11 @@ type MachineScope struct {
 	Cluster      *clusterv1.Cluster
 	ClusterScope *ClusterScope
 
-	Machine        *clusterv1.Machine
-	MaasMachine    *infrav1.MaasMachine
+	Machine     *clusterv1.Machine
+	MaasMachine *infrav1.MaasMachine
+
 	controllerName string
+	tracker        *remote.ClusterCacheTracker
 }
 
 // NewMachineScope creates a new Scope from the supplied parameters.
@@ -62,12 +67,13 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 	}
 	return &MachineScope{
 		Logger:         params.Logger,
-		client:         params.Client,
 		Machine:        params.Machine,
 		MaasMachine:    params.MaasMachine,
 		Cluster:        params.Cluster,
 		ClusterScope:   params.ClusterScope,
 		patchHelper:    helper,
+		client:         params.Client,
+		tracker:        params.Tracker,
 		controllerName: params.ControllerName,
 	}, nil
 }
@@ -182,6 +188,19 @@ func (m *MachineScope) SetMachineState(v infrav1.MachineState) {
 	m.MaasMachine.Status.MachineState = &v
 }
 
+// GetMachineHostname retrns the hostname
+func (m *MachineScope) GetMachineHostname() string {
+	if m.MaasMachine.Status.Hostname != nil {
+		return *m.MaasMachine.Status.Hostname
+	}
+	return ""
+}
+
+// SetMachineHostname sets the hostname
+func (m *MachineScope) SetMachineHostname(hostname string) {
+	m.MaasMachine.Status.Hostname = &hostname
+}
+
 func (m *MachineScope) InstanceIsRunning() bool {
 	state := m.GetMachineState()
 	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
@@ -217,4 +236,32 @@ func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
 	}
 
 	return value, nil
+}
+
+// SetNodeProviderID patches the node with the ID
+func (m *MachineScope) SetNodeProviderID() error {
+	ctx := context.TODO()
+	remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
+	if err != nil {
+		return err
+	}
+
+	node := &corev1.Node{}
+	if err := remoteClient.Get(ctx, client.ObjectKey{Name: m.GetMachineHostname()}, node); err != nil {
+		return err
+	}
+
+	providerID := m.GetProviderID()
+	if node.Spec.ProviderID == providerID {
+		return nil
+	}
+
+	patchHelper, err := patch.NewHelper(node, remoteClient)
+	if err != nil {
+		return err
+	}
+
+	node.Spec.ProviderID = providerID
+
+	return patchHelper.Patch(ctx, node)
 }

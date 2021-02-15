@@ -25,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -48,6 +49,7 @@ type MaasMachineReconciler struct {
 	client.Client
 	Log      logr.Logger
 	Recorder record.EventRecorder
+	Tracker  *remote.ClusterCacheTracker
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
@@ -120,6 +122,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	machineScope, err := scope.NewMachineScope(scope.MachineScopeParams{
 		Logger:       log,
 		Client:       r.Client,
+		Tracker:      r.Tracker,
 		Cluster:      cluster,
 		ClusterScope: clusterScope,
 		Machine:      machine,
@@ -162,13 +165,27 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
 func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope /*ec2svc services.EC2MachineInterface*/) (*infrav1.Machine, error) {
-	if machineScope.GetInstanceID() == nil {
-		return nil, fmt.Errorf("instance id not yet available")
+	// TODO(saamalik) bring back
+	//if machineScope.GetInstanceID() == nil {
+	//	return nil, nil
+	//}
+
+	machine := &infrav1.Machine{
+		ID:               "hqnsaw",
+		Hostname:         "enough-bunny",
+		State:            "Deployed",
+		Powered:          true,
+		AvailabilityZone: "az1",
+		Addresses: []clusterv1.MachineAddress{
+			{Type: clusterv1.MachineExternalIP, Address: "10.11.130.70"},
+			{Type: clusterv1.MachineExternalDNS, Address: "enough-bunny.maas"},
+		},
 	}
 
+	//return nil, fmt.Errorf("instance id not yet available")
 	//machine, err := machineSvc.GetMachine(pointer.StringPtr(pid.ID()))
 
-	return nil, nil
+	return machine, nil
 }
 
 func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
@@ -217,7 +234,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 				return ctrl.Result{}, patchErr
 			}
 		}
-		machine, err = r.createMachine( /*ec2svc, */ machineScope, clusterScope)
+		machine, err = r.deployMachine( /*ec2svc, */ machineScope, clusterScope)
 		if err != nil {
 			machineScope.Error(err, "unable to create machine")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
@@ -228,6 +245,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// Make sure Spec.ProviderID and Spec.InstanceID are always set.
 	machineScope.SetProviderID(machine.ID, machine.AvailabilityZone)
 	machineScope.SetSystemID(machine.ID)
+	machineScope.SetMachineHostname(machine.Hostname)
 
 	existingMachineState := machineScope.GetMachineState()
 	machineScope.SetMachineState(machine.State)
@@ -288,12 +306,17 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// tasks that can only take place during operational instance states
 	if machineScope.MachineIsOperational() {
 		machineScope.SetAddresses(machine.Addresses)
+		if err := machineScope.SetNodeProviderID(); err != nil {
+			machineScope.Error(err, "Unable to set Node hostname")
+			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *MaasMachineReconciler) createMachine(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (*infrav1.Machine, error) {
+func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (*infrav1.Machine, error) {
 	machineScope.Info("Deploying on MaaS machine")
 
 	userData, userDataErr := r.resolveUserData(machineScope)

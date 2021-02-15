@@ -64,6 +64,9 @@ var (
 type Machine struct {
 	ID string
 
+	// Hostname is the hostname
+	Hostname string
+
 	// The current state of the machine.
 	State MachineState
 
