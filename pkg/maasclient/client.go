@@ -58,13 +58,7 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 
 	defer res.Body.Close()
 
-	bodyBytes, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-	bodyString := string(bodyBytes)
-
-	fmt.Println(bodyString)
+	//debugBody(res)
 
 	// Try to unmarshall into errorResponse
 	if res.StatusCode != http.StatusOK {
@@ -76,14 +70,19 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 		return fmt.Errorf("unknown error, status code: %d", res.StatusCode)
 	}
 
-	// Unmarshall and populate v
-	fullResponse := successResponse{
-		Data: v,
-	}
-
-	if err = json.NewDecoder(res.Body).Decode(&fullResponse); err != nil {
+	if err = json.NewDecoder(res.Body).Decode(v); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func debugBody(res *http.Response) {
+	bodyBytes, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return
+	}
+	bodyString := string(bodyBytes)
+
+	fmt.Println(bodyString)
 }

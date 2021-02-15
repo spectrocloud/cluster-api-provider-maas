@@ -92,3 +92,9 @@ func (s *ClusterScope) APIServerPort() int {
 	}
 	return 6443
 }
+
+// SetDNSName sets the Network systemID in spec.
+func (s *ClusterScope) SetDNSName(dnsName string) {
+	s.MaasCluster.Status.Network.DNSName = dnsName
+}
+

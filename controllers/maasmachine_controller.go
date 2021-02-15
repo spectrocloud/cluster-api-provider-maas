@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -164,28 +165,18 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 }
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
-func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope /*ec2svc services.EC2MachineInterface*/) (*infrav1.Machine, error) {
-	// TODO(saamalik) bring back
-	//if machineScope.GetInstanceID() == nil {
-	//	return nil, nil
-	//}
-
-	machine := &infrav1.Machine{
-		ID:               "hqnsaw",
-		Hostname:         "enough-bunny",
-		State:            "Deployed",
-		Powered:          true,
-		AvailabilityZone: "az1",
-		Addresses: []clusterv1.MachineAddress{
-			{Type: clusterv1.MachineExternalIP, Address: "10.11.130.70"},
-			{Type: clusterv1.MachineExternalDNS, Address: "enough-bunny.maas"},
-		},
+func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *machine.Service) (*infrav1.Machine, error) {
+	id := machineScope.GetInstanceID()
+	if id == nil {
+		return nil, nil
 	}
 
-	//return nil, fmt.Errorf("instance id not yet available")
-	//machine, err := machineSvc.GetMachine(pointer.StringPtr(pid.ID()))
+	m, err := machineSvc.GetMachine(*id)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to find machine")
+	}
 
-	return machine, nil
+	return m, nil
 }
 
 func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
@@ -212,10 +203,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
-	//dnsService := dns.NewService(machineScope)
+	machineSvc := machine.NewService(machineScope)
 
 	// Find existing instance
-	machine, err := r.findMachine(machineScope)
+	machine, err := r.findMachine(machineScope, machineSvc)
 	if err != nil {
 		machineScope.Error(err, "unable to find machine")
 		conditions.MarkUnknown(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineNotFoundReason, err.Error())

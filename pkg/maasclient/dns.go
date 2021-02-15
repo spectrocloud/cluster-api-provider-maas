@@ -12,14 +12,13 @@ type DNSResourcesListOptions struct {
 	//Page  int `json:"page"`
 }
 
-// DNSResourcesList .
-type DNSResourcesList struct {
-	Count      int `json:"count"`
-	PagesCount int `json:"pages_count"`
-	//DNSResources      []DNSResource `json:"dnsResources"`
+// DNSResource .
+type DNSResource struct {
+	ID   int    `json:"id"`
+	FQDN string `json:"fqdn"`
 }
 
-func (c *Client) GetDNSResources(ctx context.Context, options *DNSResourcesListOptions) (*DNSResourcesList, error) {
+func (c *Client) GetDNSResources(ctx context.Context, options *DNSResourcesListOptions) ([]*DNSResource, error) {
 	//limit := 100
 	//page := 1
 	//if options != nil {
@@ -34,10 +33,10 @@ func (c *Client) GetDNSResources(ctx context.Context, options *DNSResourcesListO
 
 	req = req.WithContext(ctx)
 
-	res := DNSResourcesList{}
+	var res []*DNSResource
 	if err := c.sendRequest(req, &res); err != nil {
 		return nil, err
 	}
 
-	return &res, nil
+	return res, nil
 }
