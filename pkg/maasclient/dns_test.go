@@ -11,7 +11,7 @@ func TestGetDNSResources(t *testing.T) {
 	c := NewClient(os.Getenv("MAAS_ENDPOINT"), os.Getenv("MAAS_API_KEY"))
 
 	ctx := context.Background()
-	res, err := c.GetDNSResources(ctx, nil)
+	res, err := c.GetDNSResources(ctx)
 
 	assert.Nil(t, err, "expecting nil error")
 	assert.NotNil(t, res, "expecting non-nil result")

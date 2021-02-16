@@ -2,7 +2,6 @@ package maasclient
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/dghubble/oauth1"
 	"io/ioutil"
@@ -29,27 +28,10 @@ func NewClient(maasEndpoint string, apiKey string) *Client {
 	}
 }
 
-//// Rectangle .
-//type Rectangle struct {
-//	Top    int `json:"top"`
-//	Left   int `json:"left"`
-//	Width  int `json:"width"`
-//	Height int `json:"height"`
-//}
-//
-type errorResponse struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type successResponse struct {
-	Code int         `json:"code"`
-	Data interface{} `json:"data"`
-}
-
 // Content-type and body should be already added to req
 func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 	req.Header.Set("Accept", "application/json; charset=utf-8")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	res, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -62,12 +44,12 @@ func (c *Client) sendRequest(req *http.Request, v interface{}) error {
 
 	// Try to unmarshall into errorResponse
 	if res.StatusCode != http.StatusOK {
-		var errRes errorResponse
-		if err = json.NewDecoder(res.Body).Decode(&errRes); err == nil {
-			return errors.New(errRes.Message)
+		bodyBytes, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return err
 		}
 
-		return fmt.Errorf("unknown error, status code: %d", res.StatusCode)
+		return fmt.Errorf("unknown error, status code: %d, body: %s", res.StatusCode, string(bodyBytes))
 	}
 
 	if err = json.NewDecoder(res.Body).Decode(v); err != nil {

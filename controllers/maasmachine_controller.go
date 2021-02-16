@@ -18,9 +18,10 @@ package controllers
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
+	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -142,7 +143,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}()
 
 	// Handle deleted machines
-	if !maasCluster.DeletionTimestamp.IsZero() {
+	if !maasMachine.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, machineScope, clusterScope)
 	}
 
@@ -165,7 +166,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 }
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
-func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *machine.Service) (*infrav1.Machine, error) {
+func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1.Machine, error) {
 	id := machineScope.GetInstanceID()
 	if id == nil {
 		return nil, nil
@@ -203,20 +204,20 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
-	machineSvc := machine.NewService(machineScope)
+	machineSvc := maasmachine.NewService(machineScope)
 
 	// Find existing instance
-	machine, err := r.findMachine(machineScope, machineSvc)
+	m, err := r.findMachine(machineScope, machineSvc)
 	if err != nil {
-		machineScope.Error(err, "unable to find machine")
+		machineScope.Error(err, "unable to find m")
 		conditions.MarkUnknown(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineNotFoundReason, err.Error())
 		return ctrl.Result{}, err
 	}
 
-	// Create new machine
-	// TODO(saamalik) confirm that we'll never "recreate" a machine; e.g: findMachine should always return err
-	// if there used to be a machine
-	if machine == nil {
+	// Create new m
+	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
+	// if there used to be a m
+	if m == nil {
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
 		if conditions.GetReason(machineScope.MaasMachine, infrav1.MachineDeployedCondition) != infrav1.MachineDeployFailedReason {
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
@@ -225,29 +226,29 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 				return ctrl.Result{}, patchErr
 			}
 		}
-		machine, err = r.deployMachine( /*ec2svc, */ machineScope, clusterScope)
+		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
-			machineScope.Error(err, "unable to create machine")
+			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Make sure Spec.ProviderID and Spec.InstanceID are always set.
-	machineScope.SetProviderID(machine.ID, machine.AvailabilityZone)
-	machineScope.SetSystemID(machine.ID)
-	machineScope.SetMachineHostname(machine.Hostname)
+	machineScope.SetProviderID(m.ID, m.AvailabilityZone)
+	machineScope.SetSystemID(m.ID)
+	machineScope.SetMachineHostname(m.Hostname)
 
 	existingMachineState := machineScope.GetMachineState()
-	machineScope.SetMachineState(machine.State)
+	machineScope.SetMachineState(m.State)
 
 	// Proceed to reconcile the AWSMachine state.
-	if existingMachineState == nil || *existingMachineState != machine.State {
-		machineScope.Info("MaaS machine state changed", "state", machine.State, "system-id", *machineScope.GetInstanceID())
+	if existingMachineState == nil || *existingMachineState != m.State {
+		machineScope.Info("MaaS m state changed", "state", m.State, "system-id", *machineScope.GetInstanceID())
 	}
 
-	switch s := machine.State; {
-	case !machine.Powered:
+	switch s := m.State; {
+	case !m.Powered:
 		machineScope.SetNotReady()
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
 	case s == infrav1.MachineStateDeploying, s == infrav1.MachineStateAllocated:
@@ -261,15 +262,15 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
 	//case infrav1.InstanceStateShuttingDown, infrav1.InstanceStateTerminated:
 	//	machineScope.SetNotReady()
-	//	machineScope.Info("Unexpected EC2 machine termination", "state", machine.State, "machine-id", *machineScope.GetInstanceID())
-	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnexpectedTermination", "Unexpected EC2 machine termination")
+	//	machineScope.Info("Unexpected EC2 m termination", "state", m.State, "m-id", *machineScope.GetInstanceID())
+	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnexpectedTermination", "Unexpected EC2 m termination")
 	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.InstanceTerminatedReason, clusterv1.ConditionSeverityError, "")
 	default:
 		machineScope.SetNotReady()
-		machineScope.Info("MaaS machine state is undefined", "state", machine.State, "system-id", *machineScope.GetInstanceID())
-		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnhandledState", "MaaS machine state is undefined")
+		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetInstanceID())
+		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
-		machineScope.SetFailureMessage(errors.Errorf("MaaS machine state %q is undefined", machine.State))
+		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
 		conditions.MarkUnknown(machineScope.MaasMachine, infrav1.MachineDeployedCondition, "", "")
 	}
 
@@ -288,7 +289,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		//	return ctrl.Result{}, err
 		//}
 
-		if err := r.reconcileLBAttachment(machineScope, clusterScope, machine); err != nil {
+		if err := r.reconcileLBAttachment(machineScope, clusterScope, m); err != nil {
 			machineScope.Error(err, "failed to reconcile LB attachment")
 			return ctrl.Result{}, err
 		}
@@ -296,7 +297,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 	// tasks that can only take place during operational instance states
 	if machineScope.MachineIsOperational() {
-		machineScope.SetAddresses(machine.Addresses)
+		machineScope.SetAddresses(m.Addresses)
 		if err := machineScope.SetNodeProviderID(); err != nil {
 			machineScope.Error(err, "Unable to set Node hostname")
 			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
@@ -307,24 +308,20 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	return ctrl.Result{}, nil
 }
 
-func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (*infrav1.Machine, error) {
+func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1.Machine, error) {
 	machineScope.Info("Deploying on MaaS machine")
 
-	userData, userDataErr := r.resolveUserData(machineScope)
+	userDataB64, userDataErr := r.resolveUserData(machineScope)
 	if userDataErr != nil {
 		return nil, errors.Wrapf(userDataErr, "failed to resolve userdata")
 	}
 
-	// TODO REMOVE
-	fmt.Println(userData)
-	fmt.Println(clusterScope)
+	m, err := machineSvc.DeployMachine(userDataB64)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to deploy MaasMachine instance")
+	}
 
-	//instance, err := ec2svc.CreateInstance(machineScope, userData)
-	//if err != nil {
-	//	return nil, errors.Wrapf(err, "failed to create MaasMachine instance")
-	//}
-
-	return nil, nil
+	return m, nil
 }
 
 func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope) (string, error) {
@@ -334,7 +331,8 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 		return "", err
 	}
 
-	return string(userData), nil
+	// Base64 encode the userdata
+	return base64.StdEncoding.EncodeToString(userData), nil
 }
 
 func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, _ *infrav1.Machine) error {

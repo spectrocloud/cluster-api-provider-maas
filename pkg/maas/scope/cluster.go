@@ -97,4 +97,3 @@ func (s *ClusterScope) APIServerPort() int {
 func (s *ClusterScope) SetDNSName(dnsName string) {
 	s.MaasCluster.Status.Network.DNSName = dnsName
 }
-
