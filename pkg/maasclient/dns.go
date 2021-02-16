@@ -2,24 +2,39 @@ package maasclient
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"net/url"
 )
 
 // DNSResource
 type DNSResource struct {
-	ID   int    `json:"id"`
-	FQDN string `json:"fqdn"`
+	ID          int          `json:"id"`
+	FQDN        string       `json:"fqdn"`
+	IpAddresses []*IpAddress `json:"ip_addresses"`
 }
 
-func (c *Client) GetDNSResources(ctx context.Context) ([]*DNSResource, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/dnsresources/", c.baseURL), nil)
-	if err != nil {
-		return nil, err
+type IpAddress struct {
+	IpAddress string `json:"ip"`
+	//Interfaces []*Interface `json:"interface_set"`
+}
+
+//type Interface struct {
+//	SystemID string `json:"system_id"`
+//}
+
+type GetDNSResourcesOptions struct {
+	FQDN *string `json:"fqdn"`
+}
+
+func (c *Client) GetDNSResources(ctx context.Context, options *GetDNSResourcesOptions) ([]*DNSResource, error) {
+
+	q := url.Values{}
+	if options != nil {
+		addParam(q, "fqdn", options.FQDN)
 	}
 
 	var res []*DNSResource
-	if err := c.sendRequest(req, &res); err != nil {
+	if err := c.send(ctx, http.MethodGet, "/dnsresources/", q, &res); err != nil {
 		return nil, err
 	}
 

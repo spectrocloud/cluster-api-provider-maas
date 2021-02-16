@@ -77,8 +77,16 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 		}
 	}()
 
-	// TODO(saamalik)
-	s.scope.Info("Swap disabled (broken need to fix)", "system-id", m.SystemID)
+	noSwap := 0
+	updateOptions := maasclient.UpdateMachineOptions{
+		SystemID: m.SystemID,
+		SwapSize: &noSwap,
+	}
+	if _, err := s.maasClient.UpdateMachine(ctx, updateOptions); err != nil {
+		return nil, errors.Wrapf(err, "Unable to disable swap")
+	}
+
+	s.scope.Info("Swap disabled", "system-id", m.SystemID)
 
 	deployOptions := maasclient.DeployMachineOptions{
 		SystemID:     m.SystemID,

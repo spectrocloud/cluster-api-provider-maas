@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/pkg/errors"
+	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	corev1 "k8s.io/api/core/v1"
@@ -38,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"time"
 
 	"github.com/go-logr/logr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -45,6 +47,8 @@ import (
 
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
+
+var ErrRequeueDNS = errors.New("need to requeue DNS")
 
 // MaasMachineReconciler reconciles a MaasMachine object
 type MaasMachineReconciler struct {
@@ -290,6 +294,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		//}
 
 		if err := r.reconcileLBAttachment(machineScope, clusterScope, m); err != nil {
+			if errors.Is(err, ErrRequeueDNS) {
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
 			machineScope.Error(err, "failed to reconcile LB attachment")
 			return ctrl.Result{}, err
 		}
@@ -335,21 +343,77 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 	return base64.StdEncoding.EncodeToString(userData), nil
 }
 
-func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, _ *infrav1.Machine) error {
+func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1.Machine) error {
 	if !machineScope.IsControlPlane() {
 		return nil
 	}
 
-	// https://github.com/kubernetes-sigs/cluster-api-provider-aws/blob/95104b9b793d394a50dc2e95d98200c8398713ed/controllers/awsmachine_controller.go#L716
+	dnssvc := maasdns.NewService(clusterScope)
+
+	// In order to prevent sending request to a "not-ready" control plane machines, it is required to remove the machine
+	// from the DNS as soon as the machine gets deleted or when the machine is in a not running state.
+	if !machineScope.MaasMachine.DeletionTimestamp.IsZero() || !machineScope.InstanceIsRunning() {
+		registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
+		if err != nil {
+			//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
+			//	"Failed to deregister control plane instance %q from DNS: failed to determine registration status: %v", m.ID, err)
+			return errors.Wrapf(err, "machine %q - error determining registration status", m.ID)
+		}
+
+		if registered {
+			// Wait for Cluster to delete this guy
+			return ErrRequeueDNS
+		}
+
+		// Already deregistered - nothing more to do
+		return nil
+
+		//if err := dnssvc.DeregisterInstanceFromAPIServerDNS(i); err != nil {
+		//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
+		//		"Failed to deregister control plane instance %q from load balancer: %v", i.ID, err)
+		//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.DNSAttachedCondition, infrav1.DNSDetachFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		//	return errors.Wrapf(err, "could not deregister control plane instance %q from load balancer", i.ID)
+		//}
+		//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulDetachControlPlaneDNS",
+		//	"Control plane instance %q is de-registered from load balancer", i.ID)
+		//return nil
+	}
+
+	registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
+	if err != nil {
+		//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedAttachControlPlaneELB",
+		//	"Failed to register control plane instance %q with load balancer: failed to determine registration status: %v", i.ID, err)
+		return errors.Wrapf(err, "normal machine %q - error determining registration status", m.ID)
+	}
+	if !registered {
+		// Wait for Cluster to add me
+		machineScope.Info("machine waiting for cluster to register DNS", "system-id", m.ID)
+		return ErrRequeueDNS
+
+	}
+
+	// Already registered - nothing more to do
+	return nil
+
+	//if err := elbsvc.RegisterInstanceWithAPIServerELB(i); err != nil {
+	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedAttachControlPlaneELB",
+	//		"Failed to register control plane instance %q with load balancer: %v", i.ID, err)
+	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.ELBAttachedCondition, infrav1.ELBAttachFailedReason, clusterv1.ConditionSeverityError, err.Error())
+	//	return errors.Wrapf(err, "could not register control plane instance %q with load balancer", i.ID)
+	//}
+	//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulAttachControlPlaneELB",
+	//	"Control plane instance %q is registered with load balancer", i.ID)
+	//conditions.MarkTrue(machineScope.MaasMachine, infrav1.ELBAttachedCondition)
+	//return nil
 
 	// MachinePowered
 	// MachineState
 
 	// TODO
-	fmt.Println(clusterScope)
+	//fmt.Println(clusterScope)
 
-	conditions.MarkTrue(machineScope.MaasMachine, infrav1.DNSAttachedCondition)
-	return nil
+	//conditions.MarkTrue(machineScope.MaasMachine, infrav1.DNSAttachedCondition)
+	//return nil
 }
 
 // SetupWithManager will add watches for this controller

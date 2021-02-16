@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 // Machine
@@ -30,14 +29,10 @@ type Zone struct {
 }
 
 func (c *Client) GetMachine(ctx context.Context, systemID string) (*Machine, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/machines/%s/", c.baseURL, systemID), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	// creates the zero value
 	res := new(Machine)
-	if err := c.sendRequest(req, res); err != nil {
+	if err := c.send(ctx, http.MethodGet, fmt.Sprintf("/machines/%s/", systemID), nil, res); err != nil {
 		return nil, err
 	}
 
@@ -55,7 +50,7 @@ type AllocateMachineOptions struct {
 
 func (c *Client) AllocateMachine(ctx context.Context, options *AllocateMachineOptions) (*Machine, error) {
 	// or you can create new url.Values struct and encode that like so
-	q := &url.Values{}
+	q := url.Values{}
 	q.Add("op", "allocate")
 
 	if options != nil {
@@ -66,14 +61,8 @@ func (c *Client) AllocateMachine(ctx context.Context, options *AllocateMachineOp
 		addParam(q, "pool", options.MinMem)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/machines/", c.baseURL), strings.NewReader(q.Encode()))
-	if err != nil {
-		return nil, err
-	}
-
-	// creates the zero value
 	res := new(Machine)
-	if err := c.sendRequest(req, res); err != nil {
+	if err := c.send(ctx, http.MethodPost, "/machines/", q, res); err != nil {
 		return nil, err
 	}
 
@@ -84,14 +73,9 @@ func (c *Client) ReleaseMachine(ctx context.Context, systemID string) error {
 	q := url.Values{}
 	q.Add("op", "release")
 
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/machines/%s/", c.baseURL, systemID), strings.NewReader(q.Encode()))
-	if err != nil {
-		return err
-	}
-
 	// creates the zero value
 	res := new(Machine)
-	if err := c.sendRequest(req, res); err != nil {
+	if err := c.send(ctx, http.MethodPost, fmt.Sprintf("/machines/%s/", systemID), q, res); err != nil {
 		return err
 	}
 
@@ -106,21 +90,16 @@ type DeployMachineOptions struct {
 }
 
 func (c *Client) DeployMachine(ctx context.Context, options DeployMachineOptions) (*Machine, error) {
-	q := &url.Values{}
+	q := url.Values{}
 	q.Add("op", "deploy")
 
 	addParam(q, "osystem", options.OSSystem)
 	addParam(q, "distro_series", options.DistroSeries)
 	addParam(q, "user_data", options.UserData)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s/machines/%s/", c.baseURL, options.SystemID), strings.NewReader(q.Encode()))
-	if err != nil {
-		return nil, err
-	}
-
 	// creates the zero value
 	res := new(Machine)
-	if err := c.sendRequest(req, res); err != nil {
+	if err := c.send(ctx, http.MethodPost, fmt.Sprintf("/machines/%s/", options.SystemID), q, res); err != nil {
 		return nil, err
 	}
 
@@ -134,25 +113,19 @@ type UpdateMachineOptions struct {
 
 func (c *Client) UpdateMachine(ctx context.Context, options UpdateMachineOptions) (*Machine, error) {
 
-	// TODO so weird - need to fix
-	q := &url.Values{}
+	q := url.Values{}
 	addParam(q, "swap_size", options.SwapSize)
-
-	req, err := http.NewRequestWithContext(ctx, "PUT", fmt.Sprintf("%s/machines/%s/", c.baseURL, options.SystemID), strings.NewReader(q.Encode()))
-	if err != nil {
-		return nil, err
-	}
 
 	// creates the zero value
 	res := new(Machine)
-	if err := c.sendRequest(req, res); err != nil {
+	if err := c.send(ctx, http.MethodPut, fmt.Sprintf("/machines/%s/", options.SystemID), q, res); err != nil {
 		return nil, err
 	}
 
 	return res, nil
 }
 
-func addParam(values *url.Values, key string, value interface{}) {
+func addParam(values url.Values, key string, value interface{}) {
 	if reflect.ValueOf(value).IsNil() {
 		return
 	}

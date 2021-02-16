@@ -1,18 +1,24 @@
 package dns
 
 import (
+	"context"
+	"github.com/pkg/errors"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maasclient"
 )
 
 // LoadBalancer manages the load balancer for a specific docker cluster.
 type Service struct {
-	scope *scope.ClusterScope
+	scope      *scope.ClusterScope
+	maasClient *maasclient.Client
 }
 
 // DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
 func NewService(clusterScope *scope.ClusterScope) *Service {
 	return &Service{
-		scope: clusterScope,
+		scope:      clusterScope,
+		maasClient: scope.NewMaasClient(clusterScope),
 	}
 }
 
@@ -23,6 +29,39 @@ func (s *Service) ReconcileLoadbalancers() error {
 	s.scope.SetDNSName("cluster1.maas")
 	return nil
 }
+
+// InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
+func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrav1.Machine) (bool, error) {
+	ctx := context.TODO()
+	dnsName := s.scope.GetDNSName()
+	if dnsName == "" {
+		return false, errors.New("No DNS on the cluster set!")
+	}
+
+	options := &maasclient.GetDNSResourcesOptions{
+		FQDN: &dnsName,
+	}
+
+	d, err := s.maasClient.GetDNSResources(ctx, options)
+	if err != nil {
+		return false, errors.Wrapf(err, "error finding dns resources %q", dnsName)
+	} else if len(d) != 1 {
+		return false, errors.Errorf("expected 1 DNS Resource for %q, got %d", dnsName, len(d))
+	}
+
+	for _, address := range d[0].IpAddresses {
+		// TODO(saamalik) handle multiple IP address?
+		if address.IpAddress == i.Addresses[0].Address {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+//func GenerateDNSName(clusterName string) (string, error) {
+//	return clusterName, nil
+//}
 
 //// ReconcileLoadbalancers reconciles the load balancers for the given cluster.
 //func (s *Service) ReconcileLoadbalancers() error {
@@ -101,7 +140,7 @@ func (s *Service) ReconcileLoadbalancers() error {
 //		return err
 //	}
 //
-//	elbName, err := GenerateELBName(s.scope.Name())
+//	elbName, err := GenerateDNSName(s.scope.Name())
 //	if err != nil {
 //		return err
 //	}
@@ -152,37 +191,11 @@ func (s *Service) ReconcileLoadbalancers() error {
 //	return nil
 //}
 //
-//// InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
-//func (s *Service) InstanceIsRegisteredWithAPIServerELB(i *infrav1.Instance) (bool, error) {
-//	name, err := GenerateELBName(s.scope.Name())
-//	if err != nil {
-//		return false, err
-//	}
-//
-//	input := &elb.DescribeLoadBalancersInput{
-//		LoadBalancerNames: aws.StringSlice([]string{name}),
-//	}
-//
-//	output, err := s.ELBClient.DescribeLoadBalancers(input)
-//	if err != nil {
-//		return false, errors.Wrapf(err, "error describing ELB %q", name)
-//	}
-//	if len(output.LoadBalancerDescriptions) != 1 {
-//		return false, errors.Errorf("expected 1 ELB description for %q, got %d", name, len(output.LoadBalancerDescriptions))
-//	}
-//
-//	for _, registeredInstance := range output.LoadBalancerDescriptions[0].Instances {
-//		if aws.StringValue(registeredInstance.InstanceId) == i.ID {
-//			return true, nil
-//		}
-//	}
-//
-//	return false, nil
-//}
+
 //
 //// RegisterInstanceWithAPIServerELB registers an instance with a classic ELB
 //func (s *Service) RegisterInstanceWithAPIServerELB(i *infrav1.Instance) error {
-//	name, err := GenerateELBName(s.scope.Name())
+//	name, err := GenerateDNSName(s.scope.Name())
 //	if err != nil {
 //		return err
 //	}
@@ -219,7 +232,7 @@ func (s *Service) ReconcileLoadbalancers() error {
 //
 //// DeregisterInstanceFromAPIServerELB de-registers an instance from a classic ELB
 //func (s *Service) DeregisterInstanceFromAPIServerELB(i *infrav1.Instance) error {
-//	name, err := GenerateELBName(s.scope.Name())
+//	name, err := GenerateDNSName(s.scope.Name())
 //	if err != nil {
 //		return err
 //	}
@@ -244,10 +257,10 @@ func (s *Service) ReconcileLoadbalancers() error {
 //	return err
 //}
 //
-//// GenerateELBName generates a formatted ELB name via either
+//// GenerateDNSName generates a formatted ELB name via either
 //// concatenating the cluster name to the "-apiserver" suffix
 //// or computing a hash for clusters with names above 32 characters.
-//func GenerateELBName(clusterName string) (string, error) {
+//func GenerateDNSName(clusterName string) (string, error) {
 //	standardELBName := generateStandardELBName(clusterName)
 //	if len(standardELBName) <= 32 {
 //		return standardELBName, nil
@@ -281,7 +294,7 @@ func (s *Service) ReconcileLoadbalancers() error {
 //}
 //
 //func (s *Service) getAPIServerClassicELBSpec() (*infrav1.ClassicELB, error) {
-//	elbName, err := GenerateELBName(s.scope.Name())
+//	elbName, err := GenerateDNSName(s.scope.Name())
 //	if err != nil {
 //		return nil, err
 //	}

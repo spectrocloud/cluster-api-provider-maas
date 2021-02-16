@@ -4,10 +4,17 @@ import (
 	"context"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/pointer"
+	"math/rand"
 	"os"
 	"testing"
 	"time"
 )
+
+func TestMain(m *testing.M) {
+	rand.Seed(time.Now().UnixNano())
+	code := m.Run()
+	os.Exit(code)
+}
 
 func TestClient_GetMachine(t *testing.T) {
 	c := NewClient(os.Getenv("MAAS_ENDPOINT"), os.Getenv("MAAS_API_KEY"))
@@ -20,7 +27,7 @@ func TestClient_GetMachine(t *testing.T) {
 	assert.NotNil(t, res, "expecting non-nil result")
 	assert.NotEmpty(t, res.SystemID)
 	assert.NotEmpty(t, res.Hostname)
-	assert.Equal(t, res.State, "Deploying")
+	assert.NotEmpty(t, res.State, "Deploying")
 	assert.NotEmpty(t, res.PowerState)
 	assert.Equal(t, res.AvailabilityZone, "az1")
 
@@ -88,6 +95,9 @@ func TestClient_DeployMachine(t *testing.T) {
 
 	t.Run("simple", func(t *testing.T) {
 		res, err := c.AllocateMachine(ctx, nil)
+		if err != nil {
+			t.Fatal("Machine didn't allocate")
+		}
 		assert.NotNil(t, res)
 		assert.NotEmpty(t, res.SystemID)
 
@@ -113,8 +123,6 @@ func TestClient_DeployMachine(t *testing.T) {
 }
 
 func TestClient_UpdateMachine(t *testing.T) {
-	t.Skip("broken!")
-
 	ctx := context.Background()
 	c := NewClient(os.Getenv("MAAS_ENDPOINT"), os.Getenv("MAAS_API_KEY"))
 
