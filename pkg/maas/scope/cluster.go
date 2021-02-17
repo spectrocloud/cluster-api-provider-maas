@@ -2,6 +2,7 @@ package scope
 
 import (
 	"context"
+	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
@@ -64,7 +65,7 @@ func (s *ClusterScope) PatchObject() error {
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
 	conditions.SetSummary(s.MaasCluster,
 		conditions.WithConditions(
-			infrav1.LoadBalancerReadyCondition,
+			infrav1.DNSReadyCondition,
 		),
 		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
@@ -75,7 +76,7 @@ func (s *ClusterScope) PatchObject() error {
 		s.MaasCluster,
 		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
 			clusterv1.ReadyCondition,
-			infrav1.LoadBalancerReadyCondition,
+			infrav1.DNSReadyCondition,
 		}},
 	)
 }
@@ -99,6 +100,33 @@ func (s *ClusterScope) SetDNSName(dnsName string) {
 }
 
 // GetDNSName sets the Network systemID in spec.
+// This can't do a lookup on Status.Network.DNSDomain name since it's derviced from here
 func (s *ClusterScope) GetDNSName() string {
-	return s.MaasCluster.Status.Network.DNSName
+	return fmt.Sprintf("%s.%s", s.Cluster.Name, s.MaasCluster.Spec.DNSDomain)
+}
+
+// GetActiveMaasMachines all MaaS machines NOT being deleted
+func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1.MaasMachine, error) {
+
+	machineList := &infrav1.MaasMachineList{}
+	labels := map[string]string{clusterv1.ClusterLabelName: s.Cluster.Name}
+
+	if err := s.client.List(
+		context.TODO(),
+		machineList,
+		client.InNamespace(s.Cluster.Namespace),
+		client.MatchingLabels(labels)); err != nil {
+		return nil, errors.Wrap(err, "failed to list machines")
+	}
+
+	var machines []*infrav1.MaasMachine
+	for i := range machineList.Items {
+		m := &machineList.Items[i]
+		machines = append(machines, m)
+		// TODO need active?
+		//if m.DeletionTimestamp.IsZero() {
+		//}
+	}
+
+	return machines, nil
 }

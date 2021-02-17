@@ -52,12 +52,11 @@ type MaasMachineStatus struct {
 	// MachinePowered is if the machine is "Powered" on
 	MachinePowered bool `json:"machinePowered,omitempty"`
 
-	// LoadBalancerConfigured denotes that the machine has been
-	// added to the load balancer
-	LoadBalancerConfigured bool `json:"loadBalancerConfigured,omitempty"`
-
 	// Hostname is the actual MaaS hostname
 	Hostname *string `json:"hostname,omitempty"`
+
+	// DNSAttached specifies whether the DNS record contains the IP of this machine
+	DNSAttached bool `json:"dnsAttached,omitempty"`
 
 	// Addresses contains the associated addresses for the maas machine.
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`

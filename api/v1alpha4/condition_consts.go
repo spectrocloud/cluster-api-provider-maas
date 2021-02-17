@@ -79,26 +79,21 @@ const (
 	// When set to false, severity can be an Error if the subnet is not found or unavailable in the instance's AZ
 	DNSAttachedCondition clusterv1.ConditionType = "DNSAttached"
 
-	// DNSAttachFailedReason used when a control plane node fails to attach to the DNS
-	DNSAttachFailedReason = "DNSAttachFailed"
-	// DNSDetachFailedReason used when a control plane node fails to detach from an DNS
-	DNSDetachFailedReason = "DNSDetachFailed"
+	DNSDetachPending = "DNSDetachPending"
+	DNSAttachPending = "DNSAttachPending"
 )
 
 // Cluster Conditions
 
 const (
-	// LoadBalancerAvailableCondition documents the availability of the container that implements the cluster load balancer.
+	// DNSReadyCondition documents the availability of the container that implements the cluster DNS.
 	//
-	// NOTE: When the load balancer provisioning starts the process completes almost immediately and within
-	// the same reconciliation, so the user will always see a transition from no condition to available without
-	// having evidence that the operation is started/is in progress.
-	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
+	DNSReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
 
 	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a DockerCluster controller detecting
 	// an error while provisioning the container that provides the cluster load balancer.; those kind of
 	// errors are usually transient and failed provisioning are automatically re-tried by the controller.
-	LoadBalancerFailedReason = "LoadBalancerFailed"
+	DNSFailedReason = "LoadBalancerFailed"
 
 	WaitForDNSNameReason = "WaitForDNSName"
 )

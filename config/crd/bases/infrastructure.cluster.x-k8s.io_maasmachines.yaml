@@ -89,6 +89,9 @@ spec:
                   - type
                   type: object
                 type: array
+              dnsAttached:
+                description: DNSAttached specifies whether the DNS record contains the IP of this machine
+                type: boolean
               failureMessage:
                 description: FailureMessage will be set in the event that there is a terminal problem reconciling the Machine and will contain a more verbose string suitable for logging and human consumption.
                 type: string
@@ -101,9 +104,6 @@ spec:
               instanceState:
                 description: InstanceState is the state of the AWS instance for this machine.
                 type: string
-              loadBalancerConfigured:
-                description: LoadBalancerConfigured denotes that the machine has been added to the load balancer
-                type: boolean
               machinePowered:
                 description: MachinePowered is if the machine is "Powered" on
                 type: boolean

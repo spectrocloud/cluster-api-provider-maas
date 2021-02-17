@@ -50,6 +50,17 @@ func (s *Service) GetMachine(systemID string) (*infrav1.Machine, error) {
 	return machine, nil
 }
 
+func (s *Service) ReleaseMachine(systemID string) error {
+	ctx := context.TODO()
+
+	err := s.maasClient.ReleaseMachine(ctx, systemID)
+	if err != nil {
+		return errors.Wrapf(err, "Unable to release machine")
+	}
+
+	return nil
+}
+
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr error) {
 
 	ctx := context.TODO()
@@ -129,8 +140,8 @@ func fromSDKTypeToMachine(m *maasclient.Machine) *infrav1.Machine {
 	return machine
 }
 
-//// ReconcileLoadbalancers reconciles the load balancers for the given cluster.
-//func (s *Service) ReconcileLoadbalancers() error {
+//// ReconcileDNS reconciles the load balancers for the given cluster.
+//func (s *Service) ReconcileDNS() error {
 //	s.scope.V(2).Info("Reconciling DNS")
 //
 //	s.scope.SetDNSName("cluster1.maas")

@@ -30,7 +30,7 @@ const (
 // MaasClusterSpec defines the desired state of MaasCluster
 type MaasClusterSpec struct {
 	// DNSDomain configures the MaaS domain to create the cluster on (e.g maas)
-	//DNSDomain string `json:"dnsDomain"`
+	DNSDomain string `json:"dnsDomain"`
 
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional

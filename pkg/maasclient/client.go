@@ -81,13 +81,15 @@ func (c *Client) sendRequest(req *http.Request, params url.Values, v interface{}
 	//debugBody(res)
 
 	// Try to unmarshall into errorResponse
-	if res.StatusCode != http.StatusOK {
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
 		bodyBytes, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			return err
 		}
 
 		return fmt.Errorf("unknown error, status code: %d, body: %s", res.StatusCode, string(bodyBytes))
+	} else if res.StatusCode == http.StatusNoContent {
+		return nil
 	}
 
 	if err = json.NewDecoder(res.Body).Decode(v); err != nil {

@@ -102,7 +102,6 @@ func (m *MachineScope) PatchObject() error {
 		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
 			clusterv1.ReadyCondition,
 			infrav1.MachineDeployedCondition,
-			infrav1.DNSAttachedCondition,
 		}},
 	)
 }
@@ -186,6 +185,9 @@ func (m *MachineScope) GetMachineState() *infrav1.MachineState {
 // SetMachineState sets the MaasMachine status instance state.
 func (m *MachineScope) SetMachineState(v infrav1.MachineState) {
 	m.MaasMachine.Status.MachineState = &v
+}
+func (m *MachineScope) SetPowered(powered bool) {
+	m.MaasMachine.Status.MachinePowered = powered
 }
 
 // GetMachineHostname retrns the hostname

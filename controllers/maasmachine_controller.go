@@ -160,8 +160,38 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	maasMachine := machineScope.MaasMachine
 
-	// TODO(saamalik)
-	fmt.Println(clusterScope)
+	machineSvc := maasmachine.NewService(machineScope)
+
+	// Find existing instance
+	m, err := r.findMachine(machineScope, machineSvc)
+	if err != nil {
+		machineScope.Error(err, "unable to find machine")
+		return ctrl.Result{}, err
+	}
+
+	if m == nil {
+		machineScope.V(2).Info("Unable to locate MaaS instance by ID or tags", "system-id", machineScope.GetInstanceID())
+		r.Recorder.Eventf(maasMachine, corev1.EventTypeWarning, "NoMachineFound", "Unable to find matching MaaS machine")
+		controllerutil.RemoveFinalizer(maasMachine, infrav1.MachineFinalizer)
+		return ctrl.Result{}, nil
+	}
+
+	if err := r.reconcileDNSAttachment(machineScope, clusterScope, m); err != nil {
+		if errors.Is(err, ErrRequeueDNS) {
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
+		machineScope.Error(err, "failed to reconcile LB attachment")
+		return ctrl.Result{}, err
+	}
+
+	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
+		machineScope.Error(err, "failed to release machine")
+		return ctrl.Result{}, err
+	}
+
+	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo,"")
+	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", m.ID)
 
 	// Machine is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(maasMachine, infrav1.MachineFinalizer)
@@ -245,8 +275,9 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 	existingMachineState := machineScope.GetMachineState()
 	machineScope.SetMachineState(m.State)
+	machineScope.SetPowered(m.Powered)
 
-	// Proceed to reconcile the AWSMachine state.
+	// Proceed to reconcile the MaasMachine state.
 	if existingMachineState == nil || *existingMachineState != m.State {
 		machineScope.Info("MaaS m state changed", "state", m.State, "system-id", *machineScope.GetInstanceID())
 	}
@@ -287,17 +318,19 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// tasks that can take place during all known instance states
 	if machineScope.MachineIsInKnownState() {
 		// TODO(saamalik) tags / labels
-		//_, err = r.ensureTags(ec2svc, machineScope.AWSMachine, machineScope.GetInstanceID(), machineScope.AdditionalTags())
+		//_, err = r.ensureTags(ec2svc, machineScope.MaasMachine, machineScope.GetInstanceID(), machineScope.AdditionalTags())
 		//if err != nil {
 		//	machineScope.Error(err, "failed to ensure tags")
 		//	return ctrl.Result{}, err
 		//}
 
-		if err := r.reconcileLBAttachment(machineScope, clusterScope, m); err != nil {
+		// Set the address if good
+		machineScope.SetAddresses(m.Addresses)
+
+		if err := r.reconcileDNSAttachment(machineScope, clusterScope, m); err != nil {
 			if errors.Is(err, ErrRequeueDNS) {
 				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
-
 			machineScope.Error(err, "failed to reconcile LB attachment")
 			return ctrl.Result{}, err
 		}
@@ -305,7 +338,6 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 	// tasks that can only take place during operational instance states
 	if machineScope.MachineIsOperational() {
-		machineScope.SetAddresses(m.Addresses)
 		if err := machineScope.SetNodeProviderID(); err != nil {
 			machineScope.Error(err, "Unable to set Node hostname")
 			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
@@ -343,7 +375,7 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 	return base64.StdEncoding.EncodeToString(userData), nil
 }
 
-func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1.Machine) error {
+func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1.Machine) error {
 	if !machineScope.IsControlPlane() {
 		return nil
 	}
@@ -360,23 +392,17 @@ func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.Machin
 			return errors.Wrapf(err, "machine %q - error determining registration status", m.ID)
 		}
 
+		machineScope.MaasMachine.Status.DNSAttached = registered
+
 		if registered {
 			// Wait for Cluster to delete this guy
+			conditions.MarkFalse(machineScope.MaasMachine, infrav1.DNSAttachedCondition, infrav1.DNSDetachPending, clusterv1.ConditionSeverityWarning, "")
+			machineScope.Info("machine waiting for cluster to de-register DNS")
 			return ErrRequeueDNS
 		}
 
 		// Already deregistered - nothing more to do
 		return nil
-
-		//if err := dnssvc.DeregisterInstanceFromAPIServerDNS(i); err != nil {
-		//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
-		//		"Failed to deregister control plane instance %q from load balancer: %v", i.ID, err)
-		//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.DNSAttachedCondition, infrav1.DNSDetachFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		//	return errors.Wrapf(err, "could not deregister control plane instance %q from load balancer", i.ID)
-		//}
-		//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulDetachControlPlaneDNS",
-		//	"Control plane instance %q is de-registered from load balancer", i.ID)
-		//return nil
 	}
 
 	registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
@@ -385,35 +411,20 @@ func (r *MaasMachineReconciler) reconcileLBAttachment(machineScope *scope.Machin
 		//	"Failed to register control plane instance %q with load balancer: failed to determine registration status: %v", i.ID, err)
 		return errors.Wrapf(err, "normal machine %q - error determining registration status", m.ID)
 	}
-	if !registered {
-		// Wait for Cluster to add me
-		machineScope.Info("machine waiting for cluster to register DNS", "system-id", m.ID)
-		return ErrRequeueDNS
 
+	machineScope.MaasMachine.Status.DNSAttached = registered
+
+	if !registered {
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1.DNSAttachedCondition, infrav1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
+		// Wait for Cluster to add me
+		machineScope.Info("machine waiting for cluster to register DNS")
+		return ErrRequeueDNS
 	}
+
+	conditions.MarkTrue(machineScope.MaasMachine, infrav1.DNSAttachedCondition)
 
 	// Already registered - nothing more to do
 	return nil
-
-	//if err := elbsvc.RegisterInstanceWithAPIServerELB(i); err != nil {
-	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedAttachControlPlaneELB",
-	//		"Failed to register control plane instance %q with load balancer: %v", i.ID, err)
-	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.ELBAttachedCondition, infrav1.ELBAttachFailedReason, clusterv1.ConditionSeverityError, err.Error())
-	//	return errors.Wrapf(err, "could not register control plane instance %q with load balancer", i.ID)
-	//}
-	//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulAttachControlPlaneELB",
-	//	"Control plane instance %q is registered with load balancer", i.ID)
-	//conditions.MarkTrue(machineScope.MaasMachine, infrav1.ELBAttachedCondition)
-	//return nil
-
-	// MachinePowered
-	// MachineState
-
-	// TODO
-	//fmt.Println(clusterScope)
-
-	//conditions.MarkTrue(machineScope.MaasMachine, infrav1.DNSAttachedCondition)
-	//return nil
 }
 
 // SetupWithManager will add watches for this controller

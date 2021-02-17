@@ -37,7 +37,7 @@ func TestClient_GetMachine(t *testing.T) {
 	assert.NotEmpty(t, res.OSSystem)
 	assert.NotEmpty(t, res.DistroSeries)
 
-	assert.Nil(t, res.SwapSize)
+	assert.Zero(t, *res.SwapSize)
 
 }
 

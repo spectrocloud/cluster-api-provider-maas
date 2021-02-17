@@ -103,6 +103,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Support FailureDomains
 	// In cloud providers this would likely look up which failure domains are supported and set the status appropriately.
 	// In the case of Maas, failure domains don't mean much so we simply copy the Spec into the Status.
+	// TODO look into?
 	maasCluster.Status.FailureDomains = maasCluster.Spec.FailureDomains
 
 	// Handle deleted clusters
@@ -127,6 +128,83 @@ func (r *MaasClusterReconciler) reconcileDelete(_ context.Context, clusterScope 
 	return reconcile.Result{}, nil
 }
 
+func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc *dns.Service) error {
+	machines, err := clusterScope.GetClusterMaasMachines()
+	if err != nil {
+		return errors.Wrapf(err, "Unable to list all maas machines")
+	}
+
+	var runningIpAddresses []string
+
+	currentIPs, err := dnssvc.GetAPIServerDNSRecords()
+	if err != nil {
+		return errors.Wrap(err, "Unable to get the dns resources")
+	}
+
+	machinesPendingAttachment := make([]*infrav1.MaasMachine, 0)
+	machinesPendingDetachment := make([]*infrav1.MaasMachine, 0)
+
+	for _, m := range machines {
+		if !IsControlPlaneMachine(m) {
+			continue
+		}
+
+		machineIP := getExternalMachineIP(m)
+		attached := currentIPs.Has(machineIP)
+		isRunningHealthy := IsRunning(m)
+
+		if !m.DeletionTimestamp.IsZero() || !isRunningHealthy {
+			if attached {
+				clusterScope.Info("Cleaning up IP on unhealthy machine", "machine", m.Name)
+				machinesPendingDetachment = append(machinesPendingDetachment, m)
+			}
+		} else if IsRunning(m) {
+			if !attached {
+				clusterScope.Info("Healthy machine without DNS attachment; attaching.", "machine", m.Name)
+				machinesPendingAttachment = append(machinesPendingAttachment, m)
+			}
+
+			runningIpAddresses = append(runningIpAddresses, machineIP)
+		}
+		//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulDetachControlPlaneDNS",
+		//	"Control plane instance %q is de-registered from load balancer", i.ID)
+		//runningIpAddresses = append(runningIpAddresses, m.)
+	}
+
+	if err := dnssvc.UpdateDNSAttachments(runningIpAddresses); err != nil {
+		return err
+	}
+
+	// TODO Emit events
+
+	return nil
+}
+
+// IsControlPlaneMachine checks machine is a control plane node.
+func IsControlPlaneMachine(m *infrav1.MaasMachine) bool {
+	_, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabelName]
+	return ok
+}
+
+// IsRunning returns if the machine is running
+func IsRunning(m *infrav1.MaasMachine) bool {
+	if !m.Status.MachinePowered {
+		return false
+	}
+
+	state := m.Status.MachineState
+	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
+}
+
+func getExternalMachineIP(machine *infrav1.MaasMachine) string {
+	for _, i := range machine.Status.Addresses {
+		if i.Type == clusterv1.MachineExternalIP {
+			return i.Address
+		}
+	}
+	return ""
+}
+
 func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	clusterScope.Info("Reconciling MaasCluster")
 
@@ -140,20 +218,20 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	dnsService := dns.NewService(clusterScope)
 
-	if err := dnsService.ReconcileLoadbalancers(); err != nil {
+	if err := dnsService.ReconcileDNS(); err != nil {
 		clusterScope.Error(err, "failed to reconcile load balancer")
-		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerReadyCondition, infrav1.LoadBalancerFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(maasCluster, infrav1.DNSReadyCondition, infrav1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
 	}
 
 	if maasCluster.Status.Network.DNSName == "" {
-		conditions.MarkFalse(maasCluster, infrav1.LoadBalancerReadyCondition, infrav1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
+		conditions.MarkFalse(maasCluster, infrav1.DNSReadyCondition, infrav1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
 		clusterScope.Info("Waiting on API server DNS name")
 		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
 	// Mark the maasCluster ready
-	conditions.MarkTrue(maasCluster, infrav1.LoadBalancerReadyCondition)
+	conditions.MarkTrue(maasCluster, infrav1.DNSReadyCondition)
 
 	maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
 		Host: maasCluster.Status.Network.DNSName,
@@ -161,6 +239,13 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	}
 
 	maasCluster.Status.Ready = true
+
+	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
+		clusterScope.Error(err, "failed to reconcile load balancer")
+		return reconcile.Result{}, err
+
+	}
+
 	return ctrl.Result{}, nil
 }
 
