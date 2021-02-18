@@ -97,3 +97,11 @@ const (
 
 	WaitForDNSNameReason = "WaitForDNSName"
 )
+
+const (
+	// APIServerAvailableCondition documents whether API server is reachable
+	APIServerAvailableCondition clusterv1.ConditionType = "APIServerAvailable"
+
+	// APIServerNotReadyReason api server isn't responding
+	APIServerNotReadyReason = "APIServerNotReady"
+)

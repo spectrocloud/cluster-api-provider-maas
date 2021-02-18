@@ -30,13 +30,32 @@ const (
 
 // MaasMachineSpec defines the desired state of MaasMachine
 type MaasMachineSpec struct {
-	// ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+	// SystemID will be the MaaS machine ID
+	// +optional
+	SystemID *string `json:"systemID,omitempty"`
+
+	// ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
 
-	// ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+	// Zone will be the MaaS machine ID
 	// +optional
-	SystemID *string `json:"systemID,omitempty"`
+	Zone *string `json:"zone,omitempty"`
+
+	// ResourcePool will be the MaaS machine ID
+	// +optional
+	ResourcePool *string `json:"resourcePool,omitempty"`
+
+	// MinCPU minimum number of CPUs
+	// +optional
+	MinCPU *int `json:"minCPU,omitempty"`
+
+	// MinMemory minimum memory
+	// +optional
+	MinMemory *int `json:"minMemory,omitempty"`
+
+	// Zone will be the MaaS image id
+	Image string `json:"image"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine

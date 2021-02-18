@@ -62,7 +62,7 @@ type MaasMachineReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines/status,verbs=get;update;patch
 
 func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
-	log := r.Log.WithValues("maasmachine", req.NamespacedName)
+	log := r.Log.WithValues("maasmachine", req.Name)
 
 	// Fetch the MaasMachine instance.
 	maasMachine := &infrav1.MaasMachine{}
@@ -83,8 +83,6 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Info("Machine Controller has not yet set OwnerRef")
 		return ctrl.Result{}, nil
 	}
-
-	log = log.WithValues("machine", machine.Name)
 
 	// Fetch the Cluster.
 	cluster, err := util.GetClusterFromMetadata(ctx, r.Client, machine.ObjectMeta)
@@ -117,6 +115,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Client:         r.Client,
 		Logger:         log,
 		Cluster:        cluster,
+		Tracker:        r.Tracker,
 		MaasCluster:    maasCluster,
 		ControllerName: "maasmachine",
 	})
@@ -178,7 +177,8 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	if err := r.reconcileDNSAttachment(machineScope, clusterScope, m); err != nil {
 		if errors.Is(err, ErrRequeueDNS) {
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{}, nil
+			//return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 
 		machineScope.Error(err, "failed to reconcile LB attachment")
@@ -190,7 +190,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		return ctrl.Result{}, err
 	}
 
-	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo,"")
+	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
 	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", m.ID)
 
 	// Machine is deleted so remove the finalizer.
@@ -318,11 +318,6 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// tasks that can take place during all known instance states
 	if machineScope.MachineIsInKnownState() {
 		// TODO(saamalik) tags / labels
-		//_, err = r.ensureTags(ec2svc, machineScope.MaasMachine, machineScope.GetInstanceID(), machineScope.AdditionalTags())
-		//if err != nil {
-		//	machineScope.Error(err, "failed to ensure tags")
-		//	return ctrl.Result{}, err
-		//}
 
 		// Set the address if good
 		machineScope.SetAddresses(m.Addresses)
@@ -337,7 +332,9 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	// tasks that can only take place during operational instance states
-	if machineScope.MachineIsOperational() {
+	if o, _ := clusterScope.IsAPIServerOnline(); !o {
+		machineScope.Info("API Server is not online; waiting")
+	} else if machineScope.MachineIsOperational() {
 		if err := machineScope.SetNodeProviderID(); err != nil {
 			machineScope.Error(err, "Unable to set Node hostname")
 			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
@@ -384,7 +381,7 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 
 	// In order to prevent sending request to a "not-ready" control plane machines, it is required to remove the machine
 	// from the DNS as soon as the machine gets deleted or when the machine is in a not running state.
-	if !machineScope.MaasMachine.DeletionTimestamp.IsZero() || !machineScope.InstanceIsRunning() {
+	if !machineScope.MaasMachine.DeletionTimestamp.IsZero() || !machineScope.MachineIsRunning() {
 		registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
 		if err != nil {
 			//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
@@ -437,7 +434,6 @@ func (r *MaasMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.MaasMachine{}).
 		WithOptions(options).
-		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
 		Watches(
 			&source.Kind{Type: &clusterv1.Machine{}},
 			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasMachine"))),
@@ -446,6 +442,7 @@ func (r *MaasMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 			&source.Kind{Type: &infrav1.MaasCluster{}},
 			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
+		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 	if err != nil {
 		return err
@@ -453,7 +450,7 @@ func (r *MaasMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.M
 	return c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
 		handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
-		predicates.ClusterUnpausedAndInfrastructureReady(ctrl.LoggerFrom(ctx)),
+		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
 }
 
@@ -483,7 +480,7 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o client.Object) []ctr
 		if m.Spec.InfrastructureRef.Name == "" {
 			continue
 		}
-		name := client.ObjectKey{Namespace: m.Namespace, Name: m.Name}
+		name := client.ObjectKey{Namespace: m.Spec.InfrastructureRef.Namespace, Name: m.Spec.InfrastructureRef.Name}
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}
 

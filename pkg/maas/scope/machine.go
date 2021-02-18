@@ -121,6 +121,11 @@ func (m *MachineScope) SetReady() {
 	m.MaasMachine.Status.Ready = true
 }
 
+// IsReady gets MaasMachine Ready Status
+func (m *MachineScope) IsReady() bool {
+	return m.MaasMachine.Status.Ready
+}
+
 // SetNotReady sets the MaasMachine Ready Status to false
 func (m *MachineScope) SetNotReady() {
 	m.MaasMachine.Status.Ready = false
@@ -203,7 +208,7 @@ func (m *MachineScope) SetMachineHostname(hostname string) {
 	m.MaasMachine.Status.Hostname = &hostname
 }
 
-func (m *MachineScope) InstanceIsRunning() bool {
+func (m *MachineScope) MachineIsRunning() bool {
 	state := m.GetMachineState()
 	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
 }

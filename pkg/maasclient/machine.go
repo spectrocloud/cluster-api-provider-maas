@@ -58,7 +58,7 @@ func (c *Client) AllocateMachine(ctx context.Context, options *AllocateMachineOp
 		addParam(q, "name", options.Name)
 		addParam(q, "zone", options.AvailabilityZone)
 		addParam(q, "cpu_count", options.MinCPU)
-		addParam(q, "pool", options.MinMem)
+		addParam(q, "mem", options.MinMem)
 	}
 
 	res := new(Machine)

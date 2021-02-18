@@ -18,16 +18,20 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -43,8 +47,10 @@ import (
 // MaasClusterReconciler reconciles a MaasCluster object
 type MaasClusterReconciler struct {
 	client.Client
-	Log      logr.Logger
-	Recorder record.EventRecorder
+	Log                 logr.Logger
+	Recorder            record.EventRecorder
+	Tracker             *remote.ClusterCacheTracker
+	GenericEventChannel chan event.GenericEvent
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
@@ -53,7 +59,7 @@ type MaasClusterReconciler struct {
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
 func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
-	log := r.Log.WithValues("maascluster", req.NamespacedName)
+	log := r.Log.WithValues("maascluster", req.Name)
 
 	// Fetch the MaasCluster instance
 	maasCluster := &infrav1.MaasCluster{}
@@ -73,21 +79,15 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	log = log.WithValues("cluster", cluster.Name)
-
-	//// Create a helper for managing a maas container hosting the loadbalancer.
-	//externalLoadBalancer, err := maas.NewLoadBalancer(cluster.Name)
-	//if err != nil {
-	//	return ctrl.Result{}, errors.Wrapf(err, "failed to create helper for managing the externalLoadBalancer")
-	//}
-
 	// Create the scope.
 	clusterScope, err := scope.NewClusterScope(scope.ClusterScopeParams{
-		Client:         r.Client,
-		Logger:         log,
-		Cluster:        cluster,
-		MaasCluster:    maasCluster,
-		ControllerName: "maascluster",
+		Client:              r.Client,
+		Logger:              log,
+		Cluster:             cluster,
+		MaasCluster:         maasCluster,
+		Tracker:             r.Tracker,
+		ClusterEventChannel: r.GenericEventChannel,
+		ControllerName:      "maascluster",
 	})
 	if err != nil {
 		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)
@@ -173,9 +173,10 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 
 	if err := dnssvc.UpdateDNSAttachments(runningIpAddresses); err != nil {
 		return err
+	} else if len(machinesPendingAttachment) > 0 || len(machinesPendingDetachment) > 0 {
+		clusterScope.Info("Pending DNS attachments or detachments; will retry again")
+		return ErrRequeueDNS
 	}
-
-	// TODO Emit events
 
 	return nil
 }
@@ -230,9 +231,6 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
-	// Mark the maasCluster ready
-	conditions.MarkTrue(maasCluster, infrav1.DNSReadyCondition)
-
 	maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
 		Host: maasCluster.Status.Network.DNSName,
 		Port: clusterScope.APIServerPort(),
@@ -240,19 +238,48 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	maasCluster.Status.Ready = true
 
+	// Mark the maasCluster ready
+	conditions.MarkTrue(maasCluster, infrav1.DNSReadyCondition)
+
 	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
+		if errors.Is(err, ErrRequeueDNS) {
+			return ctrl.Result{}, nil
+			//return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
 		clusterScope.Error(err, "failed to reconcile load balancer")
 		return reconcile.Result{}, err
 
 	}
+
+	clusterScope.ReconcileMaasClusterWhenAPIServerIsOnline()
+	if k, _ := clusterScope.IsAPIServerOnline(); !k {
+		conditions.MarkFalse(maasCluster, infrav1.APIServerAvailableCondition, infrav1.APIServerNotReadyReason, clusterv1.ConditionSeverityWarning, "")
+		return ctrl.Result{}, nil
+	}
+
+	conditions.MarkTrue(maasCluster, infrav1.APIServerAvailableCondition)
+	clusterScope.Info("API Server is available")
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager will add watches for this controller
 func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.GenericEventChannel == nil {
+		r.GenericEventChannel = make(chan event.GenericEvent)
+	}
+
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.MaasCluster{}).
+		Watches(
+			&source.Kind{Type: &infrav1.MaasMachine{}},
+			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
+		).
+		Watches(
+			&source.Channel{Source: r.GenericEventChannel},
+			&handler.EnqueueRequestForObject{},
+		).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 	if err != nil {
@@ -263,4 +290,47 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster"))),
 		predicates.ClusterUnpaused(r.Log),
 	)
+}
+
+// controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used
+// to enqueue requests for reconciliation for MaasCluster to update
+// its status.apiEndpoints field.
+func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
+	maasMachine, ok := o.(*infrav1.MaasMachine)
+	if !ok {
+		r.Log.Error(nil, fmt.Sprintf("expected a MaasMachine but got a %T", o))
+		return nil
+	}
+	if !IsControlPlaneMachine(maasMachine) {
+		return nil
+	}
+
+	ctx := context.TODO()
+
+	// Fetch the CAPI Cluster.
+	cluster, err := util.GetClusterFromMetadata(ctx, r.Client, maasMachine.ObjectMeta)
+	if err != nil {
+		r.Log.Error(err, "MaasMachine is missing cluster label or cluster does not exist",
+			"namespace", maasMachine.Namespace, "name", maasMachine.Name)
+		return nil
+	}
+
+	// Fetch the MaasCluster
+	maasCluster := &infrav1.MaasCluster{}
+	maasClusterKey := client.ObjectKey{
+		Namespace: maasMachine.Namespace,
+		Name:      cluster.Spec.InfrastructureRef.Name,
+	}
+	if err := r.Client.Get(ctx, maasClusterKey, maasCluster); err != nil {
+		r.Log.Error(err, "failed to get MaasCluster",
+			"namespace", maasClusterKey.Namespace, "name", maasClusterKey.Name)
+		return nil
+	}
+
+	return []ctrl.Request{{
+		NamespacedName: types.NamespacedName{
+			Namespace: maasClusterKey.Namespace,
+			Name:      maasClusterKey.Name,
+		},
+	}}
 }

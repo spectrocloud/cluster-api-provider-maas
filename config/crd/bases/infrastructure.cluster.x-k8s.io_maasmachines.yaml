@@ -34,12 +34,29 @@ spec:
           spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
+              image:
+                description: Zone will be the MaaS image id
+                type: string
+              minCPU:
+                description: MinCPU minimum number of CPUs
+                type: integer
+              minMemory:
+                description: MinMemory minimum memory
+                type: integer
               providerID:
-                description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+                description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              resourcePool:
+                description: ResourcePool will be the MaaS machine ID
                 type: string
               systemID:
-                description: ProviderID will be the container name in ProviderID format (maas://<zone>/system_id)
+                description: SystemID will be the MaaS machine ID
                 type: string
+              zone:
+                description: Zone will be the MaaS machine ID
+                type: string
+            required:
+            - image
             type: object
           status:
             description: MaasMachineStatus defines the observed state of MaasMachine

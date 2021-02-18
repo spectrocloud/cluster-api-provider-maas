@@ -78,6 +78,11 @@ type APIEndpoint struct {
 	Port int `json:"port"`
 }
 
+// IsZero returns true if both host and port are zero values.
+func (in APIEndpoint) IsZero() bool {
+	return in.Host == "" && in.Port == 0
+}
+
 // +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion

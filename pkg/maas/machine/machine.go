@@ -32,19 +32,6 @@ func (s *Service) GetMachine(systemID string) (*infrav1.Machine, error) {
 		return nil, err
 	}
 
-	// TODO verify
-	//&infrav1.Machine{
-	//	ID:               "hqnsaw",
-	//	Hostname:         "enough-bunny",
-	//	State:            "Deployed",
-	//	Powered:          true,
-	//	AvailabilityZone: "az1",
-	//	Addresses: []clusterv1.MachineAddress{
-	//		{Type: clusterv1.MachineExternalIP, Address: "10.11.130.70"},
-	//		{Type: clusterv1.MachineExternalDNS, Address: "enough-bunny.maas"},
-	//	},
-	//}
-
 	machine := fromSDKTypeToMachine(m)
 
 	return machine, nil
@@ -65,9 +52,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 
 	ctx := context.TODO()
 
+	mm := s.scope.MaasMachine
+
 	allocateOptions := &maasclient.AllocateMachineOptions{
 		// TODO add Resource Pool, CPU, Memory, etc
-		AvailabilityZone: pointer.StringPtr("az1"),
+		AvailabilityZone: mm.Spec.Zone,
+		ResourcePool: mm.Spec.ResourcePool,
+		MinCPU: mm.Spec.MinCPU,
+		MinMem: mm.Spec.MinMemory,
 	}
 
 	m, err := s.maasClient.AllocateMachine(ctx, allocateOptions)
@@ -103,7 +95,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 		SystemID:     m.SystemID,
 		UserData:     pointer.StringPtr(userDataB64),
 		OSSystem:     pointer.StringPtr("custom"),
-		DistroSeries: pointer.StringPtr("spectro-u18-k11815"),
+		DistroSeries: &mm.Spec.Image,
 	}
 
 	deployingM, err := s.maasClient.DeployMachine(ctx, deployOptions)
