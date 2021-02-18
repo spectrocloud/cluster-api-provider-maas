@@ -289,30 +289,30 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	case s == infrav1.MachineStateDeploying, s == infrav1.MachineStateAllocated:
 		machineScope.SetNotReady()
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
-	//case infrav1.InstanceStateStopping, infrav1.InstanceStateStopped:
+	//case infrav1.MachineStateStopping, infrav1.MachineStateStopped:
 	//	machineScope.SetNotReady()
-	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.InstanceStoppedReason, clusterv1.ConditionSeverityError, "")
+	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineStoppedReason, clusterv1.ConditionSeverityError, "")
 	case s == infrav1.MachineStateDeployed:
 		machineScope.SetReady()
 		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
-	//case infrav1.InstanceStateShuttingDown, infrav1.InstanceStateTerminated:
+	//case infrav1.MachineStateShuttingDown, infrav1.MachineStateTerminated:
 	//	machineScope.SetNotReady()
-	//	machineScope.Info("Unexpected EC2 m termination", "state", m.State, "m-id", *machineScope.GetInstanceID())
-	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnexpectedTermination", "Unexpected EC2 m termination")
-	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.InstanceTerminatedReason, clusterv1.ConditionSeverityError, "")
+	//	machineScope.Info("Unexpected Maas m termination", "state", m.State, "m-id", *machineScope.GetMachineID())
+	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
+	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
 	default:
 		machineScope.SetNotReady()
-		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetInstanceID())
-		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "InstanceUnhandledState", "MaaS m state is undefined")
+		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetMachineID())
+		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
 		conditions.MarkUnknown(machineScope.MaasMachine, infrav1.MachineDeployedCondition, "", "")
 	}
 
 	// TODO(saamalik) when terminated
-	//if instance.State == infrav1.InstanceStateTerminated {
+	//if machine.State == infrav1.MachineStateTerminated {
 	//	machineScope.SetFailureReason(capierrors.UpdateMachineError)
-	//	machineScope.SetFailureMessage(errors.Errorf("EC2 instance state %q is unexpected", instance.State))
+	//	machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", machine.State))
 	//}
 
 	// tasks that can take place during all known instance states
@@ -326,7 +326,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 			if errors.Is(err, ErrRequeueDNS) {
 				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 			}
-			machineScope.Error(err, "failed to reconcile LB attachment")
+			machineScope.Error(err, "failed to reconcile DNS attachment")
 			return ctrl.Result{}, err
 		}
 	}
