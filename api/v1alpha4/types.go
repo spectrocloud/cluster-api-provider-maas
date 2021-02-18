@@ -8,6 +8,8 @@ import (
 // MachineState describes the state of an AWS instance.
 type MachineState string
 
+// List of all possible states: https://github.com/maas/maas/blob/master/src/maasserver/enum.py#L108
+
 var (
 	// MachineStateAllocated is the string representing an instance in a ready (commissioned) state
 	MachineStateAllocated = MachineState("Allocated")
@@ -26,6 +28,9 @@ var (
 
 	// MachineStateDiskErasing is the string representing an instance which is releasing
 	MachineStateReleasing = MachineState("Releasing")
+
+	// MachineStateNew is the string representing an instance which is not yet commissioned
+	MachineStateNew = MachineState("New")
 
 	//// MachineStateShuttingDown is the string representing an instance shutting down
 	//MachineStateShuttingDown = MachineState("shutting-down")
@@ -62,6 +67,7 @@ var (
 			string(MachineStateDiskErasing),
 			string(MachineStateReleasing),
 			string(MachineStateReady),
+			string(MachineStateNew),
 			//string(MachineStateTerminated),
 		),
 	)

@@ -295,7 +295,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	case s == infrav1.MachineStateDeployed:
 		machineScope.SetReady()
 		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
-	case s == infrav1.MachineStateReady, s == infrav1.MachineStateDiskErasing, s == infrav1.MachineStateReleasing:
+	case s == infrav1.MachineStateReady, s == infrav1.MachineStateDiskErasing, s == infrav1.MachineStateReleasing, s == infrav1.MachineStateNew:
 		machineScope.SetNotReady()
 		machineScope.Info("Unexpected Maas m termination", "m-id", *machineScope.GetInstanceID())
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
