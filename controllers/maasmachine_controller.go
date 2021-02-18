@@ -273,7 +273,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	machineScope.SetMachineHostname(m.Hostname)
 
 	existingMachineState := machineScope.GetMachineState()
-	machineScope.Logger = machineScope.Logger.WithValues("state", m.State)
+	machineScope.Logger = machineScope.Logger.WithValues("state", m.State, "m-id", *machineScope.GetInstanceID())
 	machineScope.SetMachineState(m.State)
 	machineScope.SetPowered(m.Powered)
 
@@ -283,28 +283,26 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	switch s := m.State; {
-	case !m.Powered:
-		machineScope.SetNotReady()
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
-	case s == infrav1.MachineStateDeploying, s == infrav1.MachineStateAllocated:
-		machineScope.SetNotReady()
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
-	//case infrav1.MachineStateStopping, infrav1.MachineStateStopped:
-	//	machineScope.SetNotReady()
-	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineStoppedReason, clusterv1.ConditionSeverityError, "")
-	case s == infrav1.MachineStateDeployed:
-		machineScope.SetReady()
-		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
 	case s == infrav1.MachineStateReady, s == infrav1.MachineStateDiskErasing, s == infrav1.MachineStateReleasing, s == infrav1.MachineStateNew:
 		machineScope.SetNotReady()
-		machineScope.Info("Unexpected Maas m termination", "m-id", *machineScope.GetInstanceID())
+		machineScope.Info("Unexpected Maas m termination")
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", m.State))
+	case machineScope.MachineIsInKnownState() && !m.Powered:
+		machineScope.SetNotReady()
+		machineScope.Info("Machine is powered off!")
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
+	case s == infrav1.MachineStateDeploying, s == infrav1.MachineStateAllocated:
+		machineScope.SetNotReady()
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
+	case s == infrav1.MachineStateDeployed:
+		machineScope.SetReady()
+		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
 	default:
 		machineScope.SetNotReady()
-		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetInstanceID())
+		machineScope.Info("MaaS m state is undefined", "state", m.State)
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
