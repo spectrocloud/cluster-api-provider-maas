@@ -302,7 +302,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
 	default:
 		machineScope.SetNotReady()
-		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetMachineID())
+		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetInstanceID())
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
