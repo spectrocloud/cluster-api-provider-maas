@@ -159,7 +159,12 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 		s.Info("skipping reconcile when API server is online",
 			"reason", "controlPlaneInitialized")
 		return
+	} else if !s.Cluster.DeletionTimestamp.IsZero() {
+		s.Info("skipping reconcile when API server is online",
+			"reason", "controlPlaneDeleting")
+		return
 	}
+
 	apiServerTriggersMu.Lock()
 	defer apiServerTriggersMu.Unlock()
 	if _, ok := apiServerTriggers[s.Cluster.UID]; ok {
@@ -195,10 +200,17 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	ctx := context.TODO()
 
-	// FIXME BUG! Need to stop polling if the cluster is deleted
+	cluster := &clusterv1.Cluster{}
+	if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil {
+		return false, err
+	} else if !cluster.DeletionTimestamp.IsZero() {
+		s.Info("Cluster is deleting; abort APIServerOnline check", "cluster", cluster.Name)
+		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
+	}
+
 	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
 	if err != nil {
-		s.Info("Waiting for online server to come online")
+		s.V(2).Info("Waiting for online server to come online")
 		return false, nil
 	}
 

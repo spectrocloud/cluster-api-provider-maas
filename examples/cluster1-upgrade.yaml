@@ -1,0 +1,24 @@
+diff --git a/examples/cluster1.yaml b/examples/cluster1.yaml
+index 0235aa0..ccc8c72 100644
+--- a/examples/cluster1.yaml
++++ b/examples/cluster1.yaml
+@@ -41,7 +41,7 @@ spec:
+       zone: az1
+       minCPU: 4
+       minMemory: 8192
+-      image: spectro-u18-k11815
++      image: spectro-u18-k1197
+ ---
+ apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+ kind: KubeadmControlPlane
+@@ -49,8 +49,8 @@ metadata:
+   name: controlplane
+   namespace: default
+ spec:
+-  replicas: 1
+-  version: v1.18.15
++  replicas: 3
++  version: v1.19.7
+   infrastructureTemplate:
+     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+     kind: MaasMachineTemplate

@@ -37,9 +37,6 @@ type MaasClusterSpec struct {
 	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
 
 	// FailureDomains are not usually defined on the spec.
-	// The maas provider is special since failure domains don't mean anything in a local maas environment.
-	// Instead, the maas cluster controller will simply copy these into the Status and allow the Cluster API
-	// controllers to do what they will with the defined failure domains.
 	// +optional
 	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
 }
