@@ -1,4 +1,4 @@
-package maasclient
+package oauth1
 
 import (
 	"crypto/hmac"

@@ -175,6 +175,7 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 	apiServerTriggers[s.Cluster.UID] = struct{}{}
 	go func() {
 		// Block until the target API server is online.
+
 		s.Info("start polling API server for online check")
 		_ = wait.PollImmediateInfinite(time.Second*1, func() (bool, error) { return s.IsAPIServerOnline() })
 		s.Info("stop polling API server for online check")

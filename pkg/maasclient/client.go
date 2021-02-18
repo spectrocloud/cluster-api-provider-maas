@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maasclient/oauth1"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -15,7 +16,7 @@ type Client struct {
 	baseURL    string
 	HTTPClient *http.Client
 	apiKey     string
-	auth       OAuth1
+	auth       oauth1.OAuth1
 }
 
 // NewClient creates new MaaS client with given API key
@@ -104,7 +105,7 @@ func authHeader(req *http.Request, queryParams url.Values, apiKey string) string
 	//config := oauth1.NewConfig(key[0], "")
 	//token := oauth1
 
-	auth := OAuth1{
+	auth := oauth1.OAuth1{
 		ConsumerKey:    key[0],
 		ConsumerSecret: "",
 		AccessToken:    key[1],
