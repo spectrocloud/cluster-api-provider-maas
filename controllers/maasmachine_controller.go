@@ -295,11 +295,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	case s == infrav1.MachineStateDeployed:
 		machineScope.SetReady()
 		conditions.MarkTrue(machineScope.MaasMachine, infrav1.MachineDeployedCondition)
-	//case infrav1.MachineStateShuttingDown, infrav1.MachineStateTerminated:
-	//	machineScope.SetNotReady()
-	//	machineScope.Info("Unexpected Maas m termination", "state", m.State, "m-id", *machineScope.GetMachineID())
-	//	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
-	//	conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
+	case s == infrav1.MachineStateReady, s == infrav1.MachineStateDiskErasing, s == infrav1.MachineStateReleasing:
+		machineScope.SetNotReady()
+		machineScope.Info("Unexpected Maas m termination", "m-id", *machineScope.GetInstanceID())
+		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1.MachineDeployedCondition, infrav1.MachineTerminatedReason, clusterv1.ConditionSeverityError, "")
+		machineScope.SetFailureReason(capierrors.UpdateMachineError)
+		machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", m.State))
 	default:
 		machineScope.SetNotReady()
 		machineScope.Info("MaaS m state is undefined", "state", m.State, "system-id", *machineScope.GetInstanceID())
@@ -308,12 +310,6 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
 		conditions.MarkUnknown(machineScope.MaasMachine, infrav1.MachineDeployedCondition, "", "")
 	}
-
-	// TODO(saamalik) when terminated
-	//if machine.State == infrav1.MachineStateTerminated {
-	//	machineScope.SetFailureReason(capierrors.UpdateMachineError)
-	//	machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", machine.State))
-	//}
 
 	// tasks that can take place during all known instance states
 	if machineScope.MachineIsInKnownState() {

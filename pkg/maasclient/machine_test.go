@@ -27,7 +27,7 @@ func TestClient_GetMachine(t *testing.T) {
 	assert.NotNil(t, res, "expecting non-nil result")
 	assert.NotEmpty(t, res.SystemID)
 	assert.NotEmpty(t, res.Hostname)
-	assert.NotEmpty(t, res.State, "Deploying")
+	assert.Equal(t, res.State, "Deployed")
 	assert.NotEmpty(t, res.PowerState)
 	assert.Equal(t, res.AvailabilityZone, "az1")
 

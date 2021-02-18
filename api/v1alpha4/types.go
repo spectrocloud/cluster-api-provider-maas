@@ -9,17 +9,23 @@ import (
 type MachineState string
 
 var (
+	// MachineStateAllocated is the string representing an instance in a ready (commissioned) state
+	MachineStateAllocated = MachineState("Allocated")
+
 	//MachineStateDeploying is the string representing an instance in a deploying state
 	MachineStateDeploying = MachineState("Deploying")
 
-	// MachineStateRunning is the string representing an instance in a pending state
+	// MachineStateDeployed is the string representing an instance in a pending state
 	MachineStateDeployed = MachineState("Deployed")
 
 	// MachineStateReady is the string representing an instance in a ready (commissioned) state
 	MachineStateReady = MachineState("Ready")
 
-	// MachineStateAllocated is the string representing an instance in a ready (commissioned) state
-	MachineStateAllocated = MachineState("Allocated")
+	// MachineStateDiskErasing is the string representing an instance which is releasing (disk)
+	MachineStateDiskErasing = MachineState("Disk erasing")
+
+	// MachineStateDiskErasing is the string representing an instance which is releasing
+	MachineStateReleasing = MachineState("Releasing")
 
 	//// MachineStateShuttingDown is the string representing an instance shutting down
 	//MachineStateShuttingDown = MachineState("shutting-down")
@@ -47,13 +53,14 @@ var (
 	MachineOperationalStates = MachineRunningStates.Union(
 		sets.NewString(
 			string(MachineStateAllocated),
-			//string(MachineStateStopped),
 		),
 	)
 
 	// MachineKnownStates represents all known MaaS instance states
 	MachineKnownStates = MachineOperationalStates.Union(
 		sets.NewString(
+			string(MachineStateDiskErasing),
+			string(MachineStateReleasing),
 			string(MachineStateReady),
 			//string(MachineStateTerminated),
 		),

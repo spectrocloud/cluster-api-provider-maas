@@ -37,6 +37,9 @@ const (
 	// MachineDeployingReason
 	MachineDeployingReason = "MachineDeploying"
 
+	// MachineTerminatedReason
+	MachineTerminatedReason = "MachineTerminatedReason"
+
 	// MachineDeployingReason
 	MachinePoweredOffReason = "MachinePoweredOff"
 
