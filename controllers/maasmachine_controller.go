@@ -273,12 +273,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	machineScope.SetMachineHostname(m.Hostname)
 
 	existingMachineState := machineScope.GetMachineState()
+	machineScope.Logger = machineScope.Logger.WithValues("state", m.State)
 	machineScope.SetMachineState(m.State)
 	machineScope.SetPowered(m.Powered)
 
 	// Proceed to reconcile the MaasMachine state.
 	if existingMachineState == nil || *existingMachineState != m.State {
-		machineScope.Info("MaaS m state changed", "state", m.State, "system-id", *machineScope.GetInstanceID())
+		machineScope.Info("MaaS m state changed", "old-state", existingMachineState)
 	}
 
 	switch s := m.State; {
@@ -339,6 +340,8 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
 			return ctrl.Result{}, err
 		}
+	} else {
+		machineScope.Info("Machine is not operational")
 	}
 
 	return ctrl.Result{}, nil
@@ -424,7 +427,7 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 }
 
 // SetupWithManager will add watches for this controller
-func (r *MaasMachineReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
+func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager, options controller.Options) error {
 	clusterToMaasMachines, err := util.ClusterToObjectsMapper(mgr.GetClient(), &infrav1.MaasMachineList{}, mgr.GetScheme())
 	if err != nil {
 		return err
