@@ -18,6 +18,8 @@ type OAuth1 struct {
 	AccessSecret   string
 }
 
+// TODO add comment on-top about what is changed, and the header
+
 // Params being any key-value url query parameter pairs
 func (auth OAuth1) BuildOAuth1Header(method, path string, params map[string]string) string {
 	vals := url.Values{}
