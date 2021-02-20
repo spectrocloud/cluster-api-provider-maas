@@ -3,7 +3,6 @@ module github.com/spectrocloud/cluster-api-provider-maas
 go 1.15
 
 require (
-	github.com/dghubble/oauth1 v0.7.0
 	github.com/go-logr/logr v0.3.0
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.10.0
@@ -15,8 +14,8 @@ require (
 	k8s.io/client-go v0.20.2
 	k8s.io/klog v1.0.0
 	k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
-	sigs.k8s.io/cluster-api v0.3.3
+	sigs.k8s.io/cluster-api v0.3.11-0.20210220174142-a877397f256d
 	sigs.k8s.io/controller-runtime v0.8.2
 )
 
-replace sigs.k8s.io/cluster-api => ../cluster-api
+// replace sigs.k8s.io/cluster-api => ../cluster-api
