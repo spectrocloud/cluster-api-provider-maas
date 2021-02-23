@@ -18,7 +18,6 @@ metadata:
   namespace: default
 spec:
   clusterName: my-cluster2
-  version: 1.18.15
   replicas: 1
   selector:
     matchLabels:
@@ -26,6 +25,7 @@ spec:
   template:
     spec:
       clusterName: my-cluster2
+      version: 1.18.15
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
