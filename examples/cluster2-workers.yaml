@@ -18,6 +18,7 @@ metadata:
   namespace: default
 spec:
   clusterName: my-cluster2
+  version: 1.18.15
   replicas: 1
   selector:
     matchLabels:
