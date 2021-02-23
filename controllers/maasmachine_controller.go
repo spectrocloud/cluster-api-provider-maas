@@ -59,6 +59,9 @@ type MaasMachineReconciler struct {
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;machines,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
 func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := r.Log.WithValues("maasmachine", req.Name)
@@ -326,16 +329,20 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	// tasks that can only take place during operational instance states
+	// Tried to not requeue here, but during error conditions (e.g: machine fails to boot)
+	// there is no easy way to check other than a requeue
 	if o, _ := clusterScope.IsAPIServerOnline(); !o {
-		machineScope.Info("API Server is not online; waiting")
-	} else if machineScope.MachineIsOperational() {
+		machineScope.Info("API Server is not online; requeue")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	} else if !machineScope.MachineIsOperational() {
+		machineScope.Info("Machine is not operational; requeue")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	} else {
 		if err := machineScope.SetNodeProviderID(); err != nil {
 			machineScope.Error(err, "Unable to set Node hostname")
 			r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "NodeProviderUpdateFailed", "Unable to set the node provider update")
 			return ctrl.Result{}, err
 		}
-	} else {
-		machineScope.Info("Machine is not operational")
 	}
 
 	return ctrl.Result{}, nil

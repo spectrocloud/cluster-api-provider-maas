@@ -77,7 +77,7 @@ func main() {
 		Scheme:                 myscheme,
 		MetricsBindAddress:     metricsBindAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "controller-leader-election-capd",
+		LeaderElectionID:       "controller-leader-election-capmaas",
 		SyncPeriod:             &syncPeriod,
 		HealthProbeBindAddress: healthAddr,
 		Port:                   webhookPort,
