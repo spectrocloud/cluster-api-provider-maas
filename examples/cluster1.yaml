@@ -1,5 +1,5 @@
 # Creates a cluster with one control-plane node and one worker node
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasCluster
 metadata:
   name: my-cluster
@@ -8,7 +8,7 @@ spec:
   dnsDomain: maas.sc
   # dnsDomain: maas
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1alpha3
 kind: Cluster
 metadata:
   name: my-cluster
@@ -21,17 +21,17 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
     kind: KubeadmControlPlane
     name: controlplane
     namespace: default
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: MaasCluster
     name: my-cluster
     namespace: default
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasMachineTemplate
 metadata:
   name: controlplane
@@ -44,7 +44,7 @@ spec:
       minMemory: 8192
       image: spectro-u18-k11815
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
 kind: KubeadmControlPlane
 metadata:
   name: controlplane
@@ -53,7 +53,7 @@ spec:
   replicas: 1
   version: v1.18.15
   infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: MaasMachineTemplate
     name: controlplane
     namespace: default

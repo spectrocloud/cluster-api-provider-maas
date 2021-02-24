@@ -32,13 +32,13 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -88,14 +88,17 @@ func main() {
 	}
 
 	// Setup the context that's going to be used in controllers and for the manager.
-	ctx := ctrl.SetupSignalHandler()
+	// v1alpha4
+	//ctx := ctrl.SetupSignalHandler()
+	ctx := context.Background()
 
 	setupChecks(mgr)
 	setupReconcilers(ctx, mgr)
 	setupWebhooks(mgr)
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctx); err != nil {
+	// v1alpha4 change to "ctx"
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 
@@ -146,7 +149,7 @@ func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
 		Client:  mgr.GetClient(),
 		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
 		Tracker: tracker,
-	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+	}).SetupWithManager(mgr, concurrency(1)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
 		os.Exit(1)
 	}

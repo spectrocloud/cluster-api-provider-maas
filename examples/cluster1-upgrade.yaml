@@ -9,7 +9,7 @@ index 0235aa0..ccc8c72 100644
 -      image: spectro-u18-k11815
 +      image: spectro-u18-k1197
  ---
- apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+ apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
  kind: KubeadmControlPlane
 @@ -49,8 +49,8 @@ metadata:
    name: controlplane
@@ -20,5 +20,5 @@ index 0235aa0..ccc8c72 100644
 +  replicas: 3
 +  version: v1.19.7
    infrastructureTemplate:
-     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
      kind: MaasMachineTemplate

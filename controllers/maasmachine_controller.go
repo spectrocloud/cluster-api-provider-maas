@@ -28,7 +28,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
@@ -44,7 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 	"time"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 )
 
 var ErrRequeueDNS = errors.New("need to requeue DNS")
@@ -63,8 +63,10 @@ type MaasMachineReconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
-func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
+func (r *MaasMachineReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := r.Log.WithValues("maasmachine", req.Name)
+
+	ctx := context.TODO()
 
 	// Fetch the MaasMachine instance.
 	maasMachine := &infrav1.MaasMachine{}
@@ -333,10 +335,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// there is no easy way to check other than a requeue
 	if o, _ := clusterScope.IsAPIServerOnline(); !o {
 		machineScope.Info("API Server is not online; requeue")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	} else if !machineScope.MachineIsOperational() {
 		machineScope.Info("Machine is not operational; requeue")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	} else {
 		if err := machineScope.SetNodeProviderID(); err != nil {
 			machineScope.Error(err, "Unable to set Node hostname")
@@ -439,11 +441,17 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 		WithOptions(options).
 		Watches(
 			&source.Kind{Type: &clusterv1.Machine{}},
-			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasMachine"))),
+			&handler.EnqueueRequestsFromMapFunc{
+				ToRequests: util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasMachine")),
+			},
+			// v1alpha4
+			//handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasMachine"))),
 		).
 		Watches(
 			&source.Kind{Type: &infrav1.MaasCluster{}},
-			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
+			&handler.EnqueueRequestsFromMapFunc{ToRequests: handler.ToRequestsFunc(r.MaasClusterToMaasMachines)},
+			// v1alpha4
+			//handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
@@ -452,16 +460,19 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 	}
 	return c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
-		handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
+		&handler.EnqueueRequestsFromMapFunc{ToRequests: clusterToMaasMachines},
 		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
 }
 
+// v1alpha4
+//func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o client.Object) []ctrl.Request {
+
 // MaasClusterToMaasMachines is a handler.ToRequestsFunc to be used to enqeue
 // requests for reconciliation of MaasMachines.
-func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o client.Object) []ctrl.Request {
+func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o handler.MapObject) []ctrl.Request {
 	var result []ctrl.Request
-	c, ok := o.(*infrav1.MaasCluster)
+	c, ok := o.Object.(*infrav1.MaasCluster)
 	if !ok {
 		panic(fmt.Sprintf("Expected a MaasCluster but got a %T", o))
 	}

@@ -1,8 +1,8 @@
-package v1alpha4
+package v1alpha3
 
 import (
 	"k8s.io/apimachinery/pkg/util/sets"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 )
 
 // MachineState describes the state of an AWS instance.

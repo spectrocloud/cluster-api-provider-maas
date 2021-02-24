@@ -3,11 +3,11 @@ repo: github.com/spectrocloud/cluster-api-provider-maas
 resources:
 - group: infrastructure
   kind: MaasCluster
-  version: v1alpha4
+  version: v1alpha3
 - group: infrastructure
   kind: MaasMachine
-  version: v1alpha4
+  version: v1alpha3
 - group: infrastructure
   kind: MaasMachineTemplate
-  version: v1alpha4
+  version: v1alpha3
 version: "2"

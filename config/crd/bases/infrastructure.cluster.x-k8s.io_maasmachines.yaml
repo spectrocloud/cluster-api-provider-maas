@@ -18,7 +18,7 @@ spec:
     singular: maasmachine
   scope: Namespaced
   versions:
-  - name: v1alpha4
+  - name: v1alpha3
     schema:
       openAPIV3Schema:
         description: MaasMachine is the Schema for the maasmachines API

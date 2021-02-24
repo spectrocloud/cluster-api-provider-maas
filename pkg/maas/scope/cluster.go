@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -181,6 +181,7 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 		s.Info("stop polling API server for online check")
 		s.Info("triggering GenericEvent", "reason", "api-server-online")
 		s.clusterEventChannel <- event.GenericEvent{
+			Meta: s.MaasCluster,
 			Object: s.MaasCluster,
 		}
 

@@ -1,4 +1,4 @@
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasMachineTemplate
 metadata:
   name: worker2
@@ -11,7 +11,7 @@ spec:
       minMemory: 8192
       image: spectro-u18-k11815
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1alpha3
 kind: MachineDeployment
 metadata:
   name: worker-md-0
@@ -28,15 +28,15 @@ spec:
       version: 1.18.15
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
           kind: KubeadmConfigTemplate
           name: worker2
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
         kind: MaasMachineTemplate
         name: worker2
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
 kind: KubeadmConfigTemplate
 metadata:
   name: worker2

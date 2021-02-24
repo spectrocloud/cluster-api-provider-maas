@@ -14,9 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha4
+package v1alpha3
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+import clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 
 // Conditions and condition Reasons for the DockerMachine object
 

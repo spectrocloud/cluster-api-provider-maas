@@ -18,7 +18,7 @@ spec:
     singular: maasmachinetemplate
   scope: Namespaced
   versions:
-  - name: v1alpha4
+  - name: v1alpha3
     schema:
       openAPIV3Schema:
         description: MaasMachineTemplate is the Schema for the maasmachinetemplates API

@@ -1,5 +1,5 @@
 # Creates a cluster with one control-plane node and one worker node
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasCluster
 metadata:
   name: cluster-maas3
@@ -7,7 +7,7 @@ metadata:
 spec:
   dnsDomain: maas.sc
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1alpha3
 kind: Cluster
 metadata:
   name: cluster-maas3
@@ -20,17 +20,17 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
     kind: KubeadmControlPlane
     name: cp-maas3
     namespace: default
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: MaasCluster
     name: cluster-maas3
     namespace: default
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasMachineTemplate
 metadata:
   name: cp-maas3
@@ -43,7 +43,7 @@ spec:
       minMemory: 8192
       image: spectro-u18-k11815
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
 kind: KubeadmControlPlane
 metadata:
   name: cp-maas3
@@ -52,7 +52,7 @@ spec:
   replicas: 1
   version: v1.18.15
   infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: MaasMachineTemplate
     name: cp-maas3
     namespace: default
@@ -181,7 +181,7 @@ spec:
       sudo: ALL=(ALL) NOPASSWD:ALL
 ---
 status:
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
 kind: MaasMachineTemplate
 metadata:
   name: worker-maas3
@@ -194,7 +194,7 @@ spec:
       minMemory: 8192
       image: spectro-u18-k11815
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1alpha3
 kind: MachineDeployment
 metadata:
   name: worker-maas3
@@ -211,15 +211,15 @@ spec:
       version: 1.18.15
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
           kind: KubeadmConfigTemplate
           name: worker-maas3
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
         kind: MaasMachineTemplate
         name: worker-maas3
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
 kind: KubeadmConfigTemplate
 metadata:
   name: worker-maas3

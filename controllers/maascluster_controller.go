@@ -25,7 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -41,7 +41,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -58,8 +58,10 @@ type MaasClusterReconciler struct {
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
-func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
+func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := r.Log.WithValues("maascluster", req.Name)
+
+	ctx := context.TODO()
 
 	// Fetch the MaasCluster instance
 	maasCluster := &infrav1.MaasCluster{}
@@ -274,7 +276,11 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&infrav1.MaasCluster{}).
 		Watches(
 			&source.Kind{Type: &infrav1.MaasMachine{}},
-			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
+			&handler.EnqueueRequestsFromMapFunc{
+				ToRequests: handler.ToRequestsFunc(r.controlPlaneMachineToCluster),
+			},
+			// v1alpha4
+			//handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
 		).
 		Watches(
 			&source.Channel{Source: r.GenericEventChannel},
@@ -287,16 +293,26 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
-		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster"))),
+		&handler.EnqueueRequestsFromMapFunc{
+			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster")),
+		},
+		// v1alpha4
+		//handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster"))),
 		predicates.ClusterUnpaused(r.Log),
 	)
 }
 
+//v1alpha4
+//func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
+
 // controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used
 // to enqueue requests for reconciliation for MaasCluster to update
 // its status.apiEndpoints field.
-func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
-	maasMachine, ok := o.(*infrav1.MaasMachine)
+func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o handler.MapObject) []ctrl.Request {
+	// v1alpha4
+	//maasMachine, ok := o.(*infrav1.MaasMachine)
+
+	maasMachine, ok := o.Object.(*infrav1.MaasMachine)
 	if !ok {
 		r.Log.Error(nil, fmt.Sprintf("expected a MaasMachine but got a %T", o))
 		return nil
