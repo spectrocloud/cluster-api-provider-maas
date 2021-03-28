@@ -6,6 +6,7 @@ metadata:
   namespace: default
 spec:
   dnsDomain: maas.sc
+  # failureDomains: ['default']
 ---
 apiVersion: cluster.x-k8s.io/v1alpha3
 kind: Cluster
@@ -38,9 +39,9 @@ metadata:
 spec:
   template:
     spec:
-      zone: az2
       minCPU: 4
       minMemory: 8192
+      resourcePool: GPU
       image: spectro-u18-k11815
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
@@ -189,9 +190,9 @@ metadata:
 spec:
   template:
     spec:
-      zone: az2
       minCPU: 4
       minMemory: 8192
+      resourcePool: GPU
       image: spectro-u18-k11815
 ---
 apiVersion: cluster.x-k8s.io/v1alpha3

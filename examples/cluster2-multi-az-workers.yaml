@@ -6,7 +6,6 @@ metadata:
 spec:
   template:
     spec:
-      zone: az1
       minCPU: 4
       minMemory: 8192
       image: spectro-u18-k11815
@@ -14,7 +13,7 @@ spec:
 apiVersion: cluster.x-k8s.io/v1alpha3
 kind: MachineDeployment
 metadata:
-  name: cluster2-worker
+  name: cluster2-default-worker
   namespace: default
 spec:
   clusterName: my-cluster2
@@ -26,6 +25,85 @@ spec:
     spec:
       clusterName: my-cluster2
       version: 1.18.15
+      failureDomain: default
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          name: worker2
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: MaasMachineTemplate
+        name: worker2
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachineDeployment
+metadata:
+  name: cluster2-az1-worker
+  namespace: default
+spec:
+  clusterName: my-cluster2
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: my-cluster2
+  template:
+    spec:
+      clusterName: my-cluster2
+      version: 1.18.15
+      failureDomain: az1
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          name: worker2
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: MaasMachineTemplate
+        name: worker2
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachineDeployment
+metadata:
+  name: cluster2-az2-worker
+  namespace: default
+spec:
+  clusterName: my-cluster2
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: my-cluster2
+  template:
+    spec:
+      clusterName: my-cluster2
+      version: 1.18.15
+      failureDomain: az1
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          name: worker2
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: MaasMachineTemplate
+        name: worker2
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachineDeployment
+metadata:
+  name: cluster2-az3-worker
+  namespace: default
+spec:
+  clusterName: my-cluster2
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: my-cluster2
+  template:
+    spec:
+      clusterName: my-cluster2
+      version: 1.18.15
+      failureDomain: az3
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3

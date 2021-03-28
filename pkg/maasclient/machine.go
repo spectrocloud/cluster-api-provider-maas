@@ -54,11 +54,12 @@ func (c *Client) AllocateMachine(ctx context.Context, options *AllocateMachineOp
 	q.Add("op", "allocate")
 
 	if options != nil {
+		addParam(q, "zone", options.AvailabilityZone)
 		addParam(q, "system_id", options.SystemID)
 		addParam(q, "name", options.Name)
-		addParam(q, "zone", options.AvailabilityZone)
 		addParam(q, "cpu_count", options.MinCPU)
 		addParam(q, "mem", options.MinMem)
+		addParam(q, "pool", options.ResourcePool)
 	}
 
 	res := new(Machine)
