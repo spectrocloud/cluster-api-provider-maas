@@ -53,13 +53,15 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 	ctx := context.TODO()
 
 	mm := s.scope.MaasMachine
+	failureDomain := s.scope.Machine.Spec.FailureDomain
 
 	allocateOptions := &maasclient.AllocateMachineOptions{
 		// TODO add Resource Pool, CPU, Memory, etc
-		AvailabilityZone: mm.Spec.Zone,
-		ResourcePool:     mm.Spec.ResourcePool,
-		MinCPU:           mm.Spec.MinCPU,
-		MinMem:           mm.Spec.MinMemory,
+		AvailabilityZone: failureDomain,
+
+		ResourcePool: mm.Spec.ResourcePool,
+		MinCPU:       mm.Spec.MinCPU,
+		MinMem:       mm.Spec.MinMemory,
 	}
 
 	m, err := s.maasClient.AllocateMachine(ctx, allocateOptions)

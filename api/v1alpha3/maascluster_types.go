@@ -37,6 +37,7 @@ type MaasClusterSpec struct {
 	ControlPlaneEndpoint APIEndpoint `json:"controlPlaneEndpoint"`
 
 	// FailureDomains are not usually defined on the spec.
+	// but useful for MaaS since we can limit the domains to these
 	// +optional
 	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
 }

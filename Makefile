@@ -1,5 +1,7 @@
 
 # Image URL to use all building/pushing image targets
+IMG ?= gcr.io/spectro-images-public/cluster-api-maas/release/cluster-api-provider-maas:latest
+IMG ?= gcr.io/spectro-common-dev/saamalik/cluster-api-maas-controller:latest
 IMG ?= localhost:5000/controller:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"

@@ -104,8 +104,8 @@ func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr
 
 	// Support FailureDomains
 	// In cloud providers this would likely look up which failure domains are supported and set the status appropriately.
-	// In the case of Maas, failure domains don't mean much so we simply copy the Spec into the Status.
-	// TODO look into?
+	// in this world it's easy to specify which FailureDomains we want to sue
+	// so kCP will distribute the CPs across multiple failure domains
 	maasCluster.Status.FailureDomains = maasCluster.Spec.FailureDomains
 
 	// Handle deleted clusters

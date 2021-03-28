@@ -38,10 +38,6 @@ type MaasMachineSpec struct {
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
 
-	// Zone will be the MaaS machine ID
-	// +optional
-	Zone *string `json:"zone,omitempty"`
-
 	// ResourcePool will be the MaaS machine ID
 	// +optional
 	ResourcePool *string `json:"resourcePool,omitempty"`

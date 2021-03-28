@@ -52,9 +52,6 @@ spec:
               systemID:
                 description: SystemID will be the MaaS machine ID
                 type: string
-              zone:
-                description: Zone will be the MaaS machine ID
-                type: string
             required:
             - image
             type: object

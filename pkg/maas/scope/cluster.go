@@ -181,7 +181,7 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 		s.Info("stop polling API server for online check")
 		s.Info("triggering GenericEvent", "reason", "api-server-online")
 		s.clusterEventChannel <- event.GenericEvent{
-			Meta: s.MaasCluster,
+			Meta:   s.MaasCluster,
 			Object: s.MaasCluster,
 		}
 

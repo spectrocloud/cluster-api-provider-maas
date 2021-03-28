@@ -63,7 +63,7 @@ spec:
                       description: ControlPlane determines if this failure domain is suitable for use by control plane machines.
                       type: boolean
                   type: object
-                description: FailureDomains are not usually defined on the spec.
+                description: FailureDomains are not usually defined on the spec. but useful for MaaS since we can limit the domains to these
                 type: object
             required:
             - dnsDomain

@@ -225,11 +225,6 @@ func (in *MaasMachineSpec) DeepCopyInto(out *MaasMachineSpec) {
 		*out = new(string)
 		**out = **in
 	}
-	if in.Zone != nil {
-		in, out := &in.Zone, &out.Zone
-		*out = new(string)
-		**out = **in
-	}
 	if in.ResourcePool != nil {
 		in, out := &in.ResourcePool, &out.ResourcePool
 		*out = new(string)
