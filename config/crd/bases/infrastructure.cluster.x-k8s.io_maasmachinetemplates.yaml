@@ -40,8 +40,11 @@ spec:
                   spec:
                     description: Spec is the specification of the desired behavior of the machine.
                     properties:
+                      failureDomain:
+                        description: FailureDomain is the failure domain the machine will be created in. Must match a key in the FailureDomains map stored on the cluster object.
+                        type: string
                       image:
-                        description: Zone will be the MaaS image id
+                        description: Image will be the MaaS image id
                         type: string
                       minCPU:
                         description: MinCPU minimum number of CPUs
