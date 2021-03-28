@@ -177,6 +177,11 @@ func (m *MachineScope) SetProviderID(systemID, availabilityZone string) {
 	m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)
 }
 
+// SetFailureDomain sets the MaasMachine systemID in spec.
+func (m *MachineScope) SetFailureDomain(availabilityZone string) {
+	m.MaasMachine.Spec.FailureDomain = pointer.StringPtr(availabilityZone)
+}
+
 // SetInstanceID sets the MaasMachine systemID in spec.
 func (m *MachineScope) SetSystemID(systemID string) {
 	m.MaasMachine.Spec.SystemID = pointer.StringPtr(systemID)

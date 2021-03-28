@@ -274,6 +274,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 	// Make sure Spec.ProviderID and Spec.InstanceID are always set.
 	machineScope.SetProviderID(m.ID, m.AvailabilityZone)
+	machineScope.SetFailureDomain(m.AvailabilityZone)
 	machineScope.SetSystemID(m.ID)
 	machineScope.SetMachineHostname(m.Hostname)
 

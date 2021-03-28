@@ -30,6 +30,12 @@ const (
 
 // MaasMachineSpec defines the desired state of MaasMachine
 type MaasMachineSpec struct {
+
+	// FailureDomain is the failure domain the machine will be created in.
+	// Must match a key in the FailureDomains map stored on the cluster object.
+	// +optional
+	FailureDomain *string `json:"failureDomain,omitempty"`
+
 	// SystemID will be the MaaS machine ID
 	// +optional
 	SystemID *string `json:"systemID,omitempty"`
@@ -50,7 +56,7 @@ type MaasMachineSpec struct {
 	// +optional
 	MinMemory *int `json:"minMemory,omitempty"`
 
-	// Zone will be the MaaS image id
+	// Image will be the MaaS image id
 	Image string `json:"image"`
 }
 
