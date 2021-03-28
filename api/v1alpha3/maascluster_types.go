@@ -39,7 +39,7 @@ type MaasClusterSpec struct {
 	// FailureDomains are not usually defined on the spec.
 	// but useful for MaaS since we can limit the domains to these
 	// +optional
-	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains []string `json:"failureDomains,omitempty"`
 }
 
 // MaasClusterStatus defines the observed state of MaasCluster

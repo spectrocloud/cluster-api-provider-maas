@@ -106,10 +106,8 @@ func (in *MaasClusterSpec) DeepCopyInto(out *MaasClusterSpec) {
 	out.ControlPlaneEndpoint = in.ControlPlaneEndpoint
 	if in.FailureDomains != nil {
 		in, out := &in.FailureDomains, &out.FailureDomains
-		*out = make(apiv1alpha3.FailureDomains, len(*in))
-		for key, val := range *in {
-			(*out)[key] = *val.DeepCopy()
-		}
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 }
 
