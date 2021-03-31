@@ -110,12 +110,14 @@ func (c *Client) DeployMachine(ctx context.Context, options DeployMachineOptions
 type UpdateMachineOptions struct {
 	SystemID string
 	SwapSize *int
+	Hostname *string
 }
 
 func (c *Client) UpdateMachine(ctx context.Context, options UpdateMachineOptions) (*Machine, error) {
 
 	q := url.Values{}
 	addParam(q, "swap_size", options.SwapSize)
+	addParam(q, "hostname", options.Hostname)
 
 	// creates the zero value
 	res := new(Machine)
