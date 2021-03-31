@@ -86,11 +86,11 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 	}()
 
 	// TODO need to revisit if we need to set the hostname OR not
+	//Hostname: &mm.Name,
 	noSwap := 0
 	updateOptions := maasclient.UpdateMachineOptions{
 		SystemID: m.SystemID,
 		SwapSize: &noSwap,
-		Hostname: &mm.Name,
 	}
 	if _, err := s.maasClient.UpdateMachine(ctx, updateOptions); err != nil {
 		return nil, errors.Wrapf(err, "Unable to disable swap")

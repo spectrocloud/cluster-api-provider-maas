@@ -53,6 +53,7 @@ var (
 	machineConcurrency   int
 	healthAddr           string
 	webhookPort          int
+	watchNamespace       string
 )
 
 func init() {
@@ -71,6 +72,10 @@ func main() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
+	if watchNamespace != "" {
+		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
+	}
+
 	ctrl.SetLogger(klogr.New())
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -81,6 +86,7 @@ func main() {
 		SyncPeriod:             &syncPeriod,
 		HealthProbeBindAddress: healthAddr,
 		Port:                   webhookPort,
+		Namespace:              watchNamespace,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -118,6 +124,9 @@ func initFlags(fs *pflag.FlagSet) {
 		"The address the health endpoint binds to.")
 	fs.IntVar(&webhookPort, "webhook-port", 9443,
 		"Webhook Server port")
+	fs.StringVar(&watchNamespace, "namespace", "",
+		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
+	)
 
 	feature.MutableGates.AddFlag(fs)
 }
