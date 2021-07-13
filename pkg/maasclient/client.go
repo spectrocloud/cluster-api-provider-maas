@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maasclient/oauth1"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // Client
@@ -64,10 +66,95 @@ func (c *Client) send(ctx context.Context, method string, apiPath string, params
 	return c.sendRequest(req, params, v)
 }
 
+// send sends the request
+// Content-type and body should be already added to req
+func (c *Client) sendRequestWithBody(ctx context.Context, method string, apiPath string, contenttype string, params url.Values, body io.Reader, v interface{}) error {
+
+	var err error
+	var req *http.Request
+
+		req, err = http.NewRequestWithContext(
+			ctx,
+			method,
+			fmt.Sprintf("%s%s", c.baseURL, apiPath),
+			body,
+		)
+		if err != nil {
+			return err
+		}
+
+	return c.sendRequestUpload(req, params, contenttype, v)
+}
+
 func (c *Client) sendRequest(req *http.Request, params url.Values, v interface{}) error {
 	//func (c *Client) sendRequest(req *http.Request, urlValues *url.Values, v interface{}) error {
 	req.Header.Set("Accept", "application/json; charset=utf-8")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+
+
+	authHeader := authHeader(req, params, c.apiKey)
+	req.Header.Set("Authorization", authHeader)
+
+
+
+	res, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+
+	//debugBody(res)
+
+	// Try to unmarshall into errorResponse
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent {
+		bodyBytes, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+
+		return fmt.Errorf("unknown error, status code: %d, body: %s", res.StatusCode, string(bodyBytes))
+	} else if res.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	if err = json.NewDecoder(res.Body).Decode(v); err != nil {
+		return err
+	}
+
+
+	return nil
+}
+
+func (c *Client) sendRequestUpload(req *http.Request, params url.Values, contenttype string, v interface{}) error {
+	//func (c *Client) sendRequest(req *http.Request, urlValues *url.Values, v interface{}) error {
+	req.Header.Set("Accept", "application/json; charset=utf-8")
+	req.Header.Set("Content-Type", contenttype)
+
+
+	// for post requests longer than 300 seconds
+	ticker := time.NewTicker(2 * time.Minute)
+	done := make(chan bool)
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case t := <-ticker.C:
+				fmt.Println("refresing auth token", time.Unix(t.Unix(), 0).Format(time.RFC3339))
+				authHeader := authHeader(req, params, c.apiKey)
+				req.Header.Set("Authorization", authHeader)
+			}
+		}
+	}()
+
+
+	defer func() {
+		ticker.Stop()
+		done <- true
+	}()
+
 
 	authHeader := authHeader(req, params, c.apiKey)
 	req.Header.Set("Authorization", authHeader)
@@ -99,6 +186,7 @@ func (c *Client) sendRequest(req *http.Request, params url.Values, v interface{}
 
 	return nil
 }
+
 
 func authHeader(req *http.Request, queryParams url.Values, apiKey string) string {
 	key := strings.SplitN(apiKey, ":", 3)
