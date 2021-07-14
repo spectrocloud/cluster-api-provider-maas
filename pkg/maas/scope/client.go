@@ -1,7 +1,7 @@
 package scope
 
 import (
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maasclient"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"os"
 )
 

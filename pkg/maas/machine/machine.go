@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/common/log"
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maasclient"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 )
@@ -119,7 +119,7 @@ func fromSDKTypeToMachine(m *maasclient.Machine) *infrav1.Machine {
 		Hostname:         m.Hostname,
 		State:            infrav1.MachineState(m.State),
 		Powered:          m.PowerState == "on",
-		AvailabilityZone: m.AvailabilityZone,
+		AvailabilityZone: m.Zone.Name,
 	}
 
 	if m.FQDN != "" {
