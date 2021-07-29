@@ -91,7 +91,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 		return nil, errors.Wrapf(err, "Unable to disable swap")
 	}
 
-	s.scope.Info("Swap disabled", "system-id", m.SystemID)
+	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
