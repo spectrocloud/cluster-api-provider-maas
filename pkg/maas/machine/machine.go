@@ -7,14 +7,13 @@ import (
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
-	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 )
 
 // Service manages the MaaS machine
 type Service struct {
 	scope      *scope.MachineScope
-	maasClient *maasclient.Client
+	maasClient maasclient.ClientSetInterface
 }
 
 // DNS service returns a new helper for managing a MaaS "DNS" (DNS client loadbalancing)
@@ -26,8 +25,7 @@ func NewService(machineScope *scope.MachineScope) *Service {
 }
 
 func (s *Service) GetMachine(systemID string) (*infrav1.Machine, error) {
-
-	m, err := s.maasClient.GetMachine(context.TODO(), systemID)
+	m, err := s.maasClient.Machines().Machine(systemID).Get(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +38,10 @@ func (s *Service) GetMachine(systemID string) (*infrav1.Machine, error) {
 func (s *Service) ReleaseMachine(systemID string) error {
 	ctx := context.TODO()
 
-	err := s.maasClient.ReleaseMachine(ctx, systemID)
+	_, err := s.maasClient.Machines().
+		Machine(systemID).
+		Releaser().
+		Release(ctx)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to release machine")
 	}
@@ -49,7 +50,6 @@ func (s *Service) ReleaseMachine(systemID string) error {
 }
 
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr error) {
-
 	ctx := context.TODO()
 
 	mm := s.scope.MaasMachine
@@ -59,25 +59,24 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-	allocateOptions := &maasclient.AllocateMachineOptions{
-		AvailabilityZone: failureDomain,
-
-		ResourcePool: mm.Spec.ResourcePool,
-		MinCPU:       mm.Spec.MinCPU,
-		MinMem:       mm.Spec.MinMemory,
-	}
-
-	m, err := s.maasClient.AllocateMachine(ctx, allocateOptions)
+	m, err := s.maasClient.
+		Machines().
+		Allocator().
+		WithZone(*failureDomain).
+		WithResourcePool(*mm.Spec.ResourcePool).
+		WithCPUCount(*mm.Spec.MinCPU).
+		WithMemory(*mm.Spec.MinMemory).
+		Allocate(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to allocate machine")
 	}
 
-	s.scope.Info("Allocated machine", "system-id", m.SystemID)
+	s.scope.Info("Allocated machine", "system-id", m.SystemID())
 
 	defer func() {
 		if rerr != nil {
 			s.scope.Info("Attempting to release machine which failed to deploy")
-			err := s.maasClient.ReleaseMachine(ctx, m.SystemID)
+			_, err := m.Releaser().Release(ctx)
 			if err != nil {
 				// Is it right to NOT set rerr so we can see the original issue?
 				log.Error(err, "Unable to release properly")
@@ -88,24 +87,16 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 	// TODO need to revisit if we need to set the hostname OR not
 	//Hostname: &mm.Name,
 	noSwap := 0
-	updateOptions := maasclient.UpdateMachineOptions{
-		SystemID: m.SystemID,
-		SwapSize: &noSwap,
-	}
-	if _, err := s.maasClient.UpdateMachine(ctx, updateOptions); err != nil {
+	if _, err := m.Modifier().SetSwapSize(noSwap).Update(ctx); err != nil {
 		return nil, errors.Wrapf(err, "Unable to disable swap")
 	}
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID)
 
-	deployOptions := maasclient.DeployMachineOptions{
-		SystemID:     m.SystemID,
-		UserData:     pointer.StringPtr(userDataB64),
-		OSSystem:     pointer.StringPtr("custom"),
-		DistroSeries: &mm.Spec.Image,
-	}
-
-	deployingM, err := s.maasClient.DeployMachine(ctx, deployOptions)
+	deployingM, err := m.Deployer().
+		SetUserData(userDataB64).
+		SetOSSystem("custom").
+		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
@@ -113,26 +104,26 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-func fromSDKTypeToMachine(m *maasclient.Machine) *infrav1.Machine {
+func fromSDKTypeToMachine(m maasclient.Machine) *infrav1.Machine {
 	machine := &infrav1.Machine{
-		ID:               m.SystemID,
-		Hostname:         m.Hostname,
-		State:            infrav1.MachineState(m.State),
-		Powered:          m.PowerState == "on",
-		AvailabilityZone: m.Zone.Name,
+		ID:               m.SystemID(),
+		Hostname:         m.Hostname(),
+		State:            infrav1.MachineState(m.State()),
+		Powered:          m.PowerState() == "on",
+		AvailabilityZone: m.Zone().Name(),
 	}
 
-	if m.FQDN != "" {
+	if m.FQDN() != "" {
 		machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
 			Type:    clusterv1.MachineExternalDNS,
-			Address: m.FQDN,
+			Address: m.FQDN(),
 		})
 	}
 
-	for _, v := range m.IpAddresses {
+	for _, v := range m.IPAddresses() {
 		machine.Addresses = append(machine.Addresses, clusterv1.MachineAddress{
 			Type:    clusterv1.MachineExternalIP,
-			Address: v,
+			Address: v.String(),
 		})
 	}
 

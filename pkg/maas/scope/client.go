@@ -7,7 +7,7 @@ import (
 
 // NewMaasClient creates a new MaaS client for a given session
 // TODO (looking up on Env really the besT? though it is kind of what EC2 does
-func NewMaasClient(_ *ClusterScope) *maasclient.Client {
+func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 
 	maasEndpoint := os.Getenv("MAAS_ENDPOINT")
 	if maasEndpoint == "" {
@@ -19,6 +19,6 @@ func NewMaasClient(_ *ClusterScope) *maasclient.Client {
 		panic("missing env MAAS_API_KEY; e.g: MAAS_API_KEY=x:y:z>")
 	}
 
-	maasClient := maasclient.NewClient(maasEndpoint, maasAPIKey)
+	maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 	return maasClient
 }
