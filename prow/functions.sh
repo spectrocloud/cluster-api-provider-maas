@@ -61,8 +61,8 @@ build_code() {
 	make manager
 
 	print_step "Copy binary to artifacts"
-        if [[ -d build ]]; then
-                gsutil cp -r build ${GS_ARTIFACT_LOC}/build
+        if [[ -d bin ]]; then
+                gsutil cp -r bin ${GS_ARTIFACT_LOC}/bin
         fi
 }
 
