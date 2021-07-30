@@ -38,7 +38,7 @@ func (s *Service) ReconcileDNS() error {
 	dnsName := s.scope.GetDNSName()
 
 	if dnsResource == nil {
-		if dnsResource, err = s.maasClient.DNSResources().
+		if _, err = s.maasClient.DNSResources().
 			Builder().
 			WithFQDN(s.scope.GetDNSName()).
 			WithAddressTTL("10").

@@ -5,10 +5,13 @@ include $(ROOT_DIR_RELATIVE)/common.mk
 TOOLS_DIR := hack/tools
 TOOLS_DIR_DEPS := $(TOOLS_DIR)/go.sum $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/Makefile
 TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
+MANIFEST_DIR=_build/manifests
+
 # Image URL to use all building/pushing image targets
-IMG ?= gcr.io/spectro-images-public/cluster-api-maas/release/cluster-api-provider-maas:latest
-IMG ?= gcr.io/spectro-common-dev/saamalik/cluster-api-maas-controller:latest
-IMG ?= localhost:5000/controller:latest
+IMG_URL ?= gcr.io/$(shell gcloud config get-value project)/${USER}
+IMG_TAG ?= latest
+IMG ?= ${IMG_URL}/cluster-api-provider-maas:${IMG_TAG}
+
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
 
@@ -29,7 +32,7 @@ all: manager
 # Run tests
 test: generate fmt vet manifests
 	# TODO bring back
-	# go test ./... -coverprofile cover.out
+	go test ./... -coverprofile cover.out
 
 # Build manager binary
 manager: generate fmt vet
@@ -54,7 +57,9 @@ deploy: manifests
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(CONTROLLER_GEN)
+	mkdir -p $(MANIFEST_DIR)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	kustomize build config/crd > $(MANIFEST_DIR)/maas-manifest.yaml
 
 # Run go fmt against code
 fmt:
@@ -75,6 +80,9 @@ docker-build: test
 # Push the docker image
 docker-push:
 	docker push ${IMG}
+
+docker-rmi:
+	docker rmi ${IMG}
 
 mock: $(MOCKGEN)
 	go generate ./...
