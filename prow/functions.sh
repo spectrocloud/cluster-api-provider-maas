@@ -38,7 +38,7 @@ set_image_tag() {
 	    IMG_LOC='release'	
 	    IMG_TAG=$(make version)
 	    PROD_BUILD_ID=$(date +%Y%m%d.%H%M)
-            IMG_PATH=spectro-images-client/${IMG_LOC}
+            IMG_PATH=spectro-images-public/${IMG_LOC}
 	    OVERLAY=overlays/release
 	    DOCKER_REGISTRY=${DOCKER_REGISTRY_CLIENT}
 	fi
@@ -103,16 +103,6 @@ run_lint() {
 	golangci-lint run    ./...  --timeout 10m  --tests=false --skip-dirs tests --skip-dirs test
 }
 
-
-run_sonar_lint() {
-	print_step "Running Lint check for Sonar Scanner"
-	set +e 
-	golangci-lint run    ./...  --out-format checkstyle --timeout 10m  --tests=false >  golangci-report.xml
-	set -e
-	if [[ -f golangci-report.xml ]]; then
-		cat golangci-report.xml
-	fi
-}
 
 #----------------------------------------------/
 # Scan containers with Anchore and Trivy       /

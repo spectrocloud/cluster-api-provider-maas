@@ -22,7 +22,5 @@ create_images
 create_manifest ${REPO_NAME}
 create_release_manifest 
 
-run_sonar_lint
-
 delete_images
 exit 0

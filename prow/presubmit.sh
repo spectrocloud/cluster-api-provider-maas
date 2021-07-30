@@ -29,10 +29,6 @@ if [[ ${action} == "build_artifacts" ]]; then
     delete_images
 fi
 
-if [[ ${action} == "code_coverage" ]]; then
-    run_sonar_lint
-fi
-
 if [[ ${action} == "compliance_scan" ]]; then
     create_images
     run_container_scan
