@@ -32,7 +32,7 @@ all: manager
 # Run tests
 test: generate fmt vet manifests
 	# TODO bring back
-	# go test ./... -coverprofile cover.out
+	go test ./... -coverprofile cover.out
 
 # Build manager binary
 manager: generate fmt vet

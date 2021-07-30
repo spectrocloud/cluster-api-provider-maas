@@ -20,6 +20,7 @@ set -u
 set -x
 
 build_code
+run_tests
 run_lint
 
 if [[ ${action} == "build_artifacts" ]]; then
