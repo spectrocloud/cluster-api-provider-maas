@@ -23,6 +23,19 @@ $(MOCKGEN): $(BIN_DIR) go.mod go.sum # Build mockgen from tools folder.
 	go build -tags=tools -o $@ github.com/golang/mock/mockgen
 
 
+CONTROLLER_GEN := $(BIN_DIR)/controller-gen
+$(CONTROLLER_GEN): $(BIN_DIR) go.mod go.sum # Build controller-gen from tools folder.
+	go build -tags=tools -o $@ sigs.k8s.io/controller-tools/cmd/controller-gen
+
+CONVERSION_GEN := $(BIN_DIR)/conversion-gen
+$(CONVERSION_GEN): $(BIN_DIR) go.mod go.sum
+	go build -tags=tools -o $@ k8s.io/code-generator/cmd/conversion-gen
+
+DEFAULTER_GEN := $(BIN_DIR)/defaulter-gen
+$(DEFAULTER_GEN): $(BIN_DIR) go.mod go.sum
+	go build -tags=tools -o $@ k8s.io/code-generator/cmd/defaulter-gen
+
+
 .PHONY: clean
 clean: ## Remove all tools
 	rm -rf bin
