@@ -10,11 +10,6 @@ TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
 IMG_URL ?= gcr.io/$(shell gcloud config get-value project)/${USER}
 IMG_TAG ?= latest
 IMG ?= ${IMG_URL}/cluster-api-provider-maas:${IMG_TAG}
-IMG ?= ${IMG_URL}/cluster-api-maas-controller:${IMG_TAG}
-IMG ?= localhost:5000/controller:latest
-
-# IMG ?= gcr.io/spectro-images-public/cluster-api-maas/release/cluster-api-provider-maas:latest
-# IMG ?= gcr.io/spectro-common-dev/saamalik/cluster-api-maas-controller:latest
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
