@@ -5,6 +5,7 @@ include $(ROOT_DIR_RELATIVE)/common.mk
 TOOLS_DIR := hack/tools
 TOOLS_DIR_DEPS := $(TOOLS_DIR)/go.sum $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/Makefile
 TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
+MANIFEST_DIR=_build/manifests
 
 # Image URL to use all building/pushing image targets
 IMG_URL ?= gcr.io/$(shell gcloud config get-value project)/${USER}
@@ -56,8 +57,9 @@ deploy: manifests
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(CONTROLLER_GEN)
+	mkdir -p $(MANIFEST_DIR)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	kustomize build config/crd > maas-manifest.yaml
+	kustomize build config/crd > $(MANIFEST_DIR)/maas-manifest.yaml
 
 # Run go fmt against code
 fmt:
