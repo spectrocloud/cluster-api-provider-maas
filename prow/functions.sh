@@ -93,8 +93,8 @@ create_manifest() {
 	mkdir -p ${ARTIFACTS}/${project_name}/manifests
 	cp -r config ${ARTIFACTS}/${project_name}/build/kustomize
 
-	if [[ -f _build/maas-manifest.yaml ]]; then
-		cp -r _build/maas-manifest.yaml ${ARTIFACTS}/${project_name}/manifests/maas-manifest.yaml 
+	if [[ -d _build/manifests ]]; then
+		cp -r _build/manifests ${ARTIFACTS}/${project_name}/manifests 
 	fi 
 }
 
