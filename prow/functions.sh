@@ -90,10 +90,11 @@ create_manifest() {
 	make manifests > /dev/null 2>&1
 
 	mkdir -p ${ARTIFACTS}/${project_name}/build
+	mkdir -p ${ARTIFACTS}/${project_name}/manifests
 	cp -r config ${ARTIFACTS}/${project_name}/build/kustomize
 
-	if [[ -f maas-manifest.yaml ]]; then
-		cp -r maas-manifest.yaml ${ARTIFACTS}/manifests/maas-manifest.yaml 
+	if [[ -f _build/maas-manifest.yaml ]]; then
+		cp -r _build/maas-manifest.yaml ${ARTIFACTS}/${project_name}/manifests/maas-manifest.yaml 
 	fi 
 }
 
