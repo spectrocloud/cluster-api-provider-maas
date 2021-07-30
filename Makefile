@@ -82,6 +82,5 @@ docker-push:
 docker-rmi:
 	docker rmi ${IMG}
 
-
 mock: $(MOCKGEN)
 	go generate ./...
