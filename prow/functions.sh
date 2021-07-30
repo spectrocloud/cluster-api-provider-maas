@@ -62,7 +62,7 @@ build_code() {
 
 	print_step "Copy binary to artifacts"
         if [[ -d bin ]]; then
-                gsutil cp -r bin ${GS_ARTIFACT_LOC}/bin
+                gsutil cp -r bin ${ARTIFACTS}/bin
         fi
 }
 
