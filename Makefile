@@ -1,10 +1,18 @@
+ROOT_DIR_RELATIVE := .
 
+include $(ROOT_DIR_RELATIVE)/common.mk
+
+TOOLS_DIR := hack/tools
+TOOLS_DIR_DEPS := $(TOOLS_DIR)/go.sum $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/Makefile
+TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
 # Image URL to use all building/pushing image targets
 IMG ?= gcr.io/spectro-images-public/cluster-api-maas/release/cluster-api-provider-maas:latest
 IMG ?= gcr.io/spectro-common-dev/saamalik/cluster-api-maas-controller:latest
 IMG ?= localhost:5000/controller:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true"
+
+MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -81,3 +89,6 @@ CONTROLLER_GEN=$(GOBIN)/controller-gen
 else
 CONTROLLER_GEN=$(shell which controller-gen)
 endif
+
+mock: $(MOCKGEN)
+	go generate ./...
