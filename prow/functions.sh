@@ -94,7 +94,7 @@ create_manifest() {
 	cp -r config ${ARTIFACTS}/${project_name}/build/kustomize
 
 	if [[ -d _build/manifests ]]; then
-		cp -r _build/manifests ${ARTIFACTS}/${project_name}/manifests 
+		cp -r _build/manifests ${ARTIFACTS}/${project_name} 
 	fi 
 }
 
