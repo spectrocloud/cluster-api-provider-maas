@@ -59,7 +59,7 @@ deploy: manifests
 manifests: $(CONTROLLER_GEN)
 	mkdir -p $(MANIFEST_DIR)
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	kustomize build config/crd > $(MANIFEST_DIR)/maas-manifest.yaml
+	kustomize build config/default > $(MANIFEST_DIR)/infrastructure-component.yaml
 
 # Run go fmt against code
 fmt:

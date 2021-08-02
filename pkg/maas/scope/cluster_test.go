@@ -31,18 +31,16 @@ func TestNewCluster(t *testing.T) {
 		scheme := runtime.NewScheme()
 		client := fake.NewFakeClientWithScheme(scheme)
 
-
 		log := klogr.New()
 		scope, err := NewClusterScope(ClusterScopeParams{
-			Client:              client,
-			Logger:              log,
-			Cluster:             cluster,
+			Client:      client,
+			Logger:      log,
+			Cluster:     cluster,
 			MaasCluster: maasCluster,
 		})
 
 		g.Expect(err).ToNot(gomega.HaveOccurred())
 		g.Expect(scope).ToNot(gomega.BeNil())
-
 
 	})
 }

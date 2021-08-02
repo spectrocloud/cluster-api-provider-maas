@@ -161,7 +161,7 @@ create_release_manifest() {
 	echo 'released'      > ${MARKER_FILE}
 
 	gsutil cp -r config ${VERSION_DIR}/kustomize
-	gsutil cp -r maas-manifest.yaml  ${VERSION_DIR}/
+	gsutil cp -r infrastructure-component.yaml  ${VERSION_DIR}/
 	gsutil cp    ${MARKER_FILE}   ${VERSION_DIR}/
 
 }

@@ -29,14 +29,14 @@ func TestMachine(t *testing.T) {
 	maasMachine := &infrav1.MaasMachine{
 		TypeMeta:   v1.TypeMeta{},
 		ObjectMeta: v1.ObjectMeta{},
-		Spec:       infrav1.MaasMachineSpec{
+		Spec: infrav1.MaasMachineSpec{
 			FailureDomain: pointer.String("zone1"),
-			ResourcePool: pointer.String("rp1"),
-			MinCPU: &intPlaceholder,
-			MinMemory: &intPlaceholder,
-			Image: "custom-image",
+			ResourcePool:  pointer.String("rp1"),
+			MinCPU:        &intPlaceholder,
+			MinMemory:     &intPlaceholder,
+			Image:         "custom-image",
 		},
-		Status:     infrav1.MaasMachineStatus{},
+		Status: infrav1.MaasMachineStatus{},
 	}
 
 	t.Run("get machine with fqdn", func(t *testing.T) {
@@ -49,8 +49,8 @@ func TestMachine(t *testing.T) {
 
 		s := &Service{
 			scope: &scope.MachineScope{
-				Logger:      log,
-				Cluster:     cluster,
+				Logger:  log,
+				Cluster: cluster,
 			},
 			maasClient: mockClientSetInterface,
 		}
@@ -87,7 +87,6 @@ func TestMachine(t *testing.T) {
 		}))
 	})
 
-
 	t.Run("release machine", func(t *testing.T) {
 		g := NewGomegaWithT(t)
 		ctrl := gomock.NewController(t)
@@ -98,8 +97,8 @@ func TestMachine(t *testing.T) {
 
 		s := &Service{
 			scope: &scope.MachineScope{
-				Logger:      log,
-				Cluster:     cluster,
+				Logger:  log,
+				Cluster: cluster,
 			},
 			maasClient: mockClientSetInterface,
 		}
@@ -153,7 +152,6 @@ func TestMachine(t *testing.T) {
 		mockMachineDeployer.EXPECT().SetOSSystem("custom").Return(mockMachineDeployer)
 		mockMachineDeployer.EXPECT().Deploy(context.Background()).Return(mockMachine, nil)
 
-
 		mockMachine.EXPECT().Hostname().Return("abc.hostanme")
 		mockMachine.EXPECT().State().Return("Deployed")
 		mockMachine.EXPECT().PowerState().Return("on")
@@ -183,7 +181,6 @@ func TestMachine(t *testing.T) {
 			Address: "1.2.3.4",
 		}))
 	})
-
 
 	t.Run("deploy machine with failure should release machine", func(t *testing.T) {
 		g := NewGomegaWithT(t)
@@ -227,7 +224,6 @@ func TestMachine(t *testing.T) {
 
 		mockMachine.EXPECT().Releaser().Return(mockMachineReleaser)
 		mockMachineReleaser.EXPECT().Release(context.Background()).Return(mockMachine, nil)
-
 
 		machine, err := s.DeployMachine("userdata")
 		g.Expect(err).To(HaveOccurred())

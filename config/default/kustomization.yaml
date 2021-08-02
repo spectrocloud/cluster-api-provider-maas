@@ -1,19 +1,14 @@
 # Adds namespace to all resources.
-namespace: cluster-api-provider-maas-system
+namespace: capm-system
 
-# Value of this field is prepended to the
-# names of all resources, e.g. a deployment named
-# "wordpress" becomes "alices-wordpress".
-# Note that it should also match with the prefix (text before '-') of the namespace
-# field above.
-namePrefix: capmaas-
+namePrefix: capm-
 
-# Labels to add to all resources and selectors.
-#commonLabels:
-#  someName: someValue
-
+commonLabels:
+  cluster.x-k8s.io/provider: "infrastructure-maas"
 
 resources:
+- namespace.yaml
+- credentials.yaml
 - ../crd
 - ../rbac
 - ../manager
@@ -36,13 +31,13 @@ patchesStrategicMerge:
 generatorOptions:
   disableNameSuffixHash: true
 
-# Create file: maas-credentials.yaml
-# MAAS_ENDPOINT=http://1.2.3.4:5240/MAAS
-# MAAS_APK_KEY=xxxx:yyyy:zzzz
-secretGenerator:
-- name: manager-bootstrap-credentials
-  envs:
-  - maas-credentials.env
+## Create file: maas-credentials.yaml
+## MAAS_ENDPOINT=http://1.2.3.4:5240/MAAS
+## MAAS_APK_KEY=xxxx:yyyy:zzzz
+#secretGenerator:
+#- name: manager-bootstrap-credentials
+#  envs:
+#  - maas-credentials.env
 
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
