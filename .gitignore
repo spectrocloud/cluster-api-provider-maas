@@ -24,3 +24,5 @@ bin
 *~
 
 maas-credentials.env
+
+_build

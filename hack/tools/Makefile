@@ -35,6 +35,10 @@ DEFAULTER_GEN := $(BIN_DIR)/defaulter-gen
 $(DEFAULTER_GEN): $(BIN_DIR) go.mod go.sum
 	go build -tags=tools -o $@ k8s.io/code-generator/cmd/defaulter-gen
 
+KUSTOMIZE := $(BIN_DIR)/kustomize ## Build kustomize
+$(KUSTOMIZE): $(BIN_DIR) go.mod go.sum
+	go build -tags=tools -o $@ sigs.k8s.io/kustomize/kustomize/v3
+
 
 .PHONY: clean
 clean: ## Remove all tools

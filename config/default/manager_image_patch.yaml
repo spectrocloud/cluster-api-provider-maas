@@ -1,0 +1,11 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    spec:
+      containers:
+      - image: gcr.io/spectro-images-public/release/cluster-api-provider-maas:latest
+        name: manager
