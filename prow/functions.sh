@@ -87,7 +87,7 @@ create_manifest() {
 	project_name=${REPO_NAME}
 	print_step "Create manifest files and copy to artifacts folder"
 	# Manifest output has all secrets printed. Mask the output
-	make manifests > /dev/null 2>&1
+	make dev-manifests > /dev/null 2>&1
 
 	mkdir -p ${ARTIFACTS}/${project_name}/build
 	mkdir -p ${ARTIFACTS}/${project_name}/manifests
@@ -157,11 +157,12 @@ create_release_manifest() {
 	print_step "Copy manifests to release folder"
 
 	set_release_vars
+  make release-manifests
 
 	echo 'released'      > ${MARKER_FILE}
 
-	gsutil cp -r config ${VERSION_DIR}/kustomize
-	gsutil cp -r maas-manifest.yaml  ${VERSION_DIR}/
+	gsutil cp -r _build/release/infrastructure-component.yaml  ${VERSION_DIR}/
+	gsutil cp -r _build/release/metadata.yaml  ${VERSION_DIR}/
 	gsutil cp    ${MARKER_FILE}   ${VERSION_DIR}/
 
 }
