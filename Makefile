@@ -10,7 +10,7 @@ TOOLS_BIN_DIR := $(TOOLS_DIR)/bin
 MANIFEST_DIR=_build/manifests
 BUILD_DIR :=_build
 RELEASE_DIR := _build/release
-
+DEV_DIR := _build/dev
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas
@@ -100,8 +100,8 @@ release-overrides:
 
 .PHONY: dev-manifests
 dev-manifests:
-	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(OVERRIDES_DIR) PULL_POLICY=Always IMAGE=$(IMG)
-	cp metadata.yaml $(OVERRIDES_DIR)/metadata.yaml
+	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(IMG)
+	cp metadata.yaml $(DEV_DIR)/metadata.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(CONTROLLER_GEN) $(MANIFEST_DIR) $(KUSTOMIZE) $(BUILD_DIR)
