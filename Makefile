@@ -90,7 +90,7 @@ ifeq ($(VERSION), 0.0.0)
 endif
 
 .PHONY: release-manifests
-release-manifests:
+release-manifests: test
 	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 
@@ -147,3 +147,7 @@ mock: $(MOCKGEN)
 
 clean-release:
 	rm -rf $(RELEASE_DIR)
+
+release: release-manifests
+	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)

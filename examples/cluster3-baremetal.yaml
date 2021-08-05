@@ -41,8 +41,8 @@ spec:
     spec:
       minCPU: 4
       minMemory: 8192
-      resourcePool: GPU
-      image: spectro-u18-k11815
+#      resourcePool: GPU
+      image: u-1804-0-k-11912-0
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
 kind: KubeadmControlPlane
@@ -51,7 +51,7 @@ metadata:
   namespace: default
 spec:
   replicas: 1
-  version: v1.18.15
+  version: v1.19.12
   infrastructureTemplate:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
     kind: MaasMachineTemplate
@@ -192,8 +192,8 @@ spec:
     spec:
       minCPU: 4
       minMemory: 8192
-      resourcePool: GPU
-      image: spectro-u18-k11815
+#      resourcePool: GPU
+      image: u-1804-0-k-11912-0
 ---
 apiVersion: cluster.x-k8s.io/v1alpha3
 kind: MachineDeployment
@@ -209,7 +209,7 @@ spec:
   template:
     spec:
       clusterName: cluster-maas3
-      version: 1.18.15
+      version: 1.19.12
       bootstrap:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
