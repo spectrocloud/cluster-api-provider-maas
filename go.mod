@@ -5,10 +5,10 @@ go 1.15
 require (
 	github.com/go-logr/logr v0.3.0
 	github.com/golang/mock v1.2.0
-	github.com/onsi/gomega v1.10.1 // indirect
+	github.com/onsi/gomega v1.10.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.10.0
-	github.com/spectrocloud/maas-client-go v0.0.1-beta
+	github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20210805102600-28f250f3bdc7
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.17.9
 	k8s.io/apimachinery v0.17.9

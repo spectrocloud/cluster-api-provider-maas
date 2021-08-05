@@ -59,14 +59,21 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-	m, err := s.maasClient.
+	allocator := s.maasClient.
 		Machines().
 		Allocator().
-		WithZone(*failureDomain).
-		WithResourcePool(*mm.Spec.ResourcePool).
 		WithCPUCount(*mm.Spec.MinCPU).
-		WithMemory(*mm.Spec.MinMemory).
-		Allocate(ctx)
+		WithMemory(*mm.Spec.MinMemory)
+
+	if failureDomain != nil {
+		allocator.WithZone(*failureDomain)
+	}
+
+	if mm.Spec.ResourcePool != nil {
+		allocator.WithResourcePool(*mm.Spec.ResourcePool)
+	}
+
+	m, err := allocator.Allocate(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to allocate machine")
 	}

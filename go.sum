@@ -357,10 +357,10 @@ github.com/smartystreets/assertions v0.0.0-20180927180507-b2de0cb4f26d/go.mod h1
 github.com/smartystreets/goconvey v1.6.4/go.mod h1:syvi0/a8iFYH4r/RixwvyeAJjdLS9QV7WQ/tjFTllLA=
 github.com/soheilhy/cmux v0.1.4/go.mod h1:IM3LyeVVIOuxMH7sFAkER9+bJ4dT7Ms6E4xg4kGIyLM=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
-github.com/spectrocloud/maas-client-go v0.0.1-alpha h1:byZ8ThX/WRyJkYUdYzO+UQceZhoWlUeoeaI5JTnd1Do=
-github.com/spectrocloud/maas-client-go v0.0.1-alpha/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
-github.com/spectrocloud/maas-client-go v0.0.1-beta h1:PQtT0NH28+WCQpRd0RZ32qukn3hTdLRm+eTLvxg1+1I=
-github.com/spectrocloud/maas-client-go v0.0.1-beta/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1 h1:OZGxJl5AR+4mM2w+ylJewYIORBGBCMy2kMh/iMCkZsw=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20210805102600-28f250f3bdc7 h1:4HsJjvyBXs8co1ss78oEh7OQbBG+h8E7cRx1WRaRtE0=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20210805102600-28f250f3bdc7/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
 github.com/spf13/afero v1.2.2/go.mod h1:9ZxEEn6pIJ8Rxe320qSDBk6AsU0r9pR7Q4OcevTdifk=
 github.com/spf13/cast v1.3.0/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
