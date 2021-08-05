@@ -34,6 +34,25 @@ generate dev manifests
 make dev-manifests
 ```
 
-    
-    
+edit _build/dev/infrastructure-components.yaml
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    cluster.x-k8s.io/provider: infrastructure-maas
+  name: capmaas-manager-bootstrap-credentials
+  namespace: capmaas-system
+stringData:
+  MAAS_API_KEY: _ #${MAAS_API_KEY}
+  MAAS_ENDPOINT: _ #${MAAS_ENDPOINT}
+type: Opaque
+```
+
+run
+```shell
+kubectl apply -f _build/dev/infrastructure-components.yaml
+```
+
+wait for capi and capmaas pods to be running
 
