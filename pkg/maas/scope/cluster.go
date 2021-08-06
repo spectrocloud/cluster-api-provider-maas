@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/go-logr/logr"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	v1 "k8s.io/api/core/v1"
@@ -118,7 +119,18 @@ func (s *ClusterScope) SetDNSName(dnsName string) {
 // GetDNSName sets the Network systemID in spec.
 // This can't do a lookup on Status.Network.DNSDomain name since it's derviced from here
 func (s *ClusterScope) GetDNSName() string {
-	return fmt.Sprintf("%s.%s", s.Cluster.Name, s.MaasCluster.Spec.DNSDomain)
+	if !s.Cluster.Spec.ControlPlaneEndpoint.IsZero() {
+		return s.Cluster.Spec.ControlPlaneEndpoint.Host
+	}
+
+	if s.MaasCluster.Status.Network.DNSName != "" {
+		return s.MaasCluster.Status.Network.DNSName
+	}
+
+	dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uuid.New().String(), s.MaasCluster.Spec.DNSDomain)
+
+	s.SetDNSName(dnsName)
+	return dnsName
 }
 
 // GetActiveMaasMachines all MaaS machines NOT being deleted
