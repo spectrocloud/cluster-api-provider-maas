@@ -46,14 +46,15 @@ func TestDNS(t *testing.T) {
 		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return(nil, nil)
 		mockClientSetInterface.EXPECT().DNSResources().Return(mockDNSResources)
 		mockDNSResources.EXPECT().Builder().Return(mockDNSResourceBuilder)
-		mockDNSResourceBuilder.EXPECT().WithFQDN("a.b.com").Return(mockDNSResourceBuilder)
+		mockDNSResourceBuilder.EXPECT().WithFQDN(gomock.Any()).Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithAddressTTL("10").Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithIPAddresses(nil).Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().Create(context.Background())
 		err := s.ReconcileDNS()
 
 		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(s.scope.GetDNSName()).To(BeEquivalentTo("a.b.com"))
+		g.Expect(s.scope.GetDNSName()).To(ContainSubstring(cluster.Name))
+		g.Expect(s.scope.GetDNSName()).To(ContainSubstring(maasCluster.Spec.DNSDomain))
 	})
 
 	t.Run("update dns attachment", func(t *testing.T) {
