@@ -18,9 +18,7 @@ set -x
 check_pre_released
 build_code
 
-create_images
-create_manifest ${REPO_NAME}
-create_release_manifest 
+make_release
 
 delete_images
 exit 0

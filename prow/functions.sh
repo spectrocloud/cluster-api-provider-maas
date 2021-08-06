@@ -66,6 +66,16 @@ build_code() {
         fi
 }
 
+make_release() {
+	print_step "Release Build"
+	make release
+
+	print_step "Copy manifests to artifacts"
+	if [[ -d _build/release ]]; then
+		gsutil cp -r _build/release ${ARTIFACTS}/manifests/release
+	fi 
+}
+
 run_tests() {
   	print_step "Running Tests"
   	make test
