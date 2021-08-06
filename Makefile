@@ -43,12 +43,12 @@ endif
 all: manager
 
 # Run tests
-test: generate fmt vet manifests
+test: generate fmt vet manifests ## Run unit tests
 	# TODO bring back
 	go test ./... -coverprofile cover.out
 
 # Build manager binary
-manager: generate fmt vet
+manager: generate fmt vet ## Build manager binary
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
@@ -56,15 +56,15 @@ run: generate fmt vet manifests
 	go run ./main.go
 
 # Install CRDs into a cluster
-install: manifests
+install: manifests ## Install CRDs into a cluster
 	kustomize build config/crd | kubectl apply -f -
 
 # Uninstall CRDs from a cluster
-uninstall: manifests
+uninstall: manifests ## Uninstall CRDs from a cluster
 	kustomize build config/crd | kubectl delete -f -
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
-deploy: manifests
+deploy: manifests  ## Deploy controller in the configured Kubernetes cluster
 	cd config/manager && kustomize edit set image controller=${IMG}
 	kustomize build config/default | kubectl apply -f -
 
@@ -104,7 +104,7 @@ dev-manifests:
 	cp metadata.yaml $(DEV_DIR)/metadata.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests: $(CONTROLLER_GEN) $(MANIFEST_DIR) $(KUSTOMIZE) $(BUILD_DIR)
+manifests: $(CONTROLLER_GEN) $(MANIFEST_DIR) $(KUSTOMIZE) $(BUILD_DIR) ## Generate manifests e.g. CRD, RBAC etc.
 	rm -rf $(BUILD_DIR)/config
 	cp -R config $(BUILD_DIR)/config
 	sed -i'' -e 's@imagePullPolicy: .*@imagePullPolicy: '"$(PULL_POLICY)"'@' $(BUILD_DIR)/config/default/manager_pull_policy.yaml
@@ -112,11 +112,11 @@ manifests: $(CONTROLLER_GEN) $(MANIFEST_DIR) $(KUSTOMIZE) $(BUILD_DIR)
 	"$(KUSTOMIZE)" build $(BUILD_DIR)/config/default > $(MANIFEST_DIR)/infrastructure-components.yaml
 
 # Run go fmt against code
-fmt:
+fmt: ## Run go fmt against code
 	go fmt ./...
 
 # Run go vet against code
-vet:
+vet:  ## Run go vet against code
 	go vet ./...
 
 # Generate code
@@ -127,7 +127,7 @@ generate: $(CONTROLLER_GEN)
 generate-go:
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
-generate-manifests:
+generate-manifests:  ## Generate manifests
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 
@@ -136,10 +136,10 @@ docker-build: test
 	docker build . -t ${IMG}
 
 # Push the docker image
-docker-push:
+docker-push: ## Push the docker image to gcr
 	docker push ${IMG}
 
-docker-rmi:
+docker-rmi: ## Remove the docker image locally
 	docker rmi ${IMG}
 
 mock: $(MOCKGEN)
@@ -149,5 +149,8 @@ clean-release:
 	rm -rf $(RELEASE_DIR)
 
 release: release-manifests
-	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	# $(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+
+version: ## Prints version of current make
+	@echo $(VERSION)
