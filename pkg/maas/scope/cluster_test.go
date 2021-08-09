@@ -43,4 +43,30 @@ func TestNewCluster(t *testing.T) {
 		g.Expect(scope).ToNot(gomega.BeNil())
 
 	})
+
+	t.Run("new dns name", func(t *testing.T) {
+		g := gomega.NewGomegaWithT(t)
+		scheme := runtime.NewScheme()
+		client := fake.NewFakeClientWithScheme(scheme)
+		clusterCopy := cluster.DeepCopy()
+		clusterCopy.Name = "dns-test"
+		maasClusterCopy := maasCluster.DeepCopy()
+		maasClusterCopy.Spec.DNSDomain = "maas.com"
+		log := klogr.New()
+		scope, err := NewClusterScope(ClusterScopeParams{
+			Client:      client,
+			Logger:      log,
+			Cluster:     clusterCopy,
+			MaasCluster: maasClusterCopy,
+		})
+
+		g.Expect(err).ToNot(gomega.HaveOccurred())
+		g.Expect(scope.GetDNSName()).ToNot(gomega.BeNil())
+		g.Expect(scope.GetDNSName()).To(gomega.ContainSubstring(clusterCopy.Name))
+		g.Expect(scope.GetDNSName()).To(gomega.ContainSubstring(maasClusterCopy.Spec.DNSDomain))
+		// len("dns-test") = 8
+		// len("maas.com") = 8
+		// lem(uuid) = 13 characters 12 last part + 1 `-`
+		g.Expect(len(scope.GetDNSName())).To(gomega.BeNumerically("==", 30))
+	})
 }

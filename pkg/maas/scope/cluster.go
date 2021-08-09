@@ -127,7 +127,8 @@ func (s *ClusterScope) GetDNSName() string {
 		return s.MaasCluster.Status.Network.DNSName
 	}
 
-	dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uuid.New().String(), s.MaasCluster.Spec.DNSDomain)
+	uid := uuid.New().String()
+	dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uid[len(uid)-12:], s.MaasCluster.Spec.DNSDomain)
 
 	s.SetDNSName(dnsName)
 	return dnsName
