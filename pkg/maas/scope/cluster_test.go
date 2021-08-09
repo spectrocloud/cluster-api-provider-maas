@@ -1,6 +1,8 @@
 package scope
 
 import (
+	"testing"
+
 	"github.com/onsi/gomega"
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -8,7 +10,6 @@ import (
 	"k8s.io/klog/klogr"
 	"sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"testing"
 )
 
 func TestNewCluster(t *testing.T) {
@@ -64,9 +65,7 @@ func TestNewCluster(t *testing.T) {
 		g.Expect(scope.GetDNSName()).ToNot(gomega.BeNil())
 		g.Expect(scope.GetDNSName()).To(gomega.ContainSubstring(clusterCopy.Name))
 		g.Expect(scope.GetDNSName()).To(gomega.ContainSubstring(maasClusterCopy.Spec.DNSDomain))
-		// len("dns-test") = 8
-		// len("maas.com") = 8
-		// lem(uuid) = 13 characters 12 last part + 1 `-`
-		g.Expect(len(scope.GetDNSName())).To(gomega.BeNumerically("==", 30))
+		dnsLengh := len("dns-test-") + DnsSuffixLength + len(".maas.com")
+		g.Expect(len(scope.GetDNSName())).To(gomega.Equal(dnsLengh))
 	})
 }

@@ -22,6 +22,10 @@ import (
 	"time"
 )
 
+const (
+	DnsSuffixLength = 6
+)
+
 // ClusterScopeParams defines the input parameters used to create a new Scope.
 type ClusterScopeParams struct {
 	Client              client.Client
@@ -128,7 +132,7 @@ func (s *ClusterScope) GetDNSName() string {
 	}
 
 	uid := uuid.New().String()
-	dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uid[len(uid)-12:], s.MaasCluster.Spec.DNSDomain)
+	dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uid[len(uid)-DnsSuffixLength:], s.MaasCluster.Spec.DNSDomain)
 
 	s.SetDNSName(dnsName)
 	return dnsName
