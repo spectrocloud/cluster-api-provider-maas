@@ -5,6 +5,7 @@ go 1.15
 require (
 	github.com/go-logr/logr v0.3.0
 	github.com/golang/mock v1.2.0
+	github.com/google/uuid v1.2.0
 	github.com/onsi/gomega v1.10.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.10.0
