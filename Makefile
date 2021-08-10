@@ -149,7 +149,7 @@ clean-release:
 	rm -rf $(RELEASE_DIR)
 
 release: release-manifests
-	# $(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 
 version: ## Prints version of current make
