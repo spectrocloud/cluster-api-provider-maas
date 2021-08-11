@@ -5,6 +5,7 @@ Cluster API Provider MaaS
 # Getting Started
 
 ## Image Generation
+Refer image-generation/
 
 
 ## Set up
