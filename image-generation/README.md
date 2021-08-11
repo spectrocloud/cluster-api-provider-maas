@@ -20,7 +20,7 @@ kubectl apply -f pod.yaml
 ```
 
 if you want to publish you images to s3 bucket 
-change to you bucket name {{S3_BUCKET}} buildmaasimage.sh line: 80
+change to you bucket name ${S3_BUCKET} buildmaasimage.sh line: 80
 
 and you must provide aws-credentials, refer secret.yaml
 

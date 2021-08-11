@@ -77,7 +77,7 @@ for arg; do
 
   export AWS_PROFILE=image-bucket
 
-  aws s3api put-object --acl public-read --bucket {{S3_BUCKET}} --key "u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz" --body u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz
+  aws s3api put-object --acl public-read --bucket ${S3_BUCKET} --key "u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz" --body u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz
 
   echo 'image upload done'
 
