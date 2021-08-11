@@ -70,14 +70,14 @@ for arg; do
     exit 1
   fi
 
-  echo "[goldenci-bucket]
+  echo "[image-bucket]
   aws_access_key_id = ${AWS_ACCESS_KEY_ID}
   aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
   region =  us-east-1" > $HOME/.aws/credentials
 
-  export AWS_PROFILE=goldenci-bucket
+  export AWS_PROFILE=image-bucket
 
-  aws s3api put-object --acl public-read --bucket maasgoldenimage --key "u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz" --body u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz
+  aws s3api put-object --acl public-read --bucket {{S3_BUCKET}} --key "u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz" --body u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz
 
   echo 'image upload done'
 
