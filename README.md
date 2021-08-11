@@ -5,8 +5,7 @@ Cluster API Provider MaaS
 # Getting Started
 
 ## Image Generation
-Refer image-generation/
-
+Refer [image-generation/](image-generation/README.md)
 
 ## Set up
     
