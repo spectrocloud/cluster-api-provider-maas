@@ -20,7 +20,7 @@ install clusterctl v3
 
 run
 ```
-clusterctl init --core cluster-api:v0.3.19 --bootstrap  kubeadm:v0.3.19 --control-plane  kubeadm:v0.3.19
+clusterctl init --core cluster-api:v0.3.22 --bootstrap  kubeadm:v0.3.22 --control-plane  kubeadm:v0.3.22
 ```
 
 Makefile set IMG=<your docker repo>
