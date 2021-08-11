@@ -61,24 +61,18 @@ spec:
       apiServer:
         extraArgs:
           anonymous-auth: "true"
-          audit-log-maxage: "30"
-          audit-log-maxbackup: "10"
-          audit-log-maxsize: "100"
           authorization-mode: RBAC,Node
           default-not-ready-toleration-seconds: "60"
           default-unreachable-toleration-seconds: "60"
           disable-admission-plugins: AlwaysAdmit
-          enable-admission-plugins: PodPreset,AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction,PodSecurityPolicy
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
           insecure-port: "0"
-          profiling: "false"
-          tls-cipher-suites: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256
         timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
           address: 0.0.0.0
           feature-gates: RotateKubeletServerCertificate=true
           pod-eviction-timeout: 1m0s
-          profiling: "false"
           terminated-pod-gc-threshold: "25"
           use-service-account-credentials: "true"
       dns: {}
@@ -87,7 +81,6 @@ spec:
       scheduler:
         extraArgs:
           address: 0.0.0.0
-          profiling: "false"
     initConfiguration:
       localAPIEndpoint:
         advertiseAddress: ""
@@ -96,9 +89,7 @@ spec:
         kubeletExtraArgs:
           event-qps: "0"
           feature-gates: RotateKubeletServerCertificate=true
-          protect-kernel-defaults: "true"
           read-only-port: "0"
-          tls-cipher-suites: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256
         name: '{{ v1.local_hostname }}'
     joinConfiguration:
       controlPlane:
@@ -111,18 +102,8 @@ spec:
           event-qps: "0"
           feature-gates: RotateKubeletServerCertificate=true
           read-only-port: "0"
-          tls-cipher-suites: TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_GCM_SHA256
         name: '{{ v1.local_hostname }}'
-    ntp:
-      enabled: true
     preKubeadmCommands:
-    - . /etc/os-release && [ "$ID" = "ubuntu" ] && ln -sf /run/systemd/resolve/resolv.conf
-      /etc/resolv.conf
-    - hostname "{{ v1.local_hostname }}"
-    - echo "::1         ipv6-localhost ipv6-loopback" >/etc/hosts
-    - echo "127.0.0.1   localhost " >>/etc/hosts
-    - echo "127.0.0.1   {{ v1.local_hostname }}" >>/etc/hosts
-    - echo "{{ v1.local_hostname }}" >/etc/hostname
     - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
       sleep 1; done
     useExperimentalRetryJoin: true
