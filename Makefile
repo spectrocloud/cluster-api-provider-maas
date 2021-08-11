@@ -13,7 +13,7 @@ RELEASE_DIR := _build/release
 DEV_DIR := _build/dev
 
 # Image URL to use all building/pushing image targets
-IMAGE_NAME := cluster-api-provider-maas
+IMAGE_NAME := cluster-api-provider-maas-controller
 IMG_URL ?= gcr.io/$(shell gcloud config get-value project)/${USER}
 IMG_TAG ?= latest
 IMG ?= ${IMG_URL}/cluster-api-provider-maas:${IMG_TAG}
@@ -21,7 +21,7 @@ IMG ?= ${IMG_URL}/cluster-api-provider-maas:${IMG_TAG}
 
 # Release images
 # Release docker variables
-RELEASE_REGISTRY := gcr.io/spectro-images-public/release
+RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-maas
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -149,7 +149,7 @@ clean-release:
 	rm -rf $(RELEASE_DIR)
 
 release: release-manifests
-	# $(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 
 version: ## Prints version of current make

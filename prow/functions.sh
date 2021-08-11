@@ -35,7 +35,7 @@ set_image_tag() {
 	fi
 	if [[ ${SPECTRO_RELEASE} ]] && [[ ${SPECTRO_RELEASE} == "yes" ]]; then
 	    export VERSION_SUFFIX=""
-	    IMG_LOC='release'	
+	    IMG_LOC='release/cluster-api-provider-maas'	
 	    IMG_TAG=$(make version)
 	    PROD_BUILD_ID=$(date +%Y%m%d.%H%M)
             IMG_PATH=spectro-images-public/${IMG_LOC}
@@ -180,5 +180,5 @@ create_release_manifest() {
 
 export REPO_NAME=cluster-api-provider-maas
 set_image_tag
-export IMG=${DOCKER_REGISTRY}/${IMG_LOC}/cluster-api-provider-maas:${IMG_TAG}
+export IMG=${DOCKER_REGISTRY}/${IMG_LOC}/cluster-api-provider-maas-controller:${IMG_TAG}
 IMAGES_LIST="${IMG}"
