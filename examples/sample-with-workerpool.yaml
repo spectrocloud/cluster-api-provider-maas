@@ -21,7 +21,7 @@ spec:
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
     kind: KubeadmControlPlane
-    name: my-cluster
+    name: my-cluster-cp
     namespace: default
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
@@ -125,7 +125,7 @@ metadata:
   name: my-cluster-worker
   namespace: default
 spec:
-  clusterName: cluster-maas3
+  clusterName: my-cluster
   replicas: 1
   selector:
     matchLabels:
@@ -138,11 +138,11 @@ spec:
         configRef:
           apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
           kind: KubeadmConfigTemplate
-          name: worker-maas3
+          name: my-cluster-worker
       infrastructureRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
         kind: MaasMachineTemplate
-        name: worker-maas3
+        name: my-cluster-worker
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
 kind: KubeadmConfigTemplate
@@ -153,11 +153,6 @@ spec:
   template:
     spec:
       joinConfiguration:
-        controlPlane:
-          localAPIEndpoint:
-            advertiseAddress: ""
-            bindPort: 0
-        discovery: {}
         nodeRegistration:
           kubeletExtraArgs:
             event-qps: "0"
