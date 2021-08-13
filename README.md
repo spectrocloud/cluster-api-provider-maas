@@ -4,7 +4,19 @@ Cluster API Provider MaaS
 
 # Getting Started
 
-## Image Generation
+## Public Images
+spectrocloud public images
+
+| kubernetes Version | URL                                                                        |
+|--------------------|----------------------------------------------------------------------------|
+| 1.18.19            | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.18.19.tar.gz |
+| 1.19.13            | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.19.13.tar.gz |
+| 1.20.9             | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.20.9.tar.gz  |
+| 1.21.2             | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.21.2.tar.gz  |
+
+
+
+## Custom Image Generation
 Refer [image-generation/](image-generation/README.md)
 
 ## Set up

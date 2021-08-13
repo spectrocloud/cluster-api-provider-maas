@@ -36,6 +36,22 @@ remove lines
 
 from pod.yaml
 
+remove lines
+https://github.com/spectrocloud/cluster-api-provider-maas/blob/818c818131b69fe35d5637a9e7c6510f82d39f13/image-generation/buildmaasimage.sh#L61-L82
+
+
+## Upload Custom Image to MAAS
+
+The images generated inside pod can be accessed from hostpath vol
+```yaml
+- name: outputdir
+  hostPath:
+  path: /tmp/mypath
+```
+
+cd /tmp/mypath or the directory you have configured
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+
 
 ## spectrocloud public images 
 | kubernetes Version | URL                                                                        |
