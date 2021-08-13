@@ -1,0 +1,170 @@
+# Creates a cluster with one control-plane node and one worker node
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: MaasCluster
+metadata:
+  name: my-cluster
+spec:
+  dnsDomain: maas.sc
+
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: Cluster
+metadata:
+  name: my-cluster
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    kind: KubeadmControlPlane
+    name: my-cluster
+    namespace: default
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    kind: MaasCluster
+    name: my-cluster
+    namespace: default
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: MaasMachineTemplate
+metadata:
+  name: my-cluster-cp
+  namespace: default
+spec:
+  template:
+    spec:
+      minCPU: 4
+      minMemory: 8192
+      image: u-1804-0-k-11912-0
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+kind: KubeadmControlPlane
+metadata:
+  name: my-cluster-cp
+  namespace: default
+spec:
+  replicas: 1
+  version: v1.19.12
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    kind: MaasMachineTemplate
+    name: my-cluster-cp
+    namespace: default
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          anonymous-auth: "true"
+          authorization-mode: RBAC,Node
+          default-not-ready-toleration-seconds: "60"
+          default-unreachable-toleration-seconds: "60"
+          disable-admission-plugins: AlwaysAdmit
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+          insecure-port: "0"
+        timeoutForControlPlane: 10m0s
+      controllerManager:
+        extraArgs:
+          address: 0.0.0.0
+          feature-gates: RotateKubeletServerCertificate=true
+          pod-eviction-timeout: 1m0s
+          terminated-pod-gc-threshold: "25"
+          use-service-account-credentials: "true"
+      dns: {}
+      etcd: {}
+      networking: {}
+      scheduler:
+        extraArgs:
+          address: 0.0.0.0
+    initConfiguration:
+      localAPIEndpoint:
+        advertiseAddress: ""
+        bindPort: 0
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane:
+        localAPIEndpoint:
+          advertiseAddress: ""
+          bindPort: 0
+      discovery: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+    useExperimentalRetryJoin: true
+---
+status:
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+kind: MaasMachineTemplate
+metadata:
+  name: my-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      minCPU: 4
+      minMemory: 8192
+      image: u-1804-0-k-11912-0
+---
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: MachineDeployment
+metadata:
+  name: my-cluster-worker
+  namespace: default
+spec:
+  clusterName: cluster-maas3
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: my-cluster
+  template:
+    spec:
+      clusterName: my-cluster
+      version: 1.19.12
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: KubeadmConfigTemplate
+          name: worker-maas3
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        kind: MaasMachineTemplate
+        name: worker-maas3
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: KubeadmConfigTemplate
+metadata:
+  name: my-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        controlPlane:
+          localAPIEndpoint:
+            advertiseAddress: ""
+            bindPort: 0
+        discovery: {}
+        nodeRegistration:
+          kubeletExtraArgs:
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+      useExperimentalRetryJoin: true
