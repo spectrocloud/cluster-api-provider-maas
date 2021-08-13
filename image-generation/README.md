@@ -36,6 +36,9 @@ remove lines
 
 from pod.yaml
 
+remove lines
+https://github.com/spectrocloud/cluster-api-provider-maas/blob/818c818131b69fe35d5637a9e7c6510f82d39f13/image-generation/buildmaasimage.sh#L61-L82
+
 
 ## spectrocloud public images 
 | kubernetes Version | URL                                                                        |
