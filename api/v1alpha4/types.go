@@ -1,8 +1,8 @@
-package v1alpha3
+package v1alpha4
 
 import (
 	"k8s.io/apimachinery/pkg/util/sets"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
 // MachineState describes the state of an AWS instance.
@@ -73,7 +73,7 @@ var (
 	)
 )
 
-// Instance describes an MAAS MAchine.
+// Instance describes an MAAS Machine.
 type Machine struct {
 	ID string
 
@@ -89,6 +89,6 @@ type Machine struct {
 	// The AZ of the machine
 	AvailabilityZone string
 
-	// Addresses contains the MAAS Machine associated addresses.
+	// Addresses contains the AWS instance associated addresses.
 	Addresses []clusterv1.MachineAddress
 }

@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha3
+package v1alpha4
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
 const (
@@ -81,9 +81,9 @@ func (in APIEndpoint) IsZero() bool {
 	return in.Host == "" && in.Port == 0
 }
 
-// +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
-// +kubebuilder:subresource:status
-// +kubebuilder:object:root=true
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+//+kubebuilder:storageversion
 
 // MaasCluster is the Schema for the maasclusters API
 type MaasCluster struct {
@@ -102,7 +102,8 @@ func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
 	in.Status.Conditions = conditions
 }
 
-// +kubebuilder:object:root=true
+
+//+kubebuilder:object:root=true
 
 // MaasClusterList contains a list of MaasCluster
 type MaasClusterList struct {

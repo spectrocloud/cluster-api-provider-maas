@@ -25,8 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
@@ -41,7 +40,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -49,7 +48,6 @@ type MaasClusterReconciler struct {
 	client.Client
 	Log                 logr.Logger
 	Recorder            record.EventRecorder
-	Tracker             *remote.ClusterCacheTracker
 	GenericEventChannel chan event.GenericEvent
 }
 
@@ -58,13 +56,11 @@ type MaasClusterReconciler struct {
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
-func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr error) {
+func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := r.Log.WithValues("maascluster", req.Name)
 
-	ctx := context.TODO()
-
 	// Fetch the MaasCluster instance
-	maasCluster := &infrav1.MaasCluster{}
+	maasCluster := &infrav1alpha4.MaasCluster{}
 	if err := r.Client.Get(ctx, req.NamespacedName, maasCluster); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -87,7 +83,6 @@ func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr
 		Logger:              log,
 		Cluster:             cluster,
 		MaasCluster:         maasCluster,
-		Tracker:             r.Tracker,
 		ClusterEventChannel: r.GenericEventChannel,
 		ControllerName:      "maascluster",
 	})
@@ -128,7 +123,7 @@ func (r *MaasClusterReconciler) reconcileDelete(_ context.Context, clusterScope 
 	maasCluster := clusterScope.MaasCluster
 
 	// Cluster is deleted so remove the finalizer.
-	controllerutil.RemoveFinalizer(maasCluster, infrav1.ClusterFinalizer)
+	controllerutil.RemoveFinalizer(maasCluster, infrav1alpha4.ClusterFinalizer)
 
 	// TODO(saamalik) implement the recorder stuff (look at aws)
 
@@ -148,8 +143,8 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return errors.Wrap(err, "Unable to get the dns resources")
 	}
 
-	machinesPendingAttachment := make([]*infrav1.MaasMachine, 0)
-	machinesPendingDetachment := make([]*infrav1.MaasMachine, 0)
+	machinesPendingAttachment := make([]*infrav1alpha4.MaasMachine, 0)
+	machinesPendingDetachment := make([]*infrav1alpha4.MaasMachine, 0)
 
 	for _, m := range machines {
 		if !IsControlPlaneMachine(m) {
@@ -189,22 +184,22 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 }
 
 // IsControlPlaneMachine checks machine is a control plane node.
-func IsControlPlaneMachine(m *infrav1.MaasMachine) bool {
+func IsControlPlaneMachine(m *infrav1alpha4.MaasMachine) bool {
 	_, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabelName]
 	return ok
 }
 
 // IsRunning returns if the machine is running
-func IsRunning(m *infrav1.MaasMachine) bool {
+func IsRunning(m *infrav1alpha4.MaasMachine) bool {
 	if !m.Status.MachinePowered {
 		return false
 	}
 
 	state := m.Status.MachineState
-	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
+	return state != nil && infrav1alpha4.MachineRunningStates.Has(string(*state))
 }
 
-func getExternalMachineIP(machine *infrav1.MaasMachine) string {
+func getExternalMachineIP(machine *infrav1alpha4.MaasMachine) string {
 	for _, i := range machine.Status.Addresses {
 		if i.Type == clusterv1.MachineExternalIP {
 			return i.Address
@@ -219,8 +214,8 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	maasCluster := clusterScope.MaasCluster
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
-	if !controllerutil.ContainsFinalizer(maasCluster, infrav1.ClusterFinalizer) {
-		controllerutil.AddFinalizer(maasCluster, infrav1.ClusterFinalizer)
+	if !controllerutil.ContainsFinalizer(maasCluster, infrav1alpha4.ClusterFinalizer) {
+		controllerutil.AddFinalizer(maasCluster, infrav1alpha4.ClusterFinalizer)
 		return ctrl.Result{}, nil
 	}
 
@@ -228,17 +223,17 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	if err := dnsService.ReconcileDNS(); err != nil {
 		clusterScope.Error(err, "failed to reconcile load balancer")
-		conditions.MarkFalse(maasCluster, infrav1.DNSReadyCondition, infrav1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(maasCluster, infrav1alpha4.DNSReadyCondition, infrav1alpha4.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		return reconcile.Result{}, err
 	}
 
 	if maasCluster.Status.Network.DNSName == "" {
-		conditions.MarkFalse(maasCluster, infrav1.DNSReadyCondition, infrav1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
+		conditions.MarkFalse(maasCluster, infrav1alpha4.DNSReadyCondition, infrav1alpha4.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
 		clusterScope.Info("Waiting on API server DNS name")
 		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
-	maasCluster.Spec.ControlPlaneEndpoint = infrav1.APIEndpoint{
+	maasCluster.Spec.ControlPlaneEndpoint = infrav1alpha4.APIEndpoint{
 		Host: maasCluster.Status.Network.DNSName,
 		Port: clusterScope.APIServerPort(),
 	}
@@ -246,7 +241,7 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	maasCluster.Status.Ready = true
 
 	// Mark the maasCluster ready
-	conditions.MarkTrue(maasCluster, infrav1.DNSReadyCondition)
+	conditions.MarkTrue(maasCluster, infrav1alpha4.DNSReadyCondition)
 
 	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
 		if errors.Is(err, ErrRequeueDNS) {
@@ -261,11 +256,11 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	clusterScope.ReconcileMaasClusterWhenAPIServerIsOnline()
 	if k, _ := clusterScope.IsAPIServerOnline(); !k {
-		conditions.MarkFalse(maasCluster, infrav1.APIServerAvailableCondition, infrav1.APIServerNotReadyReason, clusterv1.ConditionSeverityWarning, "")
+		conditions.MarkFalse(maasCluster, infrav1alpha4.APIServerAvailableCondition, infrav1alpha4.APIServerNotReadyReason, clusterv1.ConditionSeverityWarning, "")
 		return ctrl.Result{}, nil
 	}
 
-	conditions.MarkTrue(maasCluster, infrav1.APIServerAvailableCondition)
+	conditions.MarkTrue(maasCluster, infrav1alpha4.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
 
 	return ctrl.Result{}, nil
@@ -278,14 +273,10 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	c, err := ctrl.NewControllerManagedBy(mgr).
-		For(&infrav1.MaasCluster{}).
+		For(&infrav1alpha4.MaasCluster{}).
 		Watches(
-			&source.Kind{Type: &infrav1.MaasMachine{}},
-			&handler.EnqueueRequestsFromMapFunc{
-				ToRequests: handler.ToRequestsFunc(r.controlPlaneMachineToCluster),
-			},
-			// v1alpha4
-			//handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
+			&source.Kind{Type: &infrav1alpha4.MaasMachine{}},
+			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
 		).
 		Watches(
 			&source.Channel{Source: r.GenericEventChannel},
@@ -298,26 +289,16 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	return c.Watch(
 		&source.Kind{Type: &clusterv1.Cluster{}},
-		&handler.EnqueueRequestsFromMapFunc{
-			ToRequests: util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster")),
-		},
-		// v1alpha4
-		//handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("MaasCluster"))),
+		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1alpha4.GroupVersion.WithKind("MaasCluster"))),
 		predicates.ClusterUnpaused(r.Log),
 	)
 }
 
-//v1alpha4
-//func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
-
 // controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used
 // to enqueue requests for reconciliation for MaasCluster to update
 // its status.apiEndpoints field.
-func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o handler.MapObject) []ctrl.Request {
-	// v1alpha4
-	//maasMachine, ok := o.(*infrav1.MaasMachine)
-
-	maasMachine, ok := o.Object.(*infrav1.MaasMachine)
+func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
+	maasMachine, ok := o.(*infrav1alpha4.MaasMachine)
 	if !ok {
 		r.Log.Error(nil, fmt.Sprintf("expected a MaasMachine but got a %T", o))
 		return nil
@@ -337,7 +318,7 @@ func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o handler.MapObject
 	}
 
 	// Fetch the MaasCluster
-	maasCluster := &infrav1.MaasCluster{}
+	maasCluster := &infrav1alpha4.MaasCluster{}
 	maasClusterKey := client.ObjectKey{
 		Namespace: maasMachine.Namespace,
 		Name:      cluster.Spec.InfrastructureRef.Name,

@@ -4,10 +4,10 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/log"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
 // Service manages the MaaS machine
@@ -24,7 +24,7 @@ func NewService(machineScope *scope.MachineScope) *Service {
 	}
 }
 
-func (s *Service) GetMachine(systemID string) (*infrav1.Machine, error) {
+func (s *Service) GetMachine(systemID string) (*infrav1alpha4.Machine, error) {
 	m, err := s.maasClient.Machines().Machine(systemID).Get(context.Background())
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (s *Service) ReleaseMachine(systemID string) error {
 	return nil
 }
 
-func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr error) {
+func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1alpha4.Machine, rerr error) {
 	ctx := context.TODO()
 
 	mm := s.scope.MaasMachine
@@ -111,11 +111,11 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1.Machine, rerr er
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-func fromSDKTypeToMachine(m maasclient.Machine) *infrav1.Machine {
-	machine := &infrav1.Machine{
+func fromSDKTypeToMachine(m maasclient.Machine) *infrav1alpha4.Machine {
+	machine := &infrav1alpha4.Machine{
 		ID:               m.SystemID(),
 		Hostname:         m.Hostname(),
-		State:            infrav1.MachineState(m.State()),
+		State:            infrav1alpha4.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
 		AvailabilityZone: m.Zone().Name(),
 	}

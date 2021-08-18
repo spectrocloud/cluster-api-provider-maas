@@ -3,7 +3,7 @@ package dns
 import (
 	"context"
 	"github.com/pkg/errors"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrainfrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -71,7 +71,7 @@ func (s *Service) UpdateDNSAttachments(IPs []string) error {
 }
 
 // TODO do at some point
-//func MachineIsRunning(m *infrav1.MaasMachine) bool {
+//func MachineIsRunning(m *infrainfrav1alpha4.MaasMachine) bool {
 //	if !m.Status.MachinePowered {
 //		return false
 //	}
@@ -88,7 +88,7 @@ func (s *Service) UpdateDNSAttachments(IPs []string) error {
 //}
 
 // InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
-func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrav1.Machine) (bool, error) {
+func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1alpha4.Machine) (bool, error) {
 	ips, err := s.GetAPIServerDNSRecords()
 	if err != nil {
 		return false, err

@@ -6,12 +6,12 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -31,9 +31,8 @@ type ClusterScopeParams struct {
 	Client              client.Client
 	Logger              logr.Logger
 	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1.MaasCluster
+	MaasCluster         *infrav1alpha4.MaasCluster
 	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -44,7 +43,7 @@ type ClusterScope struct {
 	patchHelper *patch.Helper
 
 	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1.MaasCluster
+	MaasCluster         *infrav1alpha4.MaasCluster
 	controllerName      string
 	tracker             *remote.ClusterCacheTracker
 	clusterEventChannel chan event.GenericEvent
@@ -72,7 +71,6 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		Cluster:             params.Cluster,
 		MaasCluster:         params.MaasCluster,
 		patchHelper:         helper,
-		tracker:             params.Tracker,
 		controllerName:      params.ControllerName,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
@@ -84,8 +82,8 @@ func (s *ClusterScope) PatchObject() error {
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
 	conditions.SetSummary(s.MaasCluster,
 		conditions.WithConditions(
-			infrav1.DNSReadyCondition,
-			infrav1.APIServerAvailableCondition,
+			infrav1alpha4.DNSReadyCondition,
+			infrav1alpha4.APIServerAvailableCondition,
 		),
 		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
@@ -96,8 +94,8 @@ func (s *ClusterScope) PatchObject() error {
 		s.MaasCluster,
 		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
 			clusterv1.ReadyCondition,
-			infrav1.DNSReadyCondition,
-			infrav1.APIServerAvailableCondition,
+			infrav1alpha4.DNSReadyCondition,
+			infrav1alpha4.APIServerAvailableCondition,
 		}},
 	)
 }
@@ -139,9 +137,9 @@ func (s *ClusterScope) GetDNSName() string {
 }
 
 // GetActiveMaasMachines all MaaS machines NOT being deleted
-func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1.MaasMachine, error) {
+func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1alpha4.MaasMachine, error) {
 
-	machineList := &infrav1.MaasMachineList{}
+	machineList := &infrav1alpha4.MaasMachineList{}
 	labels := map[string]string{clusterv1.ClusterLabelName: s.Cluster.Name}
 
 	if err := s.client.List(
@@ -152,7 +150,7 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1.MaasMachine, error) 
 		return nil, errors.Wrap(err, "failed to list machines")
 	}
 
-	var machines []*infrav1.MaasMachine
+	var machines []*infrav1alpha4.MaasMachine
 	for i := range machineList.Items {
 		m := &machineList.Items[i]
 		machines = append(machines, m)
@@ -172,9 +170,9 @@ var (
 )
 
 func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
-	if s.Cluster.Status.ControlPlaneInitialized {
+	if s.Cluster.Status.ControlPlaneReady {
 		s.Info("skipping reconcile when API server is online",
-			"reason", "controlPlaneInitialized")
+			"reason", "ControlPlaneReady")
 		return
 	} else if !s.Cluster.DeletionTimestamp.IsZero() {
 		s.Info("skipping reconcile when API server is online",
@@ -198,7 +196,6 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 		s.Info("stop polling API server for online check")
 		s.Info("triggering GenericEvent", "reason", "api-server-online")
 		s.clusterEventChannel <- event.GenericEvent{
-			Meta:   s.MaasCluster,
 			Object: s.MaasCluster,
 		}
 
@@ -238,16 +235,3 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 	return err == nil, nil
 }
 
-//func (s *ClusterScope) isControlPlaneInitialized(ctx context.Context, s *scope.ClusterScope) bool {
-//	cluster := &clusterv1.Cluster{}
-//	clusterKey := client.ObjectKey{Namespace: s.Cluster.Namespace, Name: s.Cluster.Name}
-//	if err := s.Client.Get(ctx, clusterKey, cluster); err != nil {
-//		if !apierrors.IsNotFound(err) {
-//			s.Error(err, "failed to get updated cluster object while checking if control plane is initialized")
-//			return false
-//		}
-//		s.Info("exiting early because cluster no longer exists")
-//		return true
-//	}
-//	return cluster.Status.ControlPlaneInitialized
-//}

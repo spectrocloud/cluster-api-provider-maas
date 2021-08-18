@@ -1,7 +1,5 @@
-// +build tools
-
 /*
-Copyright 2021 Spectro Cloud
+
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// This package imports things required by build scripts, to force `go mod` to see them as dependencies
-package tools
 
-import (
-	_ "github.com/golang/mock/mockgen"
-	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
-	_ "sigs.k8s.io/kustomize/kustomize/v3"
-	_ "k8s.io/code-generator/cmd/conversion-gen"
-)
+// +k8s:conversion-gen=github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4
+package v1alpha3
+
+
