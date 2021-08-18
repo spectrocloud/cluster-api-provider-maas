@@ -47,7 +47,6 @@ func (r *MaasCluster) Default() {
 	// TODO(user): fill in your defaulting logic.
 }
 
-
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasCluster) ValidateCreate() error {
 	maasclusterlog.Info("validate create", "name", r.Name)

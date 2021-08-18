@@ -234,4 +234,3 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	return err == nil, nil
 }
-

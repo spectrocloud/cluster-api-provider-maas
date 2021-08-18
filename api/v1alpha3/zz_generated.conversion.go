@@ -27,6 +27,7 @@ import (
 	conversion "k8s.io/apimachinery/pkg/conversion"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	apiv1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	errors "sigs.k8s.io/cluster-api/errors"
 )
 
@@ -299,8 +300,8 @@ func autoConvert_v1alpha3_MaasClusterStatus_To_v1alpha4_MaasClusterStatus(in *Ma
 	if err := Convert_v1alpha3_Network_To_v1alpha4_Network(&in.Network, &out.Network, s); err != nil {
 		return err
 	}
-	out.FailureDomains = *(*apiv1alpha3.FailureDomains)(unsafe.Pointer(&in.FailureDomains))
-	out.Conditions = *(*apiv1alpha3.Conditions)(unsafe.Pointer(&in.Conditions))
+	out.FailureDomains = *(*apiv1alpha4.FailureDomains)(unsafe.Pointer(&in.FailureDomains))
+	out.Conditions = *(*apiv1alpha4.Conditions)(unsafe.Pointer(&in.Conditions))
 	return nil
 }
 
@@ -416,8 +417,8 @@ func autoConvert_v1alpha3_MaasMachineStatus_To_v1alpha4_MaasMachineStatus(in *Ma
 	out.MachinePowered = in.MachinePowered
 	out.Hostname = (*string)(unsafe.Pointer(in.Hostname))
 	out.DNSAttached = in.DNSAttached
-	out.Addresses = *(*[]apiv1alpha3.MachineAddress)(unsafe.Pointer(&in.Addresses))
-	out.Conditions = *(*apiv1alpha3.Conditions)(unsafe.Pointer(&in.Conditions))
+	out.Addresses = *(*[]apiv1alpha4.MachineAddress)(unsafe.Pointer(&in.Addresses))
+	out.Conditions = *(*apiv1alpha4.Conditions)(unsafe.Pointer(&in.Conditions))
 	out.FailureReason = (*errors.MachineStatusError)(unsafe.Pointer(in.FailureReason))
 	out.FailureMessage = (*string)(unsafe.Pointer(in.FailureMessage))
 	return nil
@@ -548,7 +549,7 @@ func autoConvert_v1alpha3_Machine_To_v1alpha4_Machine(in *Machine, out *v1alpha4
 	out.State = v1alpha4.MachineState(in.State)
 	out.Powered = in.Powered
 	out.AvailabilityZone = in.AvailabilityZone
-	out.Addresses = *(*[]apiv1alpha3.MachineAddress)(unsafe.Pointer(&in.Addresses))
+	out.Addresses = *(*[]apiv1alpha4.MachineAddress)(unsafe.Pointer(&in.Addresses))
 	return nil
 }
 

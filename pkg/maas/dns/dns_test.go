@@ -2,28 +2,30 @@ package dns
 
 import (
 	"context"
+	"net"
+	"testing"
+
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/klogr"
+	"sigs.k8s.io/cluster-api/api/v1alpha4"
+
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/klog/klogr"
-	"net"
-	"sigs.k8s.io/cluster-api/api/v1alpha3"
-	"testing"
 )
 
 func TestDNS(t *testing.T) {
 	log := klogr.New()
-	cluster := &v1alpha3.Cluster{
+	cluster := &v1alpha4.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "a",
 		},
 	}
-	maasCluster := &infrav1.MaasCluster{
-		Spec: infrav1.MaasClusterSpec{
+	maasCluster := &infrav1alpha4.MaasCluster{
+		Spec: infrav1alpha4.MaasClusterSpec{
 			DNSDomain: "b.com",
 		},
 	}
@@ -105,14 +107,14 @@ func TestDNS(t *testing.T) {
 		mockIPAddress.EXPECT().IP().Return(net.ParseIP("1.1.1.1"))
 		mockIPAddress.EXPECT().IP().Return(net.ParseIP("8.8.8.8"))
 
-		res, err := s.MachineIsRegisteredWithAPIServerDNS(&infrav1.Machine{
-			Addresses: []v1alpha3.MachineAddress{
+		res, err := s.MachineIsRegisteredWithAPIServerDNS(&infrav1alpha4.Machine{
+			Addresses: []v1alpha4.MachineAddress{
 				{
-					Type:    v1alpha3.MachineInternalIP,
+					Type:    v1alpha4.MachineInternalIP,
 					Address: "1.1.1.1",
 				},
 				{
-					Type:    v1alpha3.MachineInternalIP,
+					Type:    v1alpha4.MachineInternalIP,
 					Address: "8.8.8.8",
 				},
 			},

@@ -14,8 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-
 // +k8s:conversion-gen=github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4
 package v1alpha3
-
-

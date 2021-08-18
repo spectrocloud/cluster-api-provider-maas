@@ -40,7 +40,7 @@ type MaasMachineTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   MaasMachineTemplateSpec   `json:"spec,omitempty"`
+	Spec MaasMachineTemplateSpec `json:"spec,omitempty"`
 }
 
 //+kubebuilder:object:root=true

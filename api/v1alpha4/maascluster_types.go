@@ -102,7 +102,6 @@ func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
 	in.Status.Conditions = conditions
 }
 
-
 //+kubebuilder:object:root=true
 
 // MaasClusterList contains a list of MaasCluster
