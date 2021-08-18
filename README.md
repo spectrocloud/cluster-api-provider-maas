@@ -1,6 +1,8 @@
 # cluster-api-provider-maas
 Cluster API Provider for MAAS [maas.io](https://maas.io/)
 
+Welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
+
 
 # Getting Started
 
