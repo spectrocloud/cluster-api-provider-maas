@@ -1,5 +1,5 @@
 # cluster-api-provider-maas
-Cluster API Provider MaaS
+Cluster API Provider for MAAS [maas.io](https://maas.io/)
 
 
 # Getting Started
