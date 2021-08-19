@@ -119,6 +119,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Logger:         log,
 		Cluster:        cluster,
 		MaasCluster:    maasCluster,
+		Tracker:        r.Tracker,
 		ControllerName: "maasmachine",
 	})
 	if err != nil {

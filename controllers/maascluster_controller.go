@@ -19,28 +19,29 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
-
-	"github.com/go-logr/logr"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -49,6 +50,7 @@ type MaasClusterReconciler struct {
 	Log                 logr.Logger
 	Recorder            record.EventRecorder
 	GenericEventChannel chan event.GenericEvent
+	Tracker             *remote.ClusterCacheTracker
 }
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
@@ -85,6 +87,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		MaasCluster:         maasCluster,
 		ClusterEventChannel: r.GenericEventChannel,
 		ControllerName:      "maascluster",
+		Tracker:             r.Tracker,
 	})
 	if err != nil {
 		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)

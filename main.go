@@ -22,6 +22,7 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 	"math/rand"
 	"os"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -107,10 +108,33 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
+	// requiring a connection to a remote cluster
+	tracker, err := remote.NewClusterCacheTracker(
+		mgr,
+		remote.ClusterCacheTrackerOptions{
+			Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheTracker"),
+			Indexes: remote.DefaultIndexes,
+		},
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create cluster cache tracker")
+		os.Exit(1)
+	}
+	if err := (&remote.ClusterCacheReconciler{
+		Client:  mgr.GetClient(),
+		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
+		Tracker: tracker,
+	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
+		os.Exit(1)
+	}
+
 	if err := (&controllers.MaasMachineReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
 		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
+		Tracker:  tracker,
 	}).SetupWithManager(ctx, mgr, concurrency(machineConcurrency)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
 		os.Exit(1)
@@ -120,6 +144,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
 		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
+		Tracker:  tracker,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 		os.Exit(1)
