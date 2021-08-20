@@ -18,7 +18,7 @@ package v1alpha3
 
 import clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 
-// Conditions and condition Reasons for the DockerMachine object
+// Conditions and condition Reasons for the MAAS Machine object
 
 const (
 	// MachineDeployedCondition documents the status of the deployment of a machine
@@ -55,28 +55,6 @@ const (
 	MachineDeployStartedReason = "MachineDeployStartedReason"
 )
 
-//const (
-//	// BootstrapExecSucceededCondition provides an observation of the DockerMachine bootstrap process.
-//	// 	It is set based on successful execution of bootstrap commands and on the existence of
-//	//	the /run/cluster-api/bootstrap-success.complete file.
-//	// The condition gets generated after ContainerProvisionedCondition is True.
-//	//
-//	// NOTE as a difference from other providers, container provisioning and bootstrap are directly managed
-//	// by the DockerMachine controller (not by cloud-init).
-//	BootstrapExecSucceededCondition clusterv1.ConditionType = "BootstrapExecSucceeded"
-//
-//	// BootstrappingReason documents (Severity=Info) a DockerMachine currently executing the bootstrap
-//	// script that creates the Kubernetes node on the newly provisioned machine infrastructure.
-//	BootstrappingReason = "Bootstrapping"
-//
-//	// BootstrapFailedReason documents (Severity=Warning) a DockerMachine controller detecting an error while
-//	// bootstrapping the Kubernetes node on the machine just provisioned; those kind of errors are usually
-//	// transient and failed bootstrap are automatically re-tried by the controller.
-//	BootstrapFailedReason = "BootstrapFailed"
-//)
-//
-// Conditions and condition Reasons for the DockerCluster object
-
 const (
 	// Only applicable to control plane machines. DNSAttachedCondition will report true when a control plane is successfully registered with an DNS
 	// When set to false, severity can be an Error if the subnet is not found or unavailable in the instance's AZ
@@ -90,12 +68,10 @@ const (
 
 const (
 	// DNSReadyCondition documents the availability of the container that implements the cluster DNS.
-	//
 	DNSReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
 
-	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a DockerCluster controller detecting
-	// an error while provisioning the container that provides the cluster load balancer.; those kind of
-	// errors are usually transient and failed provisioning are automatically re-tried by the controller.
+	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a MAASCluster controller detecting
+	// dns reconcile failure will be retried
 	DNSFailedReason = "LoadBalancerFailed"
 
 	WaitForDNSNameReason = "WaitForDNSName"

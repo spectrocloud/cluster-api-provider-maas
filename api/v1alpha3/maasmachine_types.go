@@ -44,7 +44,7 @@ type MaasMachineSpec struct {
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
 
-	// ResourcePool will be the MaaS machine ID
+	// ResourcePool will be the MAAS Machine resourcepool
 	// +optional
 	ResourcePool *string `json:"resourcePool,omitempty"`
 
@@ -67,8 +67,8 @@ type MaasMachineStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 
-	// InstanceState is the state of the AWS instance for this machine.
-	MachineState *MachineState `json:"instanceState,omitempty"`
+	// MachineState is the state of this MAAS machine.
+	MachineState *MachineState `json:"machineState,omitempty"`
 
 	// MachinePowered is if the machine is "Powered" on
 	MachinePowered bool `json:"machinePowered,omitempty"`

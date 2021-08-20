@@ -5,7 +5,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 )
 
-// MachineState describes the state of an AWS instance.
+// MachineState describes the state of an MAAS Machine.
 type MachineState string
 
 // List of all possible states: https://github.com/maas/maas/blob/master/src/maasserver/enum.py#L108
@@ -89,6 +89,6 @@ type Machine struct {
 	// The AZ of the machine
 	AvailabilityZone string
 
-	// Addresses contains the AWS instance associated addresses.
+	// Addresses contains the MAAS Machine associated addresses.
 	Addresses []clusterv1.MachineAddress
 }

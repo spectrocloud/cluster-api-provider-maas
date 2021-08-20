@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha4
 
 import (
+	"fmt"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,41 +34,41 @@ func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1alpha4-maascluster,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=create;update,versions=v1alpha4,name=mmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1alpha4-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1alpha4,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
-var _ webhook.Defaulter = &MaasCluster{}
-var _ webhook.Validator = &MaasCluster{}
+var (
+	_ webhook.Defaulter = &MaasCluster{}
+	_ webhook.Validator = &MaasCluster{}
+)
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *MaasCluster) Default() {
 	maasclusterlog.Info("default", "name", r.Name)
-
-	// TODO(user): fill in your defaulting logic.
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasCluster) ValidateCreate() error {
 	maasclusterlog.Info("validate create", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object creation.
 	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasCluster) ValidateUpdate(old runtime.Object) error {
 	maasclusterlog.Info("validate update", "name", r.Name)
+	oldC, ok := old.(*MaasCluster)
+	if !ok {
+		return apierrors.NewBadRequest(fmt.Sprintf("expected an AWSCluster but got a %T", old))
+	}
 
-	// TODO(user): fill in your validation logic upon object update.
+	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
+		return apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
+	}
 	return nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasCluster) ValidateDelete() error {
 	maasclusterlog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil
 }

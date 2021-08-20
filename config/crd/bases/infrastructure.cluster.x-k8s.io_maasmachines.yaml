@@ -56,7 +56,7 @@ spec:
                 description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
                 type: string
               resourcePool:
-                description: ResourcePool will be the MaaS machine ID
+                description: ResourcePool will be the MAAS Machine resourcepool
                 type: string
               systemID:
                 description: SystemID will be the MaaS machine ID
@@ -147,13 +147,12 @@ spec:
               hostname:
                 description: Hostname is the actual MaaS hostname
                 type: string
-              instanceState:
-                description: InstanceState is the state of the AWS instance for this
-                  machine.
-                type: string
               machinePowered:
                 description: MachinePowered is if the machine is "Powered" on
                 type: boolean
+              machineState:
+                description: MachineState is the state of this MAAS machine.
+                type: string
               ready:
                 default: false
                 description: Ready denotes that the machine (maas container) is ready
@@ -193,18 +192,19 @@ spec:
                 type: string
               image:
                 description: Image will be the MaaS image id
+                minLength: 1
                 type: string
               minCPU:
                 description: MinCPU minimum number of CPUs
                 type: integer
               minMemory:
-                description: MinMemory minimum memory
+                description: MinMemoryInMB minimum memory in MB
                 type: integer
               providerID:
                 description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
                 type: string
               resourcePool:
-                description: ResourcePool will be the MaaS machine ID
+                description: ResourcePool will be the MAAS Machine resourcepool
                 type: string
               systemID:
                 description: SystemID will be the MaaS machine ID
@@ -295,13 +295,12 @@ spec:
               hostname:
                 description: Hostname is the actual MaaS hostname
                 type: string
-              instanceState:
-                description: InstanceState is the state of the AWS instance for this
-                  machine.
-                type: string
               machinePowered:
                 description: MachinePowered is if the machine is "Powered" on
                 type: boolean
+              machineState:
+                description: MachineState is the state of this MAAS machine.
+                type: string
               ready:
                 default: false
                 description: Ready denotes that the machine (maas container) is ready

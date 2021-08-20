@@ -5,6 +5,7 @@ go 1.16
 require (
 	github.com/go-logr/logr v0.4.0
 	github.com/golang/mock v1.5.0
+	github.com/google/gofuzz v1.2.0
 	github.com/google/uuid v1.2.0
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.14.0

@@ -73,13 +73,13 @@ func setup() {
 		panic(err)
 	}
 	if err := (&infrav1.MaasCluster{}).SetupWebhookWithManager(testEnv); err != nil {
-		panic(fmt.Sprintf("Unable to setup AWSCluster webhook: %v", err))
+		panic(fmt.Sprintf("Unable to setup MAASCluster webhook: %v", err))
 	}
 	if err := (&infrav1.MaasMachine{}).SetupWebhookWithManager(testEnv); err != nil {
-		panic(fmt.Sprintf("Unable to setup AWSMachine webhook: %v", err))
+		panic(fmt.Sprintf("Unable to setup MAASMachine webhook: %v", err))
 	}
 	if err := (&infrav1.MaasMachineTemplate{}).SetupWebhookWithManager(testEnv); err != nil {
-		panic(fmt.Sprintf("Unable to setup AWSMachineTemplate webhook: %v", err))
+		panic(fmt.Sprintf("Unable to setup MAASMachineTemplate webhook: %v", err))
 	}
 	go func() {
 		fmt.Println("Starting the manager")

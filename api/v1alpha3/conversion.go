@@ -17,8 +17,10 @@ limitations under the License.
 package v1alpha3
 
 import (
-	"github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	apiconversion "k8s.io/apimachinery/pkg/conversion"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
+
+	"github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
 
 func (in *MaasCluster) ConvertTo(dstRaw conversion.Hub) error {
@@ -91,4 +93,36 @@ func (in *MaasMachineTemplateList) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1alpha4.MaasMachineTemplateList)
 
 	return Convert_v1alpha4_MaasMachineTemplateList_To_v1alpha3_MaasMachineTemplateList(src, in, nil)
+}
+
+func Convert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in *v1alpha4.MaasMachineSpec, out *MaasMachineSpec, s apiconversion.Scope) error {
+	out.FailureDomain = in.FailureDomain
+	out.SystemID = in.SystemID
+	out.ProviderID = in.ProviderID
+	out.ResourcePool = in.ResourcePool
+	out.MinCPU = &in.MinCPU
+	out.MinMemory = &in.MinMemoryInMB
+	out.Image = in.Image
+	return nil
+}
+
+func Convert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in *MaasMachineSpec, out *v1alpha4.MaasMachineSpec, s apiconversion.Scope) error {
+	out.FailureDomain = in.FailureDomain
+	out.SystemID = in.SystemID
+	out.ProviderID = in.ProviderID
+	out.ResourcePool = in.ResourcePool
+
+	cpu := 4
+	if in.MinCPU != nil {
+		cpu = *in.MinCPU
+	}
+	out.MinCPU = cpu
+
+	memory := 8192
+	if in.MinMemory != nil {
+		memory = *in.MinMemory
+	}
+	out.MinMemoryInMB = memory
+	out.Image = in.Image
+	return nil
 }

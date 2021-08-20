@@ -34,8 +34,8 @@ func TestMachine(t *testing.T) {
 		Spec: infrav1alpha4.MaasMachineSpec{
 			FailureDomain: pointer.String("zone1"),
 			ResourcePool:  pointer.String("rp1"),
-			MinCPU:        &intPlaceholder,
-			MinMemory:     &intPlaceholder,
+			MinCPU:        intPlaceholder,
+			MinMemoryInMB: intPlaceholder,
 			Image:         "custom-image",
 		},
 		Status: infrav1alpha4.MaasMachineStatus{},

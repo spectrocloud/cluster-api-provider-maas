@@ -25,7 +25,7 @@ import (
 const (
 	// MachineFinalizer allows MaasMachineReconciler to clean up resources associated with MaasMachine before
 	// removing it from the apiserver.
-	MachineFinalizer = "maascluster.infrastructure.cluster.x-k8s.io"
+	MachineFinalizer = "maasmachine.infrastructure.cluster.x-k8s.io"
 )
 
 // MaasMachineSpec defines the desired state of MaasMachine
@@ -44,19 +44,18 @@ type MaasMachineSpec struct {
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
 
-	// ResourcePool will be the MaaS machine ID
+	// ResourcePool will be the MAAS Machine resourcepool
 	// +optional
 	ResourcePool *string `json:"resourcePool,omitempty"`
 
 	// MinCPU minimum number of CPUs
-	// +optional
-	MinCPU *int `json:"minCPU,omitempty"`
+	MinCPU int `json:"minCPU,omitempty"`
 
-	// MinMemory minimum memory
-	// +optional
-	MinMemory *int `json:"minMemory,omitempty"`
+	// MinMemoryInMB minimum memory in MB
+	MinMemoryInMB int `json:"minMemory,omitempty"`
 
 	// Image will be the MaaS image id
+	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
 }
 
@@ -67,8 +66,8 @@ type MaasMachineStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 
-	// InstanceState is the state of the AWS instance for this machine.
-	MachineState *MachineState `json:"instanceState,omitempty"`
+	// MachineState is the state of this MAAS machine.
+	MachineState *MachineState `json:"machineState,omitempty"`
 
 	// MachinePowered is if the machine is "Powered" on
 	MachinePowered bool `json:"machinePowered,omitempty"`

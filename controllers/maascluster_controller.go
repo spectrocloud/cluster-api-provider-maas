@@ -93,7 +93,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)
 	}
 
-	// Always close the scope when exiting this function so we can persist any AWSCluster changes.
+	// Always close the scope when exiting this function so we can persist any MAAS Cluster changes.
 	defer func() {
 		if err := clusterScope.Close(); err != nil && rerr == nil {
 			rerr = err

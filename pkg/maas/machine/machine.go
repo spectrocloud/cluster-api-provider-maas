@@ -62,8 +62,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1alpha4.Machine, r
 	allocator := s.maasClient.
 		Machines().
 		Allocator().
-		WithCPUCount(*mm.Spec.MinCPU).
-		WithMemory(*mm.Spec.MinMemory)
+		WithCPUCount(mm.Spec.MinCPU).
+		WithMemory(mm.Spec.MinMemoryInMB)
 
 	if failureDomain != nil {
 		allocator.WithZone(*failureDomain)

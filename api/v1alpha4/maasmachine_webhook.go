@@ -32,44 +32,33 @@ func (r *MaasMachine) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-
 //+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachine,mutating=true,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=create;update,versions=v1alpha4,name=mmaasmachine.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
+//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachine,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,versions=v1alpha4,name=vmaasmachine.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
-var _ webhook.Defaulter = &MaasMachine{}
+var (
+	_ webhook.Defaulter = &MaasMachine{}
+	_ webhook.Validator = &MaasMachine{}
+)
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
 func (r *MaasMachine) Default() {
 	maasmachinelog.Info("default", "name", r.Name)
-
-	// TODO(user): fill in your defaulting logic.
 }
-
-// TODO(user): change verbs to "verbs=create;update;delete" if you want to enable deletion validation.
-//+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachine,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,versions=v1alpha4,name=vmaasmachine.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
-
-var _ webhook.Validator = &MaasMachine{}
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasMachine) ValidateCreate() error {
 	maasmachinelog.Info("validate create", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object creation.
 	return nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasMachine) ValidateUpdate(old runtime.Object) error {
 	maasmachinelog.Info("validate update", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object update.
 	return nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasMachine) ValidateDelete() error {
 	maasmachinelog.Info("validate delete", "name", r.Name)
-
-	// TODO(user): fill in your validation logic upon object deletion.
 	return nil
 }

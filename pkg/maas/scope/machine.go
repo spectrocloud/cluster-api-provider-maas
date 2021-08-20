@@ -127,7 +127,7 @@ func (m *MachineScope) Close() error {
 	return m.PatchObject()
 }
 
-// SetAddresses sets the AWSMachine address status.
+// SetAddresses sets the MAAS Machine address status.
 func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
 	m.MaasMachine.Status.Addresses = addrs
 }

@@ -9,7 +9,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// LoadBalancer manages the load balancer for a specific docker cluster.
 type Service struct {
 	scope      *scope.ClusterScope
 	maasClient maasclient.ClientSetInterface
