@@ -17,6 +17,9 @@ limitations under the License.
 package v1alpha4
 
 import (
+	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -54,6 +57,19 @@ func (r *MaasMachineTemplate) ValidateCreate() error {
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
 func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) error {
 	maasmachinetemplatelog.Info("validate update", "name", r.Name)
+	oldM := old.(*MaasMachineTemplate)
+
+	if r.Spec.Template.Spec.Image != oldM.Spec.Template.Spec.Image {
+		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldM.Spec.Template.Spec.Image, r.Spec.Template.Spec.Image))
+	}
+
+	if r.Spec.Template.Spec.MinCPU != oldM.Spec.Template.Spec.MinCPU {
+		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.Template.Spec.MinCPU, r.Spec.Template.Spec.MinCPU))
+	}
+
+	if r.Spec.Template.Spec.MinMemoryInMB != oldM.Spec.Template.Spec.MinMemoryInMB {
+		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, r.Spec.Template.Spec.MinMemoryInMB))
+	}
 	return nil
 }
 
