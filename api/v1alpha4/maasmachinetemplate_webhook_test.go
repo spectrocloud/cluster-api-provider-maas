@@ -22,7 +22,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-
 func TestMaasMachine_ValidateUpdate(t *testing.T) {
 	tests := []struct {
 		name       string

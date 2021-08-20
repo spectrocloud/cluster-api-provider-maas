@@ -44,10 +44,10 @@ func TestMaasCluster_ValidateCreate(t *testing.T) {
 			cluster := &MaasCluster{
 				TypeMeta: metav1.TypeMeta{
 					APIVersion: GroupVersion.String(),
-					Kind:      "MaasCluster",
+					Kind:       "MaasCluster",
 				},
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "test",
+					Name:      "test",
 					Namespace: "default",
 				},
 				Spec: MaasClusterSpec{
@@ -64,7 +64,6 @@ func TestMaasCluster_ValidateCreate(t *testing.T) {
 	}
 }
 
-
 func TestMAASCluster_Update(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -76,13 +75,13 @@ func TestMAASCluster_Update(t *testing.T) {
 			name: "change in dnsDomain should not be allowed",
 			oldCluster: &MaasCluster{
 				Spec: MaasClusterSpec{
-				DNSDomain:            "maas.sc",
-			},
+					DNSDomain: "maas.sc",
+				},
 			},
 			newCluster: &MaasCluster{
 				Spec: MaasClusterSpec{
-				DNSDomain:            "maas.maas",
-			},
+					DNSDomain: "maas.maas",
+				},
 			},
 			wantErr: true,
 		},
