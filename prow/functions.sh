@@ -58,6 +58,7 @@ set_release_vars() {
 
 build_code() {
 	print_step "Building Code"
+	sleep 900
 	make manager
 
 	print_step "Copy binary to artifacts"
