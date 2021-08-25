@@ -96,21 +96,19 @@ func (in *MaasMachineTemplateList) ConvertFrom(srcRaw conversion.Hub) error {
 }
 
 func Convert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in *v1alpha4.MaasMachineSpec, out *MaasMachineSpec, s apiconversion.Scope) error {
-	out.FailureDomain = in.FailureDomain
-	out.SystemID = in.SystemID
-	out.ProviderID = in.ProviderID
-	out.ResourcePool = in.ResourcePool
+	if err := autoConvert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in, out, s); err != nil {
+		return err
+	}
+
 	out.MinCPU = &in.MinCPU
 	out.MinMemory = &in.MinMemoryInMB
-	out.Image = in.Image
 	return nil
 }
 
 func Convert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in *MaasMachineSpec, out *v1alpha4.MaasMachineSpec, s apiconversion.Scope) error {
-	out.FailureDomain = in.FailureDomain
-	out.SystemID = in.SystemID
-	out.ProviderID = in.ProviderID
-	out.ResourcePool = in.ResourcePool
+	if err := autoConvert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in, out, s); err != nil {
+		return err
+	}
 
 	cpu := 4
 	if in.MinCPU != nil {
@@ -123,6 +121,6 @@ func Convert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in *MaasMachin
 		memory = *in.MinMemory
 	}
 	out.MinMemoryInMB = memory
-	out.Image = in.Image
+
 	return nil
 }
