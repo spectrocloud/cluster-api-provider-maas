@@ -100,6 +100,7 @@ endif
 release-manifests: test
 	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
+	$(MAKE) release-templates
 
 .PHONY: release-overrides
 release-overrides:
@@ -165,6 +166,10 @@ clean-release:
 release: release-manifests
 	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+
+.PHONY: release-templates
+release-templates: $(RELEASE_DIR) ## Generate release templates
+	cp templates/cluster-template*.yaml $(RELEASE_DIR)/
 
 version: ## Prints version of current make
 	@echo $(VERSION)
