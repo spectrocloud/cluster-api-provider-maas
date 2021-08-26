@@ -404,7 +404,7 @@ func autoConvert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in *MaasMa
 	out.SystemID = (*string)(unsafe.Pointer(in.SystemID))
 	out.ProviderID = (*string)(unsafe.Pointer(in.ProviderID))
 	out.ResourcePool = (*string)(unsafe.Pointer(in.ResourcePool))
-	// WARNING: in.MinCPU requires manual conversion: inconvertible types (*int vs int)
+	out.MinCPU = (*int)(unsafe.Pointer(in.MinCPU))
 	// WARNING: in.MinMemory requires manual conversion: does not exist in peer-type
 	out.Image = in.Image
 	return nil
@@ -415,7 +415,7 @@ func autoConvert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in *v1alph
 	out.SystemID = (*string)(unsafe.Pointer(in.SystemID))
 	out.ProviderID = (*string)(unsafe.Pointer(in.ProviderID))
 	out.ResourcePool = (*string)(unsafe.Pointer(in.ResourcePool))
-	// WARNING: in.MinCPU requires manual conversion: inconvertible types (int vs *int)
+	out.MinCPU = (*int)(unsafe.Pointer(in.MinCPU))
 	// WARNING: in.MinMemoryInMB requires manual conversion: does not exist in peer-type
 	out.Image = in.Image
 	return nil

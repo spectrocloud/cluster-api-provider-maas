@@ -63,11 +63,11 @@ func (r *MaasMachine) ValidateUpdate(old runtime.Object) error {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine image change is not allowed, old=%s, new=%s", oldM.Spec.Image, r.Spec.Image))
 	}
 
-	if r.Spec.MinCPU != oldM.Spec.MinCPU {
+	if *r.Spec.MinCPU != *oldM.Spec.MinCPU {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.MinCPU, r.Spec.MinCPU))
 	}
 
-	if r.Spec.MinMemoryInMB != oldM.Spec.MinMemoryInMB {
+	if *r.Spec.MinMemoryInMB != *oldM.Spec.MinMemoryInMB {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.MinMemoryInMB, r.Spec.MinMemoryInMB))
 	}
 	return nil

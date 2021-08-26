@@ -19,42 +19,12 @@ package v1alpha3
 import (
 	"testing"
 
-	fuzz "github.com/google/gofuzz"
 	. "github.com/onsi/gomega"
-	"k8s.io/apimachinery/pkg/api/apitesting/fuzzer"
 	"k8s.io/apimachinery/pkg/runtime"
-	runtimeserializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilconversion "sigs.k8s.io/cluster-api/util/conversion"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
-
-func fuzzFuncs(_ runtimeserializer.CodecFactory) []interface{} {
-	return []interface{}{
-		MAASMachineFuzzer,
-		MAASMachineTemplateFuzzer,
-	}
-}
-
-func MAASMachineFuzzer(obj *MaasMachine, c fuzz.Continue) {
-	c.FuzzNoCustom(obj)
-
-	// MAASMachine MinMemory and MinCPU change from optional to mandatory
-	defMem := 8192
-	obj.Spec.MinMemory = &defMem
-	defCPU := 4
-	obj.Spec.MinCPU = &defCPU
-}
-
-func MAASMachineTemplateFuzzer(obj *MaasMachineTemplate, c fuzz.Continue) {
-	c.FuzzNoCustom(obj)
-
-	// MAASMachine MinMemory and MinCPU change from optional to demandatory
-	defMem := 8192
-	obj.Spec.Template.Spec.MinMemory = &defMem
-	defCPU := 4
-	obj.Spec.Template.Spec.MinCPU = &defCPU
-}
 
 func TestFuzzyConversion(t *testing.T) {
 	g := NewWithT(t)
@@ -69,16 +39,14 @@ func TestFuzzyConversion(t *testing.T) {
 	}))
 
 	t.Run("for MaasMachine", utilconversion.FuzzTestFunc(utilconversion.FuzzTestFuncInput{
-		Scheme:      scheme,
-		Hub:         &v1alpha4.MaasMachine{},
-		Spoke:       &MaasMachine{},
-		FuzzerFuncs: []fuzzer.FuzzerFuncs{fuzzFuncs},
+		Scheme: scheme,
+		Hub:    &v1alpha4.MaasMachine{},
+		Spoke:  &MaasMachine{},
 	}))
 
 	t.Run("for MaasMachineTemplate", utilconversion.FuzzTestFunc(utilconversion.FuzzTestFuncInput{
-		Scheme:      scheme,
-		Hub:         &v1alpha4.MaasMachineTemplate{},
-		Spoke:       &MaasMachineTemplate{},
-		FuzzerFuncs: []fuzzer.FuzzerFuncs{fuzzFuncs},
+		Scheme: scheme,
+		Hub:    &v1alpha4.MaasMachineTemplate{},
+		Spoke:  &MaasMachineTemplate{},
 	}))
 }

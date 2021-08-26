@@ -63,11 +63,11 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) error {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldM.Spec.Template.Spec.Image, r.Spec.Template.Spec.Image))
 	}
 
-	if r.Spec.Template.Spec.MinCPU != oldM.Spec.Template.Spec.MinCPU {
+	if *r.Spec.Template.Spec.MinCPU != *oldM.Spec.Template.Spec.MinCPU {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.Template.Spec.MinCPU, r.Spec.Template.Spec.MinCPU))
 	}
 
-	if r.Spec.Template.Spec.MinMemoryInMB != oldM.Spec.Template.Spec.MinMemoryInMB {
+	if *r.Spec.Template.Spec.MinMemoryInMB != *oldM.Spec.Template.Spec.MinMemoryInMB {
 		return apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, r.Spec.Template.Spec.MinMemoryInMB))
 	}
 	return nil

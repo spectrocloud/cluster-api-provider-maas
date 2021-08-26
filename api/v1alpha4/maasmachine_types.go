@@ -49,10 +49,12 @@ type MaasMachineSpec struct {
 	ResourcePool *string `json:"resourcePool,omitempty"`
 
 	// MinCPU minimum number of CPUs
-	MinCPU int `json:"minCPU,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	MinCPU *int `json:"minCPU,omitempty"`
 
 	// MinMemoryInMB minimum memory in MB
-	MinMemoryInMB int `json:"minMemory,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	MinMemoryInMB *int `json:"minMemory,omitempty"`
 
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1

@@ -123,9 +123,11 @@ spec:
                         type: string
                       minCPU:
                         description: MinCPU minimum number of CPUs
+                        minimum: 0
                         type: integer
                       minMemory:
                         description: MinMemoryInMB minimum memory in MB
+                        minimum: 0
                         type: integer
                       providerID:
                         description: ProviderID will be the name in ProviderID format

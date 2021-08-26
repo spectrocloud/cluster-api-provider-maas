@@ -19,6 +19,7 @@ package v1alpha3
 import (
 	apiconversion "k8s.io/apimachinery/pkg/conversion"
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
+	"unsafe"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 )
@@ -99,9 +100,7 @@ func Convert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in *v1alpha4.M
 	if err := autoConvert_v1alpha4_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in, out, s); err != nil {
 		return err
 	}
-
-	out.MinCPU = &in.MinCPU
-	out.MinMemory = &in.MinMemoryInMB
+	out.MinMemory = (*int)(unsafe.Pointer(in.MinMemoryInMB))
 	return nil
 }
 
@@ -109,18 +108,6 @@ func Convert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in *MaasMachin
 	if err := autoConvert_v1alpha3_MaasMachineSpec_To_v1alpha4_MaasMachineSpec(in, out, s); err != nil {
 		return err
 	}
-
-	cpu := 4
-	if in.MinCPU != nil {
-		cpu = *in.MinCPU
-	}
-	out.MinCPU = cpu
-
-	memory := 8192
-	if in.MinMemory != nil {
-		memory = *in.MinMemory
-	}
-	out.MinMemoryInMB = memory
-
+	out.MinMemoryInMB = (*int)(unsafe.Pointer(in.MinMemory))
 	return nil
 }

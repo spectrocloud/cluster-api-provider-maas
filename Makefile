@@ -100,7 +100,7 @@ endif
 release-manifests: test
 	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
-	$(MAKE) release-templates
+	$(MAKE) templates OUTPUT_DIR=$(RELEASE_DIR)
 
 .PHONY: release-overrides
 release-overrides:
@@ -110,6 +110,7 @@ release-overrides:
 dev-manifests:
 	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(IMG)
 	cp metadata.yaml $(DEV_DIR)/metadata.yaml
+	$(MAKE) templates OUTPUT_DIR=$(DEV_DIR)
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(CONTROLLER_GEN) $(MANIFEST_DIR) $(KUSTOMIZE) $(BUILD_DIR) ## Generate manifests e.g. CRD, RBAC etc.
@@ -167,9 +168,9 @@ release: release-manifests
 	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 
-.PHONY: release-templates
-release-templates: $(RELEASE_DIR) ## Generate release templates
-	cp templates/cluster-template*.yaml $(RELEASE_DIR)/
+.PHONY: templates
+templates: ## Generate release templates
+	cp templates/cluster-template*.yaml $(OUTPUT_DIR)/
 
 version: ## Prints version of current make
 	@echo $(VERSION)

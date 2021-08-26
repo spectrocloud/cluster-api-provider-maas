@@ -23,6 +23,11 @@ import (
 )
 
 func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
+	cpuBefore := 10
+	cpuAfter := 11
+	memoryBefore := 100
+	memoryAfter := 101
+
 	tests := []struct {
 		name               string
 		oldMachineTemplate *MaasMachineTemplate
@@ -35,8 +40,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        10,
-							MinMemoryInMB: 100,
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
 							Image:         "ubuntu1804-k8s-1.19",
 						},
 					},
@@ -46,8 +51,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        10,
-							MinMemoryInMB: 110,
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryAfter,
 							Image:         "ubuntu1804-k8s-1.19",
 						},
 					},
@@ -61,8 +66,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        10,
-							MinMemoryInMB: 100,
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
 							Image:         "ubuntu1804-k8s-1.19",
 						},
 					},
@@ -72,8 +77,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        11,
-							MinMemoryInMB: 100,
+							MinCPU:        &cpuAfter,
+							MinMemoryInMB: &memoryAfter,
 							Image:         "ubuntu1804-k8s-1.19",
 						},
 					},
@@ -87,8 +92,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        10,
-							MinMemoryInMB: 100,
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
 							Image:         "ubuntu1804-k8s-1.19",
 						},
 					},
@@ -98,8 +103,8 @@ func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 				Spec: MaasMachineTemplateSpec{
 					Template: MaasMachineTemplateResource{
 						Spec: MaasMachineSpec{
-							MinCPU:        10,
-							MinMemoryInMB: 100,
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
 							Image:         "ubuntu1804-k8s-1.20",
 						},
 					},
