@@ -55,6 +55,12 @@ The images generated inside pod can be accessed from hostpath vol
 
 cd /tmp/mypath or the directory you have configured
 
+next step assumes that you have maas-cli installed on currrent machine. 
+If not first copy the image from current machine to somewhere you have maas cli installed and access to MAAS setup
+```bash
+scp /tmp/mypath/<image-filename> <destination-machine>
+```
+
 use <profile-name> profile which has access to create boot-resources or admin
 ```bash 
 maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
