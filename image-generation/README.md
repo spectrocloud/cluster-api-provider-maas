@@ -40,7 +40,11 @@ remove lines
 https://github.com/spectrocloud/cluster-api-provider-maas/blob/818c818131b69fe35d5637a9e7c6510f82d39f13/image-generation/buildmaasimage.sh#L61-L82
 
 
-## Upload Custom Image to MAAS
+## Upload Custom Image to MAAS using maas cli
+ 
+You must have maas cli installed on your system 
+
+If you don't have maas cli installed refer [here](https://maas.io/docs/snap/3.0/ui/maas-cli)
 
 The images generated inside pod can be accessed from hostpath vol
 ```yaml
@@ -50,8 +54,11 @@ The images generated inside pod can be accessed from hostpath vol
 ```
 
 cd /tmp/mypath or the directory you have configured
-maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
 
+use <profile-name> profile which has access to create boot-resources or admin
+```bash 
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+```
 
 ## spectrocloud public images 
 | kubernetes Version | URL                                                                        |
