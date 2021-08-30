@@ -141,6 +141,8 @@ spec:
                         type: string
                     required:
                     - image
+                    - minCPU
+                    - minMemory
                     type: object
                 required:
                 - spec

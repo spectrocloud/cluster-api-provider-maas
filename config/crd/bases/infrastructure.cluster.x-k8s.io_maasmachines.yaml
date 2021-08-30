@@ -213,6 +213,8 @@ spec:
                 type: string
             required:
             - image
+            - minCPU
+            - minMemory
             type: object
           status:
             description: MaasMachineStatus defines the observed state of MaasMachine
