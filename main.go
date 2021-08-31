@@ -19,31 +19,30 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 	"math/rand"
 	"os"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"time"
 
-	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
-
 	"github.com/spf13/pflag"
-
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/scheme"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog"
 	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	// +kubebuilder:scaffold:imports
 )
 
 var (
-	myscheme = runtime.NewScheme()
+	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 
 	//flags
@@ -59,9 +58,10 @@ var (
 func init() {
 	klog.InitFlags(nil)
 
-	_ = scheme.AddToScheme(myscheme)
-	_ = infrav1.AddToScheme(myscheme)
-	_ = clusterv1.AddToScheme(myscheme)
+	_ = clientgoscheme.AddToScheme(scheme)
+	_ = infrav1alpha3.AddToScheme(scheme)
+	_ = clusterv1.AddToScheme(scheme)
+	_ = infrav1alpha4.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -79,7 +79,7 @@ func main() {
 	ctrl.SetLogger(klogr.New())
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 myscheme,
+		Scheme:                 scheme,
 		MetricsBindAddress:     metricsBindAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "controller-leader-election-capmaas",
@@ -98,9 +98,75 @@ func main() {
 	//ctx := ctrl.SetupSignalHandler()
 	ctx := context.Background()
 
-	setupChecks(mgr)
-	setupReconcilers(ctx, mgr)
-	setupWebhooks(mgr)
+	if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to create ready check")
+		os.Exit(1)
+	}
+
+	if err := mgr.AddHealthzCheck("ping", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to create health check")
+		os.Exit(1)
+	}
+
+	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
+	// requiring a connection to a remote cluster
+	tracker, err := remote.NewClusterCacheTracker(
+		mgr,
+		remote.ClusterCacheTrackerOptions{
+			Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheTracker"),
+			Indexes: remote.DefaultIndexes,
+		},
+	)
+	if err != nil {
+		setupLog.Error(err, "unable to create cluster cache tracker")
+		os.Exit(1)
+	}
+	if err := (&remote.ClusterCacheReconciler{
+		Client:  mgr.GetClient(),
+		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
+		Tracker: tracker,
+	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
+		os.Exit(1)
+	}
+
+	if err := (&controllers.MaasMachineReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
+		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
+		Tracker:  tracker,
+	}).SetupWithManager(ctx, mgr, concurrency(machineConcurrency)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
+		os.Exit(1)
+	}
+
+	if err := (&controllers.MaasClusterReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
+		Tracker:  tracker,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
+		os.Exit(1)
+	}
+
+	if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
+		os.Exit(1)
+	}
+	if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
+		os.Exit(1)
+	}
+	if err := (&infrav1alpha4.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasCluster")
+		os.Exit(1)
+	}
+	if err := (&infrav1alpha4.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
 	// v1alpha4 change to "ctx"
@@ -129,80 +195,6 @@ func initFlags(fs *pflag.FlagSet) {
 	)
 
 	feature.MutableGates.AddFlag(fs)
-}
-
-func setupChecks(mgr ctrl.Manager) {
-	if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to create ready check")
-		os.Exit(1)
-	}
-
-	if err := mgr.AddHealthzCheck("ping", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to create health check")
-		os.Exit(1)
-	}
-}
-
-func setupReconcilers(ctx context.Context, mgr ctrl.Manager) {
-	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
-	// requiring a connection to a remote cluster
-	tracker, err := remote.NewClusterCacheTracker(
-		ctrl.Log.WithName("remote").WithName("ClusterCacheTracker"),
-		mgr,
-	)
-	if err != nil {
-		setupLog.Error(err, "unable to create cluster cache tracker")
-		os.Exit(1)
-	}
-	if err := (&remote.ClusterCacheReconciler{
-		Client:  mgr.GetClient(),
-		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
-		Tracker: tracker,
-	}).SetupWithManager(mgr, concurrency(1)); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
-		os.Exit(1)
-	}
-
-	if err := (&controllers.MaasMachineReconciler{
-		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
-		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
-		Tracker:  tracker,
-	}).SetupWithManager(ctx, mgr, concurrency(machineConcurrency)); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
-		os.Exit(1)
-	}
-
-	if err := (&controllers.MaasClusterReconciler{
-		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
-		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
-		Tracker:  tracker,
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
-		os.Exit(1)
-	}
-
-	// +kubebuilder:scaffold:builder
-
-	//if feature.Gates.Enabled(feature.MachinePool) {
-	//	if err := (&expcontrollers.MaasMachinePoolReconciler{
-	//		Client: mgr.GetClient(),
-	//		Log:    ctrl.Log.WithName("controllers").WithName("MaasMachinePool"),
-	//	}).SetupWithManager(mgr, controller.Options{
-	//		MaxConcurrentReconciles: concurrency,
-	//	}); err != nil {
-	//		setupLog.Error(err, "unable to create controller", "controller", "MaasMachinePool")
-	//		os.Exit(1)
-	//	}
-	//}
-}
-
-func setupWebhooks(_ ctrl.Manager) {
-	//if err := (&infrav1.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
-	//	os.Exit(1)
-	//}
 }
 
 func concurrency(c int) controller.Options {

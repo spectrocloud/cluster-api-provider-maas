@@ -27,7 +27,6 @@ type MaasMachineTemplateSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=maasmachinetemplates,scope=Namespaced,categories=cluster-api
-// +kubebuilder:storageversion
 
 // MaasMachineTemplate is the Schema for the maasmachinetemplates API
 type MaasMachineTemplate struct {

@@ -1,3 +1,19 @@
+/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package scope
 
 import (
@@ -5,12 +21,12 @@ import (
 	"fmt"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/klogr"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/controllers/noderefutil"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
@@ -27,7 +43,7 @@ type MachineScopeParams struct {
 	Cluster        *clusterv1.Cluster
 	ClusterScope   *ClusterScope
 	Machine        *clusterv1.Machine
-	MaasMachine    *infrav1.MaasMachine
+	MaasMachine    *infrav1alpha4.MaasMachine
 	ControllerName string
 
 	Tracker *remote.ClusterCacheTracker
@@ -43,7 +59,7 @@ type MachineScope struct {
 	ClusterScope *ClusterScope
 
 	Machine     *clusterv1.Machine
-	MaasMachine *infrav1.MaasMachine
+	MaasMachine *infrav1alpha4.MaasMachine
 
 	controllerName string
 	tracker        *remote.ClusterCacheTracker
@@ -82,11 +98,11 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 func (m *MachineScope) PatchObject() error {
 
 	applicableConditions := []clusterv1.ConditionType{
-		infrav1.MachineDeployedCondition,
+		infrav1alpha4.MachineDeployedCondition,
 	}
 
 	if m.IsControlPlane() {
-		applicableConditions = append(applicableConditions, infrav1.DNSAttachedCondition)
+		applicableConditions = append(applicableConditions, infrav1alpha4.DNSAttachedCondition)
 	}
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
@@ -101,7 +117,7 @@ func (m *MachineScope) PatchObject() error {
 		m.MaasMachine,
 		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
 			clusterv1.ReadyCondition,
-			infrav1.MachineDeployedCondition,
+			infrav1alpha4.MachineDeployedCondition,
 		}},
 	)
 }
@@ -111,7 +127,7 @@ func (m *MachineScope) Close() error {
 	return m.PatchObject()
 }
 
-// SetAddresses sets the AWSMachine address status.
+// SetAddresses sets the MAAS Machine address status.
 func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
 	m.MaasMachine.Status.Addresses = addrs
 }
@@ -188,12 +204,12 @@ func (m *MachineScope) SetSystemID(systemID string) {
 }
 
 // GetMachineState returns the MaasMachine instance state from the status.
-func (m *MachineScope) GetMachineState() *infrav1.MachineState {
+func (m *MachineScope) GetMachineState() *infrav1alpha4.MachineState {
 	return m.MaasMachine.Status.MachineState
 }
 
 // SetMachineState sets the MaasMachine status instance state.
-func (m *MachineScope) SetMachineState(v infrav1.MachineState) {
+func (m *MachineScope) SetMachineState(v infrav1alpha4.MachineState) {
 	m.MaasMachine.Status.MachineState = &v
 }
 func (m *MachineScope) SetPowered(powered bool) {
@@ -215,17 +231,17 @@ func (m *MachineScope) SetMachineHostname(hostname string) {
 
 func (m *MachineScope) MachineIsRunning() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1.MachineRunningStates.Has(string(*state))
+	return state != nil && infrav1alpha4.MachineRunningStates.Has(string(*state))
 }
 
 func (m *MachineScope) MachineIsOperational() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1.MachineOperationalStates.Has(string(*state))
+	return state != nil && infrav1alpha4.MachineOperationalStates.Has(string(*state))
 }
 
 func (m *MachineScope) MachineIsInKnownState() bool {
 	state := m.GetMachineState()
-	return state != nil && infrav1.MachineKnownStates.Has(string(*state))
+	return state != nil && infrav1alpha4.MachineKnownStates.Has(string(*state))
 }
 
 // GetRawBootstrapData returns the bootstrap data from the secret in the Machine's bootstrap.dataSecretName.

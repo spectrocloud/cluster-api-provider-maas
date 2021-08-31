@@ -3,22 +3,24 @@ package machine
 import (
 	"context"
 	"errors"
+	"net"
+	"testing"
+
 	"github.com/golang/mock/gomock"
 	. "github.com/onsi/gomega"
-	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
-	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/klogr"
 	"k8s.io/utils/pointer"
-	"net"
-	"sigs.k8s.io/cluster-api/api/v1alpha3"
-	"testing"
+	"sigs.k8s.io/cluster-api/api/v1alpha4"
+
+	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 func TestMachine(t *testing.T) {
 	log := klogr.New()
-	cluster := &v1alpha3.Cluster{
+	cluster := &v1alpha4.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "a",
 		},
@@ -26,17 +28,17 @@ func TestMachine(t *testing.T) {
 
 	intPlaceholder := 400
 
-	maasMachine := &infrav1.MaasMachine{
+	maasMachine := &infrav1alpha4.MaasMachine{
 		TypeMeta:   v1.TypeMeta{},
 		ObjectMeta: v1.ObjectMeta{},
-		Spec: infrav1.MaasMachineSpec{
+		Spec: infrav1alpha4.MaasMachineSpec{
 			FailureDomain: pointer.String("zone1"),
 			ResourcePool:  pointer.String("rp1"),
 			MinCPU:        &intPlaceholder,
-			MinMemory:     &intPlaceholder,
+			MinMemoryInMB: &intPlaceholder,
 			Image:         "custom-image",
 		},
-		Status: infrav1.MaasMachineStatus{},
+		Status: infrav1alpha4.MaasMachineStatus{},
 	}
 
 	t.Run("get machine with fqdn", func(t *testing.T) {
@@ -78,11 +80,11 @@ func TestMachine(t *testing.T) {
 		g.Expect(machine.Powered).To(BeTrue())
 		g.Expect(machine.State).To(BeEquivalentTo("Deployed"))
 		g.Expect(machine.AvailabilityZone).To(BeEquivalentTo("zone1"))
-		g.Expect(machine.Addresses).To(ContainElements(v1alpha3.MachineAddress{
-			Type:    v1alpha3.MachineExternalDNS,
+		g.Expect(machine.Addresses).To(ContainElements(v1alpha4.MachineAddress{
+			Type:    v1alpha4.MachineExternalDNS,
 			Address: "abc123.domain.local",
-		}, v1alpha3.MachineAddress{
-			Type:    v1alpha3.MachineExternalIP,
+		}, v1alpha4.MachineAddress{
+			Type:    v1alpha4.MachineExternalIP,
 			Address: "1.2.3.4",
 		}))
 	})
@@ -173,11 +175,11 @@ func TestMachine(t *testing.T) {
 		g.Expect(machine.Powered).To(BeTrue())
 		g.Expect(machine.State).To(BeEquivalentTo("Deployed"))
 		g.Expect(machine.AvailabilityZone).To(BeEquivalentTo("zone1"))
-		g.Expect(machine.Addresses).To(ContainElements(v1alpha3.MachineAddress{
-			Type:    v1alpha3.MachineExternalDNS,
+		g.Expect(machine.Addresses).To(ContainElements(v1alpha4.MachineAddress{
+			Type:    v1alpha4.MachineExternalDNS,
 			Address: "abc123.domain.local",
-		}, v1alpha3.MachineAddress{
-			Type:    v1alpha3.MachineExternalIP,
+		}, v1alpha4.MachineAddress{
+			Type:    v1alpha4.MachineExternalIP,
 			Address: "1.2.3.4",
 		}))
 	})

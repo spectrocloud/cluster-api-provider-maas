@@ -83,7 +83,6 @@ func (in APIEndpoint) IsZero() bool {
 
 // +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
 // +kubebuilder:subresource:status
-// +kubebuilder:storageversion
 // +kubebuilder:object:root=true
 
 // MaasCluster is the Schema for the maasclusters API

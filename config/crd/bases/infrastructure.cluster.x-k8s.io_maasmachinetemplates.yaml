@@ -66,7 +66,7 @@ spec:
                           (maas://<zone>/system_id)
                         type: string
                       resourcePool:
-                        description: ResourcePool will be the MaaS machine ID
+                        description: ResourcePool will be the MAAS Machine resourcepool
                         type: string
                       systemID:
                         description: SystemID will be the MaaS machine ID
@@ -82,7 +82,79 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+  - name: v1alpha4
+    schema:
+      openAPIV3Schema:
+        description: MaasMachineTemplate is the Schema for the maasmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
+            properties:
+              template:
+                description: MaasMachineTemplateResource describes the data needed
+                  to create a MaasMachine from a template
+                properties:
+                  spec:
+                    description: Spec is the specification of the desired behavior
+                      of the machine.
+                    properties:
+                      failureDomain:
+                        description: FailureDomain is the failure domain the machine
+                          will be created in. Must match a key in the FailureDomains
+                          map stored on the cluster object.
+                        type: string
+                      image:
+                        description: Image will be the MaaS image id
+                        minLength: 1
+                        type: string
+                      minCPU:
+                        description: MinCPU minimum number of CPUs
+                        minimum: 0
+                        type: integer
+                      minMemory:
+                        description: MinMemoryInMB minimum memory in MB
+                        minimum: 0
+                        type: integer
+                      providerID:
+                        description: ProviderID will be the name in ProviderID format
+                          (maas://<zone>/system_id)
+                        type: string
+                      resourcePool:
+                        description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      systemID:
+                        description: SystemID will be the MaaS machine ID
+                        type: string
+                    required:
+                    - image
+                    - minCPU
+                    - minMemory
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
     storage: true
+    subresources:
+      status: {}
 status:
   acceptedNames:
     kind: ""

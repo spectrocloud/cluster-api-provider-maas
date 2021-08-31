@@ -1,0 +1,7 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+kind: MaasMachine
+metadata:
+  name: maasmachine-sample
+spec:
+  # Add fields here
+  foo: bar
