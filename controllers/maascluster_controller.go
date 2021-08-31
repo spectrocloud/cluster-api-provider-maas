@@ -19,9 +19,10 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
+
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -30,18 +31,18 @@ import (
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"time"
-
-	"github.com/go-logr/logr"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -122,10 +123,21 @@ func (r *MaasClusterReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result, rerr
 	return r.reconcileNormal(ctx, clusterScope)
 }
 
-func (r *MaasClusterReconciler) reconcileDelete(_ context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	clusterScope.Info("Reconciling MaasCluster delete")
 
 	maasCluster := clusterScope.MaasCluster
+
+	maasMachines, err := infrautil.GetMAASMachinesInCluster(ctx, r.Client, clusterScope.Cluster.Namespace, clusterScope.Cluster.Name)
+	if err != nil {
+		return reconcile.Result{}, errors.Wrapf(err,
+			"unable to list MAASMachines part of MAASCluster %s/%s", clusterScope.Cluster.Namespace, clusterScope.Cluster.Name)
+	}
+
+	if len(maasMachines) > 0 {
+		r.Log.Info("Waiting for MAASMachines to be deleted", "count", len(maasMachines))
+		return reconcile.Result{RequeueAfter: 10 * time.Second}, nil
+	}
 
 	// Cluster is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(maasCluster, infrav1.ClusterFinalizer)
