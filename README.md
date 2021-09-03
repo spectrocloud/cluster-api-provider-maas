@@ -22,10 +22,28 @@ spectrocloud public images
 Refer [image-generation/](image-generation/README.md)
 
 ## Set up
+
+### v1alph4
+create kind cluster
+
+```bash
+kind create cluster
+```
+
+install clusterctl v4
+https://cluster-api.sigs.k8s.io/user/quick-start.html
+
+run
+```bash
+clusterctl init --infrastructure maas:v0.2.0
+```
+
+
+### v1alpha3
     
 create kind cluster
     
-```bash
+```shell
 kind create cluster
 ```
 
@@ -33,40 +51,72 @@ install clusterctl v3
     https://release-0-3.cluster-api.sigs.k8s.io/user/quick-start.html
 
 run
+```shell
+clusterctl init --infrastructure maas:v0.1.1
 ```
-clusterctl init --core cluster-api:v0.3.22 --bootstrap  kubeadm:v0.3.22 --control-plane  kubeadm:v0.3.22
+
+
+### Developer Guide
+create kind cluster
+
+```shell
+kind create cluster
 ```
+
+install clusterctl v3/v4 depending on the version you are working with
 
 Makefile set IMG=<your docker repo>
 run 
-```
+```shell
 make docker-build && make docker-push
 ```
     
 generate dev manifests
-```
+```shell
 make dev-manifests
 ```
 
-edit _build/dev/infrastructure-components.yaml
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  labels:
-    cluster.x-k8s.io/provider: infrastructure-maas
-  name: capmaas-manager-bootstrap-credentials
-  namespace: capmaas-system
-stringData:
-  MAAS_API_KEY: _ #${MAAS_API_KEY}
-  MAAS_ENDPOINT: _ #${MAAS_ENDPOINT}
-type: Opaque
+move 
+    _build/dev/
+
+directory contents to ~/.clusterapi/overrides v0.1.0 or v0.2.0 depedning on version you are working with
+
+```text
+.
+├── clusterctl.yaml
+├── overrides
+│   ├── infrastructure-maas
+│   │   ├── v0.1.1
+│   │   │   ├── cluster-template.yaml
+│   │   │   ├── infrastructure-components.yaml
+│   │   │   └── metadata.yaml
+│   │   └── v0.2.0
+│   │       ├── cluster-template.yaml
+│   │       ├── infrastructure-components.yaml
+│   │       └── metadata.yaml
+└── version.yaml
+
 ```
+
 
 run
 ```shell
-kubectl apply -f _build/dev/infrastructure-components.yaml
+clusterctl init --infrastructure maas:v0.1.1
+or 
+clusterctl init --infrastructure maas:v0.2.0
 ```
 
-wait for capi and capmaas pods to be running
 
+## install CRDs 
+
+### v1alpha3 v0.1.1 release
+run example from for v1alpha3 or v0.1.0 release
+```shell
+kubectl apply -f examples/sample-with-workerpool.yaml
+```
+
+### v1alpah4 v0.2.0 release
+generate cluster using
+```shell
+clusterctl generate cluster t-cluster  --infrastructure=maas:v0.2.0
+```

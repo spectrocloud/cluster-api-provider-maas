@@ -173,6 +173,7 @@ create_release_manifest() {
 
 	gsutil cp -r _build/release/infrastructure-component.yaml  ${VERSION_DIR}/
 	gsutil cp -r _build/release/metadata.yaml  ${VERSION_DIR}/
+	gsutil cp -r _build/release/cluster-template.yaml  ${VERSION_DIR}/
 	gsutil cp    ${MARKER_FILE}   ${VERSION_DIR}/
 
 }
