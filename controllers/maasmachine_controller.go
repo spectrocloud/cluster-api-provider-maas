@@ -42,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
+	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
@@ -198,6 +199,10 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	// Machine is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(maasMachine, infrav1alpha4.MachineFinalizer)
+
+	// v1alpah3 MAASMachine finalizer
+	// Machine is deleted so remove the finalizer.
+	controllerutil.RemoveFinalizer(maasMachine, infrav1alpha3.MachineFinalizer)
 
 	return reconcile.Result{}, nil
 }
