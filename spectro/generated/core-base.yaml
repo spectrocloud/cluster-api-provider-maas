@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-controller-manager
+  namespace: cluster-api-provider-maas-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: capmaas-controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: capmaas-controller-manager
+    spec:
+      containers:
+      - args:
+        - --leader-elect
+        command:
+        - /manager
+        env:
+        - name: MAAS_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              key: MAAS_ENDPOINT
+              name: capmaas-manager-bootstrap-credentials
+        - name: MAAS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: MAAS_API_KEY
+              name: capmaas-manager-bootstrap-credentials
+        image: gcr.io/spectro-images-public/release/cluster-api-provider-maas:latest
+        imagePullPolicy: IfNotPresent
+        name: manager
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 200m
+            memory: 20Mi
+      terminationGracePeriodSeconds: 10
