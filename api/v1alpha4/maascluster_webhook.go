@@ -18,6 +18,7 @@ package v1alpha4
 
 import (
 	"fmt"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -58,7 +59,7 @@ func (r *MaasCluster) ValidateUpdate(old runtime.Object) error {
 	maasclusterlog.Info("validate update", "name", r.Name)
 	oldC, ok := old.(*MaasCluster)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("expected an AWSCluster but got a %T", old))
+		return apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", old))
 	}
 
 	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
