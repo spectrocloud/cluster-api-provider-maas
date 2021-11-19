@@ -30,8 +30,8 @@ create kind cluster
 kind create cluster
 ```
 
-install clusterctl v4
-https://cluster-api.sigs.k8s.io/user/quick-start.html
+install clusterctl v1alpha4
+https://release-0-4.cluster-api.sigs.k8s.io/user/quick-start.html
 
 run
 ```bash
@@ -47,7 +47,7 @@ create kind cluster
 kind create cluster
 ```
 
-install clusterctl v3
+install clusterctl v1alpha3
     https://release-0-3.cluster-api.sigs.k8s.io/user/quick-start.html
 
 run
