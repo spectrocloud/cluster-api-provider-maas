@@ -16,6 +16,15 @@ spectrocloud public images
 | 1.20.9             | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.20.9.tar.gz  |
 | 1.21.2             | https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.21.2.tar.gz  |
 
+next step assumes that you have maas-cli installed on currrent machine.
+```bash
+curl https://maas-images-public.s3.amazonaws.com/ubuntu-1804-k8s-1.21.2.tar.gz -o ubuntu-1804-k8s-1.21.2.tar.gz
+```
+
+use <profile-name> profile which has access to create boot-resources or admin
+```bash 
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+```
 
 
 ## Custom Image Generation
