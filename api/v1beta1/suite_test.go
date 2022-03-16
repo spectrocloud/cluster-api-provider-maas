@@ -47,8 +47,8 @@ func TestAPIs(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	setup()
+	defer teardown()
 	code := m.Run()
-	teardown()
 	os.Exit(code)
 }
 

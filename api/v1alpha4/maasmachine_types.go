@@ -97,9 +97,9 @@ type MaasMachineStatus struct {
 	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
+// +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:storageversion
 
 // MaasMachine is the Schema for the maasmachines API
 type MaasMachine struct {

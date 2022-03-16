@@ -84,6 +84,7 @@ func (in APIEndpoint) IsZero() bool {
 	return in.Host == "" && in.Port == 0
 }
 
+// +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:storageversion

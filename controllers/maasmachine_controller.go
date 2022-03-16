@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -42,7 +43,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
+	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
@@ -55,12 +56,13 @@ var ErrRequeueDNS = errors.New("need to requeue DNS")
 type MaasMachineReconciler struct {
 	client.Client
 	Log      logr.Logger
+	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
 	Tracker  *remote.ClusterCacheTracker
 }
 
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;machines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
@@ -200,9 +202,9 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	// Machine is deleted so remove the finalizer.
 	controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
 
-	// v1alpah3 MAASMachine finalizer
-	// Machine is deleted so remove the finalizer.
-	controllerutil.RemoveFinalizer(maasMachine, infrav1alpha3.MachineFinalizer)
+	//// v1alpah3 MAASMachine finalizer
+	//// Machine is deleted so remove the finalizer.
+	//controllerutil.RemoveFinalizer(maasMachine, infrav1alpha3.MachineFinalizer)
 
 	return reconcile.Result{}, nil
 }

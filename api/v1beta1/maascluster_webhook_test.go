@@ -91,16 +91,13 @@ func TestMAASCluster_Update(t *testing.T) {
 		ctx := context.TODO()
 		t.Run(tt.name, func(t *testing.T) {
 			cluster := tt.oldCluster.DeepCopy()
-			//cluster.ObjectMeta = metav1.ObjectMeta{
-			//	GenerateName: "cluster-",
-			//	Namespace:    "default",
-			//}
-			cluster.ObjectMeta.GenerateName = "cluster-"
-			cluster.ObjectMeta.Namespace = "default"
+			cluster.ObjectMeta = metav1.ObjectMeta{
+				GenerateName: "cluster-",
+				Namespace:    "default",
+			}
 			if err := testEnv.Create(ctx, cluster); err != nil {
 				t.Errorf("failed to create cluster: %v", err)
 			}
-			cluster.ObjectMeta.Annotations = tt.newCluster.Annotations
 			cluster.Spec = tt.newCluster.Spec
 			if err := testEnv.Update(ctx, cluster); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateUpdate() error = %v, wantErr %v", err, tt.wantErr)

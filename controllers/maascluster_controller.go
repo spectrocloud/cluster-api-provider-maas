@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -49,13 +50,14 @@ import (
 type MaasClusterReconciler struct {
 	client.Client
 	Log                 logr.Logger
+	Scheme              *runtime.Scheme
 	Recorder            record.EventRecorder
 	GenericEventChannel chan event.GenericEvent
 	Tracker             *remote.ClusterCacheTracker
 }
 
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec

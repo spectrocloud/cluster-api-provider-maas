@@ -17,73 +17,96 @@ package v1beta1
 
 import (
 	"context"
-	"testing"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"testing"
 )
 
-func TestMaasMachine_ValidateUpdate(t *testing.T) {
+func TestMaasMachineTemplate_ValidateUpdate(t *testing.T) {
 	cpuBefore := 10
 	cpuAfter := 11
 	memoryBefore := 100
 	memoryAfter := 101
 
 	tests := []struct {
-		name       string
-		oldMachine *MaasMachine
-		newMachine *MaasMachine
-		wantErr    bool
+		name               string
+		oldMachineTemplate *MaasMachineTemplate
+		newMachineTemplate *MaasMachineTemplate
+		wantErr            bool
 	}{
 		{
 			name: "change in min memory, cpu or image should not be allowed",
-			oldMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuBefore,
-					MinMemoryInMB: &memoryBefore,
-					Image:         "ubuntu1804-k8s-1.19",
+			oldMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
+							Image:         "ubuntu1804-k8s-1.19",
+						},
+					},
 				},
 			},
-			newMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuBefore,
-					MinMemoryInMB: &memoryAfter,
-					Image:         "ubuntu1804-k8s-1.19",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "change in min memory, cpu or image should not be allowed",
-			oldMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuBefore,
-					MinMemoryInMB: &memoryBefore,
-					Image:         "ubuntu1804-k8s-1.19",
-				},
-			},
-			newMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuAfter,
-					MinMemoryInMB: &memoryBefore,
-					Image:         "ubuntu1804-k8s-1.19",
+			newMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryAfter,
+							Image:         "ubuntu1804-k8s-1.19",
+						},
+					},
 				},
 			},
 			wantErr: true,
 		},
 		{
 			name: "change in min memory, cpu or image should not be allowed",
-			oldMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuBefore,
-					MinMemoryInMB: &memoryBefore,
-					Image:         "ubuntu1804-k8s-1.19",
+			oldMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
+							Image:         "ubuntu1804-k8s-1.19",
+						},
+					},
 				},
 			},
-			newMachine: &MaasMachine{
-				Spec: MaasMachineSpec{
-					MinCPU:        &cpuBefore,
-					MinMemoryInMB: &memoryBefore,
-					Image:         "ubuntu1804-k8s-1.20",
+			newMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuAfter,
+							MinMemoryInMB: &memoryAfter,
+							Image:         "ubuntu1804-k8s-1.19",
+						},
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "change in min memory, cpu or image should not be allowed",
+			oldMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
+							Image:         "ubuntu1804-k8s-1.19",
+						},
+					},
+				},
+			},
+			newMachineTemplate: &MaasMachineTemplate{
+				Spec: MaasMachineTemplateSpec{
+					Template: MaasMachineTemplateResource{
+						Spec: MaasMachineSpec{
+							MinCPU:        &cpuBefore,
+							MinMemoryInMB: &memoryBefore,
+							Image:         "ubuntu1804-k8s-1.20",
+						},
+					},
 				},
 			},
 			wantErr: true,
@@ -92,16 +115,16 @@ func TestMaasMachine_ValidateUpdate(t *testing.T) {
 	for _, tt := range tests {
 		ctx := context.TODO()
 		t.Run(tt.name, func(t *testing.T) {
-			machine := tt.oldMachine.DeepCopy()
-			machine.ObjectMeta = metav1.ObjectMeta{
-				GenerateName: "machine-",
+			machineTemplate := tt.oldMachineTemplate.DeepCopy()
+			machineTemplate.ObjectMeta = metav1.ObjectMeta{
+				GenerateName: "machine-template-",
 				Namespace:    "default",
 			}
-			if err := testEnv.Create(ctx, machine); err != nil {
-				t.Errorf("failed to create machine: %v", err)
+			if err := testEnv.Create(ctx, machineTemplate); err != nil {
+				t.Errorf("failed to create machine template: %v", err)
 			}
-			machine.Spec = tt.newMachine.Spec
-			if err := testEnv.Update(ctx, machine); (err != nil) != tt.wantErr {
+			machineTemplate.Spec = tt.newMachineTemplate.Spec
+			if err := testEnv.Update(ctx, machineTemplate); (err != nil) != tt.wantErr {
 				t.Errorf("ValidateUpdate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

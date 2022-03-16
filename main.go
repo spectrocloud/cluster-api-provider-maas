@@ -19,10 +19,11 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/go-logr/logr"
 	"math/rand"
 	"os"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
@@ -159,22 +160,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	//if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
-	//	os.Exit(1)
-	//}
-	//if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
-	//	os.Exit(1)
-	//}
-	//if err := (&infrav1alpha4.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasCluster")
-	//	os.Exit(1)
-	//}
-	//if err := (&infrav1alpha4.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-	//	setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
-	//	os.Exit(1)
-	//}
 	if err = (&infrav1beta1.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MaasCluster")
 		os.Exit(1)

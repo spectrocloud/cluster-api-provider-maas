@@ -31,7 +31,7 @@ type MaasMachineTemplateResource struct {
 	Spec MaasMachineSpec `json:"spec"`
 }
 
-// +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api
+// +kubebuilder:resource:path=maasmachinetemplates,scope=Namespaced,categories=cluster-api
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 
