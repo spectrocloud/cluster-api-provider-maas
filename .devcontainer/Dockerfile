@@ -7,7 +7,21 @@ FROM mcr.microsoft.com/vscode/devcontainers/go:0-${VARIANT}
 # [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
 ARG NODE_VERSION="none"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
-COPY initialize.sh /home/vscode/initialize.sh
+
+RUN curl -L -o /usr/local/bin/kind https://kind.sigs.k8s.io/dl/v0.12.0/kind-linux-amd64 && chmod 0755 /usr/local/bin/kind
+RUN curl -L -o /usr/local/bin/clusterctl https://github.com/kubernetes-sigs/cluster-api/releases/download/v0.4.7/clusterctl-linux-amd64 && chmod 0755 /usr/local/bin/clusterctl
+
+RUN curl -L https://github.com/derailed/k9s/releases/download/v0.25.18/k9s_Linux_x86_64.tar.gz -o - | \
+    tar -C /usr/local/bin -xz k9s && \
+    chmod 0755 /usr/local/bin/k9s
+
+# RUN curl -sS https://webinstall.dev/k9s | bash
+
+# RUN docker pull docker pull kindest/node:v1.23.4
+
+# RUN pwd
+# COPY initialize.sh /home/vscode/initialize.sh
+# COPY kind-cluster-with-extramounts.yaml /home/vscode/
 
 # [Optional] Uncomment this section to install additional OS packages.
 # RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
