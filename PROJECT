@@ -19,4 +19,13 @@ resources:
 - group: infrastructure
   kind: MaasMachineTemplate
   version: v1alpha4
+- group: infrastructure
+  kind: MaasCluster
+  version: v1beta1
+- group: infrastructure
+  kind: MaasMachine
+  version: v1beta1
+- group: infrastructure
+  kind: MaasMachineTemplate
+  version: v1beta1
 version: "2"

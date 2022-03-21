@@ -18,8 +18,8 @@ package util
 
 import (
 	"context"
-	"github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -27,10 +27,10 @@ import (
 func GetMAASMachinesInCluster(
 	ctx context.Context,
 	controllerClient client.Client,
-	namespace, clusterName string) ([]*v1alpha4.MaasMachine, error) {
+	namespace, clusterName string) ([]*v1beta1.MaasMachine, error) {
 
 	labels := map[string]string{clusterv1.ClusterLabelName: clusterName}
-	machineList := &v1alpha4.MaasMachineList{}
+	machineList := &v1beta1.MaasMachineList{}
 
 	if err := controllerClient.List(
 		ctx, machineList,
@@ -39,7 +39,7 @@ func GetMAASMachinesInCluster(
 		return nil, err
 	}
 
-	machines := make([]*v1alpha4.MaasMachine, len(machineList.Items))
+	machines := make([]*v1beta1.MaasMachine, len(machineList.Items))
 	for i := range machineList.Items {
 		machines[i] = &machineList.Items[i]
 	}

@@ -1,5 +1,5 @@
 # Creates a cluster with one control-plane node and one worker node
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
   name: "${CLUSTER_NAME}"
@@ -7,7 +7,7 @@ spec:
   dnsDomain: ${MAAS_DNS_DOMAIN}
 
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: "${CLUSTER_NAME}"
@@ -19,16 +19,16 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
     name: "${CLUSTER_NAME}-control-plane"
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
     name: "${CLUSTER_NAME}"
 
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
@@ -39,7 +39,7 @@ spec:
       minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
       image: ${CONTROL_PLANE_MACHINE_IMAGE}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha4
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
   name: "${CLUSTER_NAME}-control-plane"
@@ -48,7 +48,7 @@ spec:
   version: "${KUBERNETES_VERSION}"
   machineTemplate:
     infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: MaasMachineTemplate
       name: "${CLUSTER_NAME}-control-plane"
   kubeadmConfigSpec:
@@ -104,7 +104,7 @@ spec:
     useExperimentalRetryJoin: true
 ---
 status:
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
   name: "${CLUSTER_NAME}-md-0"
@@ -115,7 +115,7 @@ spec:
       minMemory: ${WORKER_MACHINE_MINMEMORY}
       image: ${WORKER_MACHINE_IMAGE}
 ---
-apiVersion: cluster.x-k8s.io/v1alpha4
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   name: "${CLUSTER_NAME}-md-0"
@@ -131,15 +131,15 @@ spec:
       version: "${KUBERNETES_VERSION}"
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
           kind: KubeadmConfigTemplate
           name: "${CLUSTER_NAME}-md-0"
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha4
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: MaasMachineTemplate
         name: "${CLUSTER_NAME}-md-0"
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha4
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
   name: "${CLUSTER_NAME}-md-0"
