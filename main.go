@@ -23,8 +23,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-logr/logr"
-
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
@@ -116,8 +114,7 @@ func main() {
 
 	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
 	// requiring a connection to a remote cluster
-	var log logr.Logger
-
+	log := ctrl.Log.WithName("remote").WithName("ClusterCacheTracker")
 	tracker, err := remote.NewClusterCacheTracker(
 		mgr,
 		remote.ClusterCacheTrackerOptions{

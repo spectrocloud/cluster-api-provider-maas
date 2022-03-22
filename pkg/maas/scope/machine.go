@@ -67,14 +67,6 @@ type MachineScope struct {
 // NewMachineScope creates a new Scope from the supplied parameters.
 // This is meant to be called for each reconcile iteration.
 func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
-	//if params.Logger == nil {
-	//	params.Logger = klogr.New()
-	//}
-
-	//session, serviceLimiters, err := sessionForRegion(params.MaasMachine.Spec.Region, params.Endpoints)
-	//if err != nil {
-	//	return nil, errors.Errorf("failed to create maas session: %v", err)
-	//}
 
 	helper, err := patch.NewHelper(params.MaasMachine, params.Client)
 	if err != nil {
