@@ -19,18 +19,20 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 	"math/rand"
 	"os"
-	"sigs.k8s.io/cluster-api/controllers/remote"
 	"time"
+
+	"sigs.k8s.io/cluster-api/controllers/remote"
+
+	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/klog"
-	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	"k8s.io/klog/v2"
+	"k8s.io/klog/v2/klogr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -38,6 +40,7 @@ import (
 
 	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -62,6 +65,7 @@ func init() {
 	_ = infrav1alpha3.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = infrav1alpha4.AddToScheme(scheme)
+	_ = infrav1beta1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -110,10 +114,11 @@ func main() {
 
 	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
 	// requiring a connection to a remote cluster
+	log := ctrl.Log.WithName("remote").WithName("ClusterCacheTracker")
 	tracker, err := remote.NewClusterCacheTracker(
 		mgr,
 		remote.ClusterCacheTrackerOptions{
-			Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheTracker"),
+			Log:     &log,
 			Indexes: remote.DefaultIndexes,
 		},
 	)
@@ -150,19 +155,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
-		os.Exit(1)
-	}
-	if err := (&infrav1alpha4.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
-		os.Exit(1)
-	}
-	if err := (&infrav1alpha4.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
+	if err = (&infrav1beta1.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MaasCluster")
 		os.Exit(1)
 	}
-	if err := (&infrav1alpha4.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+	if err = (&infrav1beta1.MaasMachine{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachine")
+		os.Exit(1)
+	}
+	if err = (&infrav1beta1.MaasMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "MaasMachineTemplate")
 		os.Exit(1)
 	}
