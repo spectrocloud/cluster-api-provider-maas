@@ -22,32 +22,32 @@ import (
 	"github.com/onsi/gomega"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/klog/klogr"
-	"sigs.k8s.io/cluster-api/api/v1alpha4"
+	"k8s.io/klog/v2/klogr"
+	"sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 )
 
 func TestNewCluster(t *testing.T) {
-	cluster := &v1alpha4.Cluster{
+	cluster := &v1beta1.Cluster{
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{},
-		Spec:       v1alpha4.ClusterSpec{},
-		Status:     v1alpha4.ClusterStatus{},
+		Spec:       v1beta1.ClusterSpec{},
+		Status:     v1beta1.ClusterStatus{},
 	}
 
-	maasCluster := &infrav1alpha4.MaasCluster{
+	maasCluster := &infrav1beta1.MaasCluster{
 		TypeMeta:   metav1.TypeMeta{},
 		ObjectMeta: metav1.ObjectMeta{},
-		Spec:       infrav1alpha4.MaasClusterSpec{},
-		Status:     infrav1alpha4.MaasClusterStatus{},
+		Spec:       infrav1beta1.MaasClusterSpec{},
+		Status:     infrav1beta1.MaasClusterStatus{},
 	}
 
 	t.Run("new cluster scope", func(t *testing.T) {
 		g := gomega.NewGomegaWithT(t)
 		scheme := runtime.NewScheme()
-		_ = infrav1alpha4.AddToScheme(scheme)
+		_ = infrav1beta1.AddToScheme(scheme)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 		log := klogr.New()
@@ -66,7 +66,7 @@ func TestNewCluster(t *testing.T) {
 	t.Run("new dns name", func(t *testing.T) {
 		g := gomega.NewGomegaWithT(t)
 		scheme := runtime.NewScheme()
-		_ = infrav1alpha4.AddToScheme(scheme)
+		_ = infrav1beta1.AddToScheme(scheme)
 		client := fake.NewClientBuilder().WithScheme(scheme).Build()
 		clusterCopy := cluster.DeepCopy()
 		clusterCopy.Name = "dns-test"

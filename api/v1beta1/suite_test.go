@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha4
+package v1beta1
 
 import (
 	"fmt"
@@ -47,8 +47,8 @@ func TestAPIs(t *testing.T) {
 
 func TestMain(m *testing.M) {
 	setup()
+	defer teardown()
 	code := m.Run()
-	teardown()
 	os.Exit(code)
 }
 

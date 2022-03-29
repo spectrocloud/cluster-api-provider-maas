@@ -13,14 +13,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-infrastructure-cluster-x-k8s-io-v1alpha4-maascluster
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster
   failurePolicy: Fail
   name: mmaascluster.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE
@@ -34,14 +34,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachine
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine
   failurePolicy: Fail
   name: mmaasmachine.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE
@@ -55,14 +55,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachinetemplate
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate
   failurePolicy: Fail
   name: mmaasmachinetemplate.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE
@@ -84,14 +84,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-infrastructure-cluster-x-k8s-io-v1alpha4-maascluster
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster
   failurePolicy: Fail
   name: vmaascluster.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE
@@ -105,14 +105,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachine
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine
   failurePolicy: Fail
   name: vmaasmachine.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE
@@ -126,14 +126,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-infrastructure-cluster-x-k8s-io-v1alpha4-maasmachinetemplate
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate
   failurePolicy: Fail
   name: vmaasmachinetemplate.kb.io
   rules:
   - apiGroups:
     - infrastructure.cluster.x-k8s.io
     apiVersions:
-    - v1alpha4
+    - v1beta1
     operations:
     - CREATE
     - UPDATE

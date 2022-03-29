@@ -14,11 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha4
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
@@ -45,6 +45,8 @@ type MaasClusterSpec struct {
 
 // MaasClusterStatus defines the observed state of MaasCluster
 type MaasClusterStatus struct {
+	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
+	// Important: Run "make" to regenerate code after modifying this file
 	// Ready denotes that the maas cluster (infrastructure) is ready.
 	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
@@ -83,8 +85,9 @@ func (in APIEndpoint) IsZero() bool {
 }
 
 // +kubebuilder:resource:path=maasclusters,scope=Namespaced,categories=cluster-api
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+//+kubebuilder:storageversion
 
 // MaasCluster is the Schema for the maasclusters API
 type MaasCluster struct {

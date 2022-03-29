@@ -22,12 +22,11 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
+	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/klog/klogr"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -47,7 +46,7 @@ type ClusterScopeParams struct {
 	Client              client.Client
 	Logger              logr.Logger
 	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1alpha4.MaasCluster
+	MaasCluster         *infrav1beta1.MaasCluster
 	ControllerName      string
 	Tracker             *remote.ClusterCacheTracker
 	ClusterEventChannel chan event.GenericEvent
@@ -60,7 +59,7 @@ type ClusterScope struct {
 	patchHelper *patch.Helper
 
 	Cluster             *clusterv1.Cluster
-	MaasCluster         *infrav1alpha4.MaasCluster
+	MaasCluster         *infrav1beta1.MaasCluster
 	controllerName      string
 	tracker             *remote.ClusterCacheTracker
 	clusterEventChannel chan event.GenericEvent
@@ -69,14 +68,6 @@ type ClusterScope struct {
 // NewClusterScope creates a new Scope from the supplied parameters.
 // This is meant to be called for each reconcile iteration.
 func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
-	if params.Logger == nil {
-		params.Logger = klogr.New()
-	}
-
-	//session, serviceLimiters, err := sessionForRegion(params.MaasCluster.Spec.Region, params.Endpoints)
-	//if err != nil {
-	//	return nil, errors.Errorf("failed to create maas session: %v", err)
-	//}
 
 	helper, err := patch.NewHelper(params.MaasCluster, params.Client)
 	if err != nil {
@@ -100,8 +91,8 @@ func (s *ClusterScope) PatchObject() error {
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
 	conditions.SetSummary(s.MaasCluster,
 		conditions.WithConditions(
-			infrav1alpha4.DNSReadyCondition,
-			infrav1alpha4.APIServerAvailableCondition,
+			infrav1beta1.DNSReadyCondition,
+			infrav1beta1.APIServerAvailableCondition,
 		),
 		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
 	)
@@ -112,8 +103,8 @@ func (s *ClusterScope) PatchObject() error {
 		s.MaasCluster,
 		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
 			clusterv1.ReadyCondition,
-			infrav1alpha4.DNSReadyCondition,
-			infrav1alpha4.APIServerAvailableCondition,
+			infrav1beta1.DNSReadyCondition,
+			infrav1beta1.APIServerAvailableCondition,
 		}},
 	)
 }
@@ -155,9 +146,9 @@ func (s *ClusterScope) GetDNSName() string {
 }
 
 // GetActiveMaasMachines all MaaS machines NOT being deleted
-func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1alpha4.MaasMachine, error) {
+func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
 
-	machineList := &infrav1alpha4.MaasMachineList{}
+	machineList := &infrav1beta1.MaasMachineList{}
 	labels := map[string]string{clusterv1.ClusterLabelName: s.Cluster.Name}
 
 	if err := s.client.List(
@@ -168,7 +159,7 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1alpha4.MaasMachine, e
 		return nil, errors.Wrap(err, "failed to list machines")
 	}
 
-	var machines []*infrav1alpha4.MaasMachine
+	var machines []*infrav1beta1.MaasMachine
 	for i := range machineList.Items {
 		m := &machineList.Items[i]
 		machines = append(machines, m)
