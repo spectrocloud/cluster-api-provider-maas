@@ -23,6 +23,23 @@ Refer [image-generation/](image-generation/README.md)
 
 ## Set up
 
+### v1beta1
+create kind cluster
+
+```bash
+kind create cluster
+```
+
+install clusterctl v1beta1
+https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
+
+run
+```bash
+clusterctl init --infrastructure maas:v0.3.0
+```
+
+
+
 ### v1alph4
 create kind cluster
 
@@ -79,21 +96,25 @@ make dev-manifests
 move 
     _build/dev/
 
-directory contents to ~/.clusterapi/overrides v0.1.0 or v0.2.0 depedning on version you are working with
+directory contents to ~/.clusterapi/overrides v0.1.0 or v0.2.0 or v0.3.0 depending on version you are working with
 
 ```text
 .
 ├── clusterctl.yaml
 ├── overrides
 │   ├── infrastructure-maas
-│   │   ├── v0.1.1
-│   │   │   ├── cluster-template.yaml
-│   │   │   ├── infrastructure-components.yaml
-│   │   │   └── metadata.yaml
-│   │   └── v0.2.0
-│   │       ├── cluster-template.yaml
-│   │       ├── infrastructure-components.yaml
-│   │       └── metadata.yaml
+│       ├── v0.1.1
+│       │   ├── cluster-template.yaml
+│       │   ├── infrastructure-components.yaml
+│       │   └── metadata.yaml
+│       ├── v0.2.0
+│       │   ├── cluster-template.yaml
+│       │   ├── infrastructure-components.yaml
+│       │   └── metadata.yaml
+│       └── v0.3.0
+│           ├── cluster-template.yaml
+│           ├── infrastructure-components.yaml
+│           └── metadata.yaml
 └── version.yaml
 
 ```
@@ -104,6 +125,8 @@ run
 clusterctl init --infrastructure maas:v0.1.1
 or 
 clusterctl init --infrastructure maas:v0.2.0
+or
+clusterctl init --infrastructure maas:v0.3.0
 ```
 
 
@@ -119,4 +142,10 @@ kubectl apply -f examples/sample-with-workerpool.yaml
 generate cluster using
 ```shell
 clusterctl generate cluster t-cluster  --infrastructure=maas:v0.2.0
+```
+
+### v1beta1 v0.3.0 release
+generate cluster using
+```shell
+clusterctl generate cluster t-cluster  --infrastructure=maas:v0.3.0
 ```
