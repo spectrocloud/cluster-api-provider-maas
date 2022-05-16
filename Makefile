@@ -15,8 +15,8 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-IMG_URL ?= gcr.io/spectro-images-public/release/cluster-api
-IMG_TAG ?= spectro-v0.2.0-20211208
+IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
+IMG_TAG ?= spectro-v0.2.0-20220516
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
@@ -28,7 +28,7 @@ endif
 
 # Release images
 # Release docker variables
-RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-maas
+RELEASE_REGISTRY := gcr.io/spectro-dev-public/release/cluster-api-provider-maas
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
