@@ -28,7 +28,7 @@ endif
 
 # Release images
 # Release docker variables
-RELEASE_REGISTRY := gcr.io/spectro-dev-public/release/cluster-api-provider-maas
+RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-maas
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
