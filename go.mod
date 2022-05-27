@@ -5,12 +5,10 @@ go 1.16
 require (
 	github.com/go-logr/logr v0.4.0
 	github.com/golang/mock v1.5.0
-	github.com/google/gofuzz v1.2.0
 	github.com/google/uuid v1.2.0
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.14.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/common v0.26.0
 	github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20210805102600-28f250f3bdc7
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.21.3
@@ -23,3 +21,5 @@ require (
 	sigs.k8s.io/cluster-api v0.4.1
 	sigs.k8s.io/controller-runtime v0.9.6
 )
+
+replace github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.12.0

@@ -3,7 +3,6 @@ package machine
 import (
 	"context"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/log"
 	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
@@ -86,7 +85,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1alpha4.Machine, r
 			_, err := m.Releaser().Release(ctx)
 			if err != nil {
 				// Is it right to NOT set rerr so we can see the original issue?
-				log.Error(err, "Unable to release properly")
+				s.scope.Error(err, "unable to release machine properly")
 			}
 		}
 	}()
