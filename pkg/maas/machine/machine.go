@@ -109,7 +109,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			_, err := m.Releaser().Release(ctx)
 			if err != nil {
 				// Is it right to NOT set rerr so we can see the original issue?
-				log.Error(err, "Unable to release properly")
+				s.scope.V(0).Error(err, "Unable to release properly")
 			}
 		}
 	}()
