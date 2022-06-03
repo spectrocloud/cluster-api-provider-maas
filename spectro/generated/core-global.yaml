@@ -1,0 +1,1429 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: capi-webhook-system/capmaas-serving-cert
+    controller-gen.kubebuilder.io/version: v0.6.1
+  labels:
+    cluster.x-k8s.io/v1alpha3: v1alpha3
+    cluster.x-k8s.io/v1alpha4: v1alpha4
+    cluster.x-k8s.io/v1beta1: v1beta1
+    control-plane: capmaas-controller-manager
+  name: maasclusters.infrastructure.cluster.x-k8s.io
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        caBundle: Cg==
+        service:
+          name: capmaas-webhook-service
+          namespace: capi-webhook-system
+          path: /convert
+      conversionReviewVersions:
+      - v1
+      - v1beta1
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: MaasCluster
+    listKind: MaasClusterList
+    plural: maasclusters
+    singular: maascluster
+  scope: Namespaced
+  versions:
+  - name: v1alpha3
+    schema:
+      openAPIV3Schema:
+        description: MaasCluster is the Schema for the maasclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasClusterSpec defines the desired state of MaasCluster
+            properties:
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: Host is the hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: Port is the port on which the API server is serving.
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              dnsDomain:
+                description: DNSDomain configures the MaaS domain to create the cluster
+                  on (e.g maas)
+                type: string
+              failureDomains:
+                description: FailureDomains are not usually defined on the spec. but
+                  useful for MaaS since we can limit the domains to these
+                items:
+                  type: string
+                type: array
+            required:
+            - dnsDomain
+            type: object
+          status:
+            description: MaasClusterStatus defines the observed state of MaasCluster
+            properties:
+              conditions:
+                description: Conditions defines current service state of the MaasCluster.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureDomains:
+                additionalProperties:
+                  description: FailureDomainSpec is the Schema for Cluster API failure
+                    domains. It allows controllers to understand how many failure
+                    domains a cluster can optionally span across.
+                  properties:
+                    attributes:
+                      additionalProperties:
+                        type: string
+                      description: Attributes is a free form map of attributes an
+                        infrastructure provider might use or require.
+                      type: object
+                    controlPlane:
+                      description: ControlPlane determines if this failure domain
+                        is suitable for use by control plane machines.
+                      type: boolean
+                  type: object
+                description: FailureDomains don't mean much in CAPMAAS since it's
+                  all local, but we can see how the rest of cluster API will use this
+                  if we populate it.
+                type: object
+              network:
+                description: Network represents the network
+                properties:
+                  dnsName:
+                    description: DNSName is the Kubernetes api server name
+                    type: string
+                type: object
+              ready:
+                default: false
+                description: Ready denotes that the maas cluster (infrastructure)
+                  is ready.
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1alpha4
+    schema:
+      openAPIV3Schema:
+        description: MaasCluster is the Schema for the maasclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasClusterSpec defines the desired state of MaasCluster
+            properties:
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: Host is the hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: Port is the port on which the API server is serving.
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              dnsDomain:
+                description: DNSDomain configures the MaaS domain to create the cluster
+                  on (e.g maas)
+                minLength: 1
+                type: string
+              failureDomains:
+                description: FailureDomains are not usually defined on the spec. but
+                  useful for MaaS since we can limit the domains to these
+                items:
+                  type: string
+                type: array
+            required:
+            - dnsDomain
+            type: object
+          status:
+            description: MaasClusterStatus defines the observed state of MaasCluster
+            properties:
+              conditions:
+                description: Conditions defines current service state of the MaasCluster.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureDomains:
+                additionalProperties:
+                  description: FailureDomainSpec is the Schema for Cluster API failure
+                    domains. It allows controllers to understand how many failure
+                    domains a cluster can optionally span across.
+                  properties:
+                    attributes:
+                      additionalProperties:
+                        type: string
+                      description: Attributes is a free form map of attributes an
+                        infrastructure provider might use or require.
+                      type: object
+                    controlPlane:
+                      description: ControlPlane determines if this failure domain
+                        is suitable for use by control plane machines.
+                      type: boolean
+                  type: object
+                description: FailureDomains don't mean much in CAPMAAS since it's
+                  all local, but we can see how the rest of cluster API will use this
+                  if we populate it.
+                type: object
+              network:
+                description: Network represents the network
+                properties:
+                  dnsName:
+                    description: DNSName is the Kubernetes api server name
+                    type: string
+                type: object
+              ready:
+                default: false
+                description: Ready denotes that the maas cluster (infrastructure)
+                  is ready.
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: MaasCluster is the Schema for the maasclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasClusterSpec defines the desired state of MaasCluster
+            properties:
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: Host is the hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: Port is the port on which the API server is serving.
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              dnsDomain:
+                description: DNSDomain configures the MaaS domain to create the cluster
+                  on (e.g maas)
+                minLength: 1
+                type: string
+              failureDomains:
+                description: FailureDomains are not usually defined on the spec. but
+                  useful for MaaS since we can limit the domains to these
+                items:
+                  type: string
+                type: array
+            required:
+            - dnsDomain
+            type: object
+          status:
+            description: MaasClusterStatus defines the observed state of MaasCluster
+            properties:
+              conditions:
+                description: Conditions defines current service state of the MaasCluster.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureDomains:
+                additionalProperties:
+                  description: FailureDomainSpec is the Schema for Cluster API failure
+                    domains. It allows controllers to understand how many failure
+                    domains a cluster can optionally span across.
+                  properties:
+                    attributes:
+                      additionalProperties:
+                        type: string
+                      description: Attributes is a free form map of attributes an
+                        infrastructure provider might use or require.
+                      type: object
+                    controlPlane:
+                      description: ControlPlane determines if this failure domain
+                        is suitable for use by control plane machines.
+                      type: boolean
+                  type: object
+                description: FailureDomains don't mean much in CAPMAAS since it's
+                  all local, but we can see how the rest of cluster API will use this
+                  if we populate it.
+                type: object
+              network:
+                description: Network represents the network
+                properties:
+                  dnsName:
+                    description: DNSName is the Kubernetes api server name
+                    type: string
+                type: object
+              ready:
+                default: false
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file Ready denotes that the maas cluster (infrastructure) is
+                  ready.'
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: capi-webhook-system/capmaas-serving-cert
+    controller-gen.kubebuilder.io/version: v0.6.1
+  labels:
+    cluster.x-k8s.io/v1alpha3: v1alpha3
+    cluster.x-k8s.io/v1alpha4: v1alpha4
+    cluster.x-k8s.io/v1beta1: v1beta1
+    control-plane: capmaas-controller-manager
+  name: maasmachines.infrastructure.cluster.x-k8s.io
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        caBundle: Cg==
+        service:
+          name: capmaas-webhook-service
+          namespace: capi-webhook-system
+          path: /convert
+      conversionReviewVersions:
+      - v1
+      - v1beta1
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: MaasMachine
+    listKind: MaasMachineList
+    plural: maasmachines
+    singular: maasmachine
+  scope: Namespaced
+  versions:
+  - name: v1alpha3
+    schema:
+      openAPIV3Schema:
+        description: MaasMachine is the Schema for the maasmachines API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineSpec defines the desired state of MaasMachine
+            properties:
+              failureDomain:
+                description: FailureDomain is the failure domain the machine will
+                  be created in. Must match a key in the FailureDomains map stored
+                  on the cluster object.
+                type: string
+              image:
+                description: Image will be the MaaS image id
+                type: string
+              minCPU:
+                description: MinCPU minimum number of CPUs
+                type: integer
+              minMemory:
+                description: MinMemory minimum memory
+                type: integer
+              providerID:
+                description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              resourcePool:
+                description: ResourcePool will be the MAAS Machine resourcepool
+                type: string
+              systemID:
+                description: SystemID will be the MaaS machine ID
+                type: string
+            required:
+            - image
+            type: object
+          status:
+            description: MaasMachineStatus defines the observed state of MaasMachine
+            properties:
+              addresses:
+                description: Addresses contains the associated addresses for the maas
+                  machine.
+                items:
+                  description: MachineAddress contains information for the node's
+                    address.
+                  properties:
+                    address:
+                      description: The machine address.
+                      type: string
+                    type:
+                      description: Machine address type, one of Hostname, ExternalIP
+                        or InternalIP.
+                      type: string
+                  required:
+                  - address
+                  - type
+                  type: object
+                type: array
+              conditions:
+                description: Conditions defines current service state of the MaasMachine.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              dnsAttached:
+                description: DNSAttached specifies whether the DNS record contains
+                  the IP of this machine
+                type: boolean
+              failureMessage:
+                description: FailureMessage will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a more
+                  verbose string suitable for logging and human consumption.
+                type: string
+              failureReason:
+                description: FailureReason will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a succinct
+                  value suitable for machine interpretation.
+                type: string
+              hostname:
+                description: Hostname is the actual MaaS hostname
+                type: string
+              machinePowered:
+                description: MachinePowered is if the machine is "Powered" on
+                type: boolean
+              machineState:
+                description: MachineState is the state of this MAAS machine.
+                type: string
+              ready:
+                default: false
+                description: Ready denotes that the machine (maas container) is ready
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1alpha4
+    schema:
+      openAPIV3Schema:
+        description: MaasMachine is the Schema for the maasmachines API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineSpec defines the desired state of MaasMachine
+            properties:
+              failureDomain:
+                description: FailureDomain is the failure domain the machine will
+                  be created in. Must match a key in the FailureDomains map stored
+                  on the cluster object.
+                type: string
+              image:
+                description: Image will be the MaaS image id
+                minLength: 1
+                type: string
+              minCPU:
+                description: MinCPU minimum number of CPUs
+                minimum: 0
+                type: integer
+              minMemory:
+                description: MinMemoryInMB minimum memory in MB
+                minimum: 0
+                type: integer
+              providerID:
+                description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              resourcePool:
+                description: ResourcePool will be the MAAS Machine resourcepool
+                type: string
+              systemID:
+                description: SystemID will be the MaaS machine ID
+                type: string
+            required:
+            - image
+            - minCPU
+            - minMemory
+            type: object
+          status:
+            description: MaasMachineStatus defines the observed state of MaasMachine
+            properties:
+              addresses:
+                description: Addresses contains the associated addresses for the maas
+                  machine.
+                items:
+                  description: MachineAddress contains information for the node's
+                    address.
+                  properties:
+                    address:
+                      description: The machine address.
+                      type: string
+                    type:
+                      description: Machine address type, one of Hostname, ExternalIP
+                        or InternalIP.
+                      type: string
+                  required:
+                  - address
+                  - type
+                  type: object
+                type: array
+              conditions:
+                description: Conditions defines current service state of the MaasMachine.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
+              dnsAttached:
+                description: DNSAttached specifies whether the DNS record contains
+                  the IP of this machine
+                type: boolean
+              failureMessage:
+                description: FailureMessage will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a more
+                  verbose string suitable for logging and human consumption.
+                type: string
+              failureReason:
+                description: FailureReason will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a succinct
+                  value suitable for machine interpretation.
+                type: string
+              hostname:
+                description: Hostname is the actual MaaS hostname
+                type: string
+              machinePowered:
+                description: MachinePowered is if the machine is "Powered" on
+                type: boolean
+              machineState:
+                description: MachineState is the state of this MAAS machine.
+                type: string
+              ready:
+                default: false
+                description: Ready denotes that the machine (maas container) is ready
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: MaasMachine is the Schema for the maasmachines API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineSpec defines the desired state of MaasMachine
+            properties:
+              failureDomain:
+                description: FailureDomain is the failure domain the machine will
+                  be created in. Must match a key in the FailureDomains map stored
+                  on the cluster object.
+                type: string
+              image:
+                description: Image will be the MaaS image id
+                minLength: 1
+                type: string
+              minCPU:
+                description: MinCPU minimum number of CPUs
+                minimum: 0
+                type: integer
+              minMemory:
+                description: MinMemoryInMB minimum memory in MB
+                minimum: 0
+                type: integer
+              providerID:
+                description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              resourcePool:
+                description: ResourcePool will be the MAAS Machine resourcepool
+                type: string
+              systemID:
+                description: SystemID will be the MaaS machine ID
+                type: string
+            required:
+            - image
+            - minCPU
+            - minMemory
+            type: object
+          status:
+            description: MaasMachineStatus defines the observed state of MaasMachine
+            properties:
+              addresses:
+                description: Addresses contains the associated addresses for the maas
+                  machine.
+                items:
+                  description: MachineAddress contains information for the node's
+                    address.
+                  properties:
+                    address:
+                      description: The machine address.
+                      type: string
+                    type:
+                      description: Machine address type, one of Hostname, ExternalIP
+                        or InternalIP.
+                      type: string
+                  required:
+                  - address
+                  - type
+                  type: object
+                type: array
+              conditions:
+                description: Conditions defines current service state of the MaasMachine.
+                items:
+                  description: Condition defines an observation of a Cluster API resource
+                    operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status
+                        to another. This should be when the underlying condition changed.
+                        If that is not known, then using the time when the API field
+                        changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about
+                        the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition
+                        in CamelCase. The specific API may choose whether or not this
+                        field is considered a guaranteed API. This field may not be
+                        empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of
+                        Reason code, so the users or machines can immediately understand
+                        the current situation and act accordingly. The Severity field
+                        MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources
+                        like Available, but because arbitrary conditions can be useful
+                        (see .node.status.conditions), the ability to deconflict is
+                        important.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - status
+                  - type
+                  type: object
+                type: array
+              dnsAttached:
+                description: DNSAttached specifies whether the DNS record contains
+                  the IP of this machine
+                type: boolean
+              failureMessage:
+                description: FailureMessage will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a more
+                  verbose string suitable for logging and human consumption.
+                type: string
+              failureReason:
+                description: FailureReason will be set in the event that there is
+                  a terminal problem reconciling the Machine and will contain a succinct
+                  value suitable for machine interpretation.
+                type: string
+              hostname:
+                description: Hostname is the actual MaaS hostname
+                type: string
+              machinePowered:
+                description: MachinePowered is if the machine is "Powered" on
+                type: boolean
+              machineState:
+                description: MachineState is the state of this MAAS machine.
+                type: string
+              ready:
+                default: false
+                description: Ready denotes that the machine (maas container) is ready
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: capi-webhook-system/capmaas-serving-cert
+    controller-gen.kubebuilder.io/version: v0.6.1
+  labels:
+    cluster.x-k8s.io/v1alpha3: v1alpha3
+    cluster.x-k8s.io/v1alpha4: v1alpha4
+    cluster.x-k8s.io/v1beta1: v1beta1
+    control-plane: capmaas-controller-manager
+  name: maasmachinetemplates.infrastructure.cluster.x-k8s.io
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        caBundle: Cg==
+        service:
+          name: capmaas-webhook-service
+          namespace: capi-webhook-system
+          path: /convert
+      conversionReviewVersions:
+      - v1
+      - v1beta1
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: MaasMachineTemplate
+    listKind: MaasMachineTemplateList
+    plural: maasmachinetemplates
+    singular: maasmachinetemplate
+  scope: Namespaced
+  versions:
+  - name: v1alpha3
+    schema:
+      openAPIV3Schema:
+        description: MaasMachineTemplate is the Schema for the maasmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
+            properties:
+              template:
+                description: MaasMachineTemplateResource describes the data needed
+                  to create a MaasMachine from a template
+                properties:
+                  spec:
+                    description: Spec is the specification of the desired behavior
+                      of the machine.
+                    properties:
+                      failureDomain:
+                        description: FailureDomain is the failure domain the machine
+                          will be created in. Must match a key in the FailureDomains
+                          map stored on the cluster object.
+                        type: string
+                      image:
+                        description: Image will be the MaaS image id
+                        type: string
+                      minCPU:
+                        description: MinCPU minimum number of CPUs
+                        type: integer
+                      minMemory:
+                        description: MinMemory minimum memory
+                        type: integer
+                      providerID:
+                        description: ProviderID will be the name in ProviderID format
+                          (maas://<zone>/system_id)
+                        type: string
+                      resourcePool:
+                        description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      systemID:
+                        description: SystemID will be the MaaS machine ID
+                        type: string
+                    required:
+                    - image
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: false
+  - name: v1alpha4
+    schema:
+      openAPIV3Schema:
+        description: MaasMachineTemplate is the Schema for the maasmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
+            properties:
+              template:
+                description: MaasMachineTemplateResource describes the data needed
+                  to create a MaasMachine from a template
+                properties:
+                  spec:
+                    description: Spec is the specification of the desired behavior
+                      of the machine.
+                    properties:
+                      failureDomain:
+                        description: FailureDomain is the failure domain the machine
+                          will be created in. Must match a key in the FailureDomains
+                          map stored on the cluster object.
+                        type: string
+                      image:
+                        description: Image will be the MaaS image id
+                        minLength: 1
+                        type: string
+                      minCPU:
+                        description: MinCPU minimum number of CPUs
+                        minimum: 0
+                        type: integer
+                      minMemory:
+                        description: MinMemoryInMB minimum memory in MB
+                        minimum: 0
+                        type: integer
+                      providerID:
+                        description: ProviderID will be the name in ProviderID format
+                          (maas://<zone>/system_id)
+                        type: string
+                      resourcePool:
+                        description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      systemID:
+                        description: SystemID will be the MaaS machine ID
+                        type: string
+                    required:
+                    - image
+                    - minCPU
+                    - minMemory
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: MaasMachineTemplate is the Schema for the maasmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MaasMachineTemplateSpec defines the desired state of MaasMachineTemplate
+            properties:
+              template:
+                description: MaasMachineTemplateResource describes the data needed
+                  to create a MaasMachine from a template
+                properties:
+                  spec:
+                    description: Spec is the specification of the desired behavior
+                      of the machine.
+                    properties:
+                      failureDomain:
+                        description: FailureDomain is the failure domain the machine
+                          will be created in. Must match a key in the FailureDomains
+                          map stored on the cluster object.
+                        type: string
+                      image:
+                        description: Image will be the MaaS image id
+                        minLength: 1
+                        type: string
+                      minCPU:
+                        description: MinCPU minimum number of CPUs
+                        minimum: 0
+                        type: integer
+                      minMemory:
+                        description: MinMemoryInMB minimum memory in MB
+                        minimum: 0
+                        type: integer
+                      providerID:
+                        description: ProviderID will be the name in ProviderID format
+                          (maas://<zone>/system_id)
+                        type: string
+                      resourcePool:
+                        description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      systemID:
+                        description: SystemID will be the MaaS machine ID
+                        type: string
+                    required:
+                    - image
+                    - minCPU
+                    - minMemory
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-webhook-service
+  namespace: capi-webhook-system
+spec:
+  ports:
+  - port: 443
+    targetPort: 9443
+  selector:
+    control-plane: capmaas-controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-controller-manager
+  namespace: capi-webhook-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: capmaas-controller-manager
+  template:
+    metadata:
+      labels:
+        control-plane: capmaas-controller-manager
+    spec:
+      containers:
+      - args:
+        - --leader-elect
+        command:
+        - /manager
+        image: gcr.io/spectro-images-public/release/cluster-api-provider-maas:latest
+        imagePullPolicy: IfNotPresent
+        name: manager
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 200m
+            memory: 100Mi
+          requests:
+            cpu: 200m
+            memory: 20Mi
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-serving-cert
+  namespace: capi-webhook-system
+spec:
+  dnsNames:
+  - capmaas-webhook-service.capi-webhook-system.svc
+  - capmaas-webhook-service.capi-webhook-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: capmaas-selfsigned-issuer
+  secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: Issuer
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-selfsigned-issuer
+  namespace: capi-webhook-system
+spec:
+  selfSigned: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: capi-webhook-system/capmaas-serving-cert
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster
+  failurePolicy: Fail
+  name: mmaascluster.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine
+  failurePolicy: Fail
+  name: mmaasmachine.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasmachines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate
+  failurePolicy: Fail
+  name: mmaasmachinetemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasmachinetemplates
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: capi-webhook-system/capmaas-serving-cert
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster
+  failurePolicy: Fail
+  name: vmaascluster.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachine
+  failurePolicy: Fail
+  name: vmaasmachine.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasmachines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1beta1
+  - v1
+  clientConfig:
+    service:
+      name: capmaas-webhook-service
+      namespace: capi-webhook-system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate
+  failurePolicy: Fail
+  name: vmaasmachinetemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - maasmachinetemplates
+  sideEffects: None

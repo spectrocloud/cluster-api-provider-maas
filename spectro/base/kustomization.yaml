@@ -1,0 +1,23 @@
+namespace: cluster-api-provider-maas-system
+
+namePrefix: capmaas-
+
+commonLabels:
+  control-plane: capmaas-controller-manager
+
+bases:
+  - ../../config/manager
+
+patchesStrategicMerge:
+  - ../../config/default/manager_image_patch.yaml
+  - ../../config/default/manager_pull_policy.yaml
+  - ../../config/default/manager_credentials_patch.yaml
+
+patchesJson6902:
+  - target:
+      group: apps
+      kind: Deployment
+      name: controller-manager
+      namespace: system
+      version: v1
+    path: patch_secret_credentials.yaml
