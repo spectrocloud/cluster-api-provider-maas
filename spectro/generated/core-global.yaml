@@ -1254,9 +1254,9 @@ spec:
       - name: cert
         secret:
           defaultMode: 420
-          secretName: webhook-server-cert
+          secretName: capmaas-webhook-service-cert
 ---
-apiVersion: cert-manager.io/v1alpha2
+apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   labels:
@@ -1270,9 +1270,9 @@ spec:
   issuerRef:
     kind: Issuer
     name: capmaas-selfsigned-issuer
-  secretName: webhook-server-cert
+  secretName: capmaas-webhook-service-cert
 ---
-apiVersion: cert-manager.io/v1alpha2
+apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
   labels:
