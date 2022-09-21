@@ -34,7 +34,7 @@ RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-ma
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
-CRD_OPTIONS ?= "crd"
+CRD_OPTIONS ?= "crd:trivialVersions=true"
 
 MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/controller-gen
