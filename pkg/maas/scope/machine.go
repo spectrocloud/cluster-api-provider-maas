@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
+	"log"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/noderefutil"
 	"sigs.k8s.io/cluster-api/controllers/remote"
@@ -260,27 +261,31 @@ func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
 // SetNodeProviderID patches the node with the ID
 func (m *MachineScope) SetNodeProviderID() error {
 	ctx := context.TODO()
+	log.Println("TESTING.... Get Client")
 	remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
 	if err != nil {
 		return err
 	}
 
+	log.Println("TESTING.... Get Node")
 	node := &corev1.Node{}
 	if err := remoteClient.Get(ctx, client.ObjectKey{Name: m.GetMachineHostname()}, node); err != nil {
 		return err
 	}
 
+	log.Println("TESTING.... Get ProviderID")
 	providerID := m.GetProviderID()
 	if node.Spec.ProviderID == providerID {
 		return nil
 	}
 
+	log.Println("TESTING.... PATCH")
 	patchHelper, err := patch.NewHelper(node, remoteClient)
 	if err != nil {
 		return err
 	}
 
 	node.Spec.ProviderID = providerID
-
+	log.Println("TESTING.... PATCH")
 	return patchHelper.Patch(ctx, node)
 }

@@ -23,12 +23,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/remote"
-	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -124,6 +122,7 @@ func (s *ClusterScope) APIServerPort() int {
 
 // SetDNSName sets the Network systemID in spec.
 func (s *ClusterScope) SetDNSName(dnsName string) {
+	//TODO: PCP-22 set 10.11.130.165 if it donent work using fixed ControlPlaneEndpoint
 	s.MaasCluster.Status.Network.DNSName = dnsName
 }
 
@@ -223,23 +222,24 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 
 func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
-	ctx := context.TODO()
-
-	cluster := &clusterv1.Cluster{}
-	if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil {
-		return false, err
-	} else if !cluster.DeletionTimestamp.IsZero() {
-		s.Info("Cluster is deleting; abort APIServerOnline check", "cluster", cluster.Name)
-		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
-	}
-
-	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
-	if err != nil {
-		s.V(2).Info("Waiting for online server to come online")
-		return false, nil
-	}
-
-	err = remoteClient.List(ctx, new(v1.NodeList))
-
-	return err == nil, nil
+	return true, nil
+	//ctx := context.TODO()
+	//
+	//cluster := &clusterv1.Cluster{}
+	//if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil {
+	//	return false, err
+	//} else if !cluster.DeletionTimestamp.IsZero() {
+	//	s.Info("Cluster is deleting; abort APIServerOnline check", "cluster", cluster.Name)
+	//	return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
+	//}
+	//
+	//remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	//if err != nil {
+	//	s.V(2).Info("Waiting for online server to come online")
+	//	return false, nil
+	//}
+	//
+	//err = remoteClient.List(ctx, new(v1.NodeList))
+	//
+	//return err == nil, nil
 }
