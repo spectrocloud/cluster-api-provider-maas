@@ -168,6 +168,14 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 			continue
 		}
 
+		//TODO: PCP-22 Add loadbalancer address here
+		lbIP := "10.11.130.190"
+		if !currentIPs.Has(lbIP) {
+			runningIpAddresses = append(runningIpAddresses, lbIP)
+		} else {
+			machinesPendingAttachment = append(machinesPendingAttachment, m)
+		}
+
 		machineIP := getExternalMachineIP(m)
 		attached := currentIPs.Has(machineIP)
 		isRunningHealthy := IsRunning(m)
@@ -238,18 +246,21 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	dnsService := dns.NewService(clusterScope)
 
-	if err := dnsService.ReconcileDNS(); err != nil {
-		clusterScope.Error(err, "failed to reconcile load balancer")
-		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		return reconcile.Result{}, err
-	}
+	//TODO: Should it be removed
+	//if err := dnsService.ReconcileDNS(); err != nil {
+	//	clusterScope.Error(err, "failed to reconcile load balancer")
+	//	conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
+	//	return reconcile.Result{}, err
+	//}
 
 	if maasCluster.Status.Network.DNSName == "" {
+		maasCluster.Status.Network.DNSName = "10.11.130.190"
 		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
 		clusterScope.Info("Waiting on API server DNS name")
 		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
 	}
 
+	//TODO: Check what  is getting set here it should be controlPlaneEndpoint: 10.11.130.190:6443
 	maasCluster.Spec.ControlPlaneEndpoint = infrav1beta1.APIEndpoint{
 		Host: maasCluster.Status.Network.DNSName,
 		Port: clusterScope.APIServerPort(),
@@ -260,6 +271,7 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	// Mark the maasCluster ready
 	conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
 
+	//TODO: PCP-22
 	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
 		if errors.Is(err, ErrRequeueDNS) {
 			return ctrl.Result{}, nil
@@ -268,7 +280,6 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 		clusterScope.Error(err, "failed to reconcile load balancer")
 		return reconcile.Result{}, err
-
 	}
 
 	clusterScope.ReconcileMaasClusterWhenAPIServerIsOnline()

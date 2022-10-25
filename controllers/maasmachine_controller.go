@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
@@ -45,7 +46,6 @@ import (
 
 	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
@@ -326,7 +326,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		// TODO(saamalik) tags / labels
 
 		// Set the address if good
+		machineScope.Info("TESTING..... Set machine address")
 		machineScope.SetAddresses(m.Addresses)
+		//TODO: PCP-22 Add loadbalancer address here
+		//machineScope.SetAddresses([]clusterv1.MachineAddress{{Type: clusterv1.MachineExternalIP, Address: "10.11.130.190"}})
 
 		if err := r.reconcileDNSAttachment(machineScope, clusterScope, m); err != nil {
 			if errors.Is(err, ErrRequeueDNS) {
@@ -401,7 +404,11 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 			return errors.Wrapf(err, "machine %q - error determining registration status", m.ID)
 		}
 
-		machineScope.MaasMachine.Status.DNSAttached = registered
+		//TODO: PCP-22
+		machineScope.Info("TESTING.... Set machineScope.MaasMachine.Status.DNSAttached to true")
+		//registered := true
+
+		//machineScope.MaasMachine.Status.DNSAttached = registered
 
 		if registered {
 			// Wait for Cluster to delete this guy
@@ -421,7 +428,10 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 		return errors.Wrapf(err, "normal machine %q - error determining registration status", m.ID)
 	}
 
-	machineScope.MaasMachine.Status.DNSAttached = registered
+	//TODO: PCP-22
+	machineScope.Info("TESTING.... Set machineScope.MaasMachine.Status.DNSAttached to true")
+	//registered := true
+	//machineScope.MaasMachine.Status.DNSAttached = registered
 
 	if !registered {
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
