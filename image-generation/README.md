@@ -65,8 +65,14 @@ ssh user@<destination-machine>
 ```
 
 use <profile-name> profile which has access to create boot-resources or admin
-```bash 
+```bash
+# maas <= v2.9
 maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+
+# maas >= v3.0
+size=$(du <image-filename> | awk '{print $1;}')
+sha256checksum=$(sha256sum <image-filename> | awk '{print $1;}')
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic sha256=$sha256checksum size=$size content@=<image-filename>
 ```
 
 ## spectrocloud public images 
