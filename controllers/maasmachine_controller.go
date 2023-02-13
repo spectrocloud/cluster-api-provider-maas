@@ -261,7 +261,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// Create new m
 	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
 	// if there used to be a m
-	if m == nil {
+	if m == nil || !(m.State == infrav1beta1.MachineStateDeployed || m.State == infrav1beta1.MachineStateDeploying) {
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
 		if conditions.GetReason(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition) != infrav1beta1.MachineDeployFailedReason {
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
