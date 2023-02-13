@@ -58,23 +58,39 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		failureDomain = s.scope.Machine.Spec.FailureDomain
 	}
 
-	allocator := s.maasClient.
-		Machines().
-		Allocator().
-		WithCPUCount(*mm.Spec.MinCPU).
-		WithMemory(*mm.Spec.MinMemoryInMB)
+	var m maasclient.Machine
+	var err error
 
-	if failureDomain != nil {
-		allocator.WithZone(*failureDomain)
-	}
+	if s.scope.GetProviderID() == "" {
+		allocator := s.maasClient.
+			Machines().
+			Allocator().
+			WithCPUCount(*mm.Spec.MinCPU).
+			WithMemory(*mm.Spec.MinMemoryInMB)
 
-	if mm.Spec.ResourcePool != nil {
-		allocator.WithResourcePool(*mm.Spec.ResourcePool)
-	}
+		if failureDomain != nil {
+			allocator.WithZone(*failureDomain)
+		}
 
-	m, err := allocator.Allocate(ctx)
-	if err != nil {
-		return nil, errors.Wrapf(err, "Unable to allocate machine")
+		if mm.Spec.ResourcePool != nil {
+			allocator.WithResourcePool(*mm.Spec.ResourcePool)
+		}
+
+		m, err = allocator.Allocate(ctx)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Unable to allocate machine")
+		}
+
+		s.scope.SetProviderID(m.SystemID(), m.Zone().Name())
+		err = s.scope.PatchObject()
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to pathc machine with provider id")
+		}
+	} else {
+		m, err = s.maasClient.Machines().Machine(*s.scope.GetInstanceID()).Get(ctx)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to find machine %s", *s.scope.GetInstanceID())
+		}
 	}
 
 	s.scope.Info("Allocated machine", "system-id", m.SystemID())

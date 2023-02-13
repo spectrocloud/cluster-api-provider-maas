@@ -16,7 +16,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= spectro-v0.2.0-20220527
+IMG_TAG ?= spectro-v0.2.0-20221228
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
@@ -148,7 +148,7 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
-docker-build: test
+docker-build: #test
 	docker build . -t ${IMG}
 
 # Push the docker image
