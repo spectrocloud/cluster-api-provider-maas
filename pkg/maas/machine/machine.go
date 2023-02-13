@@ -4,11 +4,9 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
+	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
-	"k8s.io/klog/v2/textlogger"
-
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -53,7 +51,6 @@ func (s *Service) ReleaseMachine(systemID string) error {
 
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, rerr error) {
 	ctx := context.TODO()
-	log := textlogger.NewLogger(textlogger.NewConfig())
 
 	mm := s.scope.MaasMachine
 
