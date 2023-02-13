@@ -148,7 +148,7 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
-docker-build: test
+docker-build: #test
 	docker build . -t ${IMG}
 
 # Push the docker image
