@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"k8s.io/utils/pointer"
 	"net"
