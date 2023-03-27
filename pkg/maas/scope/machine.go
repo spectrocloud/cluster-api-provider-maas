@@ -194,6 +194,10 @@ func (m *MachineScope) SetSystemID(systemID string) {
 	m.MaasMachine.Spec.SystemID = pointer.StringPtr(systemID)
 }
 
+func (m *MachineScope) GetSystemID() string {
+	return *m.MaasMachine.Spec.SystemID
+}
+
 // GetMachineState returns the MaasMachine instance state from the status.
 func (m *MachineScope) GetMachineState() *infrav1beta1.MachineState {
 	return m.MaasMachine.Status.MachineState
