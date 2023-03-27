@@ -153,6 +153,11 @@ func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 	return machine
 }
 
+func (s *Service) PowerOnMachine() error {
+	_, err := s.maasClient.Machines().Machine(s.scope.GetSystemID()).PowerManagerOn().WithPowerOnComment("maas provider power on").PowerOn(context.Background())
+	return err
+}
+
 //// ReconcileDNS reconciles the load balancers for the given cluster.
 //func (s *Service) ReconcileDNS() error {
 //	s.scope.V(2).Info("Reconciling DNS")
