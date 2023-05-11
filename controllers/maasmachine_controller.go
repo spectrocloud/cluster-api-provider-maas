@@ -261,7 +261,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// Create new m
 	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
 	// if there used to be a m
-	if m == nil {
+	if m == nil || !(m.State == infrav1beta1.MachineStateDeployed || m.State == infrav1beta1.MachineStateDeploying) {
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
 		if conditions.GetReason(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition) != infrav1beta1.MachineDeployFailedReason {
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
@@ -303,6 +303,15 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("Maas machine state %q is unexpected", m.State))
 	case machineScope.MachineIsInKnownState() && !m.Powered:
+		if *machineScope.GetMachineState() == infrav1beta1.MachineStateDeployed {
+			machineScope.Info("Deployed machine is powered off trying power on")
+			if err := machineSvc.PowerOnMachine(); err != nil {
+				return ctrl.Result{}, errors.Wrap(err, "unable to power on deployed machine")
+			}
+
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
+
 		machineScope.SetNotReady()
 		machineScope.Info("Machine is powered off!")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
