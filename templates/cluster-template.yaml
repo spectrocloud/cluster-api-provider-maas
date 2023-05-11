@@ -61,11 +61,9 @@ spec:
           default-unreachable-toleration-seconds: "60"
           disable-admission-plugins: AlwaysAdmit
           enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
-          insecure-port: "0"
         timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
-          address: 0.0.0.0
           feature-gates: RotateKubeletServerCertificate=true
           pod-eviction-timeout: 1m0s
           terminated-pod-gc-threshold: "25"
@@ -75,7 +73,6 @@ spec:
       networking: {}
       scheduler:
         extraArgs:
-          address: 0.0.0.0
     initConfiguration:
       localAPIEndpoint:
         advertiseAddress: ""
@@ -101,6 +98,8 @@ spec:
     preKubeadmCommands:
       - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
         sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
     useExperimentalRetryJoin: true
 ---
 status:
@@ -156,4 +155,6 @@ spec:
       preKubeadmCommands:
         - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
           sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
       useExperimentalRetryJoin: true
