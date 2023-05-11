@@ -1,59 +1,53 @@
 # Creates a cluster with one control-plane node and one worker node
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
-  name: my-cluster
+  name: t-cluster
+  namespace: default
 spec:
   dnsDomain: maas.sc
-
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: my-cluster
+  name: t-cluster
+  namespace: default
 spec:
   clusterNetwork:
-    services:
-      cidrBlocks: ["10.96.0.0/12"]
     pods:
-      cidrBlocks: ["192.168.0.0/16"]
-    serviceDomain: "cluster.local"
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
-    name: my-cluster-cp
-    namespace: default
+    name: t-cluster-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
-    name: my-cluster
-    namespace: default
+    name: t-cluster
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
-  name: my-cluster-cp
+  name: t-cluster-control-plane
   namespace: default
 spec:
   template:
     spec:
+      image: u-2004-0-k-1243-0
       minCPU: 4
       minMemory: 8192
-      image: u-1804-0-k-11912-0
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
-  name: my-cluster-cp
+  name: t-cluster-control-plane
   namespace: default
 spec:
-  replicas: 1
-  version: v1.19.12
-  infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
-    kind: MaasMachineTemplate
-    name: my-cluster-cp
-    namespace: default
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
@@ -64,11 +58,9 @@ spec:
           default-unreachable-toleration-seconds: "60"
           disable-admission-plugins: AlwaysAdmit
           enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
-          insecure-port: "0"
         timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
-          address: 0.0.0.0
           feature-gates: RotateKubeletServerCertificate=true
           pod-eviction-timeout: 1m0s
           terminated-pod-gc-threshold: "25"
@@ -77,8 +69,7 @@ spec:
       etcd: {}
       networking: {}
       scheduler:
-        extraArgs:
-          address: 0.0.0.0
+        extraArgs: null
     initConfiguration:
       localAPIEndpoint:
         advertiseAddress: ""
@@ -102,52 +93,61 @@ spec:
           read-only-port: "0"
         name: '{{ v1.local_hostname }}'
     preKubeadmCommands:
-      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
-        sleep 1; done
+    - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+      sleep 1; done
+    - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+    - swapoff -a
     useExperimentalRetryJoin: true
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: t-cluster-control-plane
+  replicas: 1
+  version: v1.24.3
 ---
-status:
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
-  name: my-cluster-worker
+  name: t-cluster-md-0
   namespace: default
 spec:
   template:
     spec:
+      image: u-2004-0-k-1243-0
       minCPU: 4
       minMemory: 8192
-      image: u-1804-0-k-11912-0
+status: null
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
-  name: my-cluster-worker
+  name: t-cluster-md-0
   namespace: default
 spec:
-  clusterName: my-cluster
+  clusterName: t-cluster
   replicas: 1
   selector:
     matchLabels:
-      cluster.x-k8s.io/cluster-name: my-cluster
+      cluster.x-k8s.io/cluster-name: t-cluster
   template:
     spec:
-      clusterName: my-cluster
-      version: 1.19.12
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
           kind: KubeadmConfigTemplate
-          name: my-cluster-worker
+          name: t-cluster-md-0
+      clusterName: t-cluster
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: MaasMachineTemplate
-        name: my-cluster-worker
+        name: t-cluster-md-0
+      version: v1.24.3
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
-  name: my-cluster-worker
+  name: t-cluster-md-0
   namespace: default
 spec:
   template:
@@ -160,6 +160,8 @@ spec:
             read-only-port: "0"
           name: '{{ v1.local_hostname }}'
       preKubeadmCommands:
-        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
-          sleep 1; done
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
       useExperimentalRetryJoin: true
