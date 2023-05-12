@@ -16,7 +16,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= spectro-v0.2.0-v1beta1-20230325.0809
+IMG_TAG ?= spectro-v0.4.0-v1beta1-20230512.1055
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
