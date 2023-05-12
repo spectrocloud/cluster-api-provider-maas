@@ -35,41 +35,7 @@ https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
 
 run
 ```bash
-clusterctl init --infrastructure maas:v0.3.0
-```
-
-
-
-### v1alph4
-create kind cluster
-
-```bash
-kind create cluster
-```
-
-install clusterctl v1alpha4
-https://release-0-4.cluster-api.sigs.k8s.io/user/quick-start.html
-
-run
-```bash
-clusterctl init --infrastructure maas:v0.2.0
-```
-
-
-### v1alpha3
-    
-create kind cluster
-    
-```shell
-kind create cluster
-```
-
-install clusterctl v1alpha3
-    https://release-0-3.cluster-api.sigs.k8s.io/user/quick-start.html
-
-run
-```shell
-clusterctl init --infrastructure maas:v0.1.1
+clusterctl init --infrastructure maas:v0.4.0
 ```
 
 
@@ -80,7 +46,7 @@ create kind cluster
 kind create cluster
 ```
 
-install clusterctl v3/v4 depending on the version you are working with
+install clusterctl v1 depending on the version you are working with
 
 Makefile set IMG=<your docker repo>
 run 
@@ -96,22 +62,14 @@ make dev-manifests
 move 
     _build/dev/
 
-directory contents to ~/.clusterapi/overrides v0.1.0 or v0.2.0 or v0.3.0 depending on version you are working with
+directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you are working with
 
 ```text
 .
 ├── clusterctl.yaml
 ├── overrides
 │   ├── infrastructure-maas
-│       ├── v0.1.1
-│       │   ├── cluster-template.yaml
-│       │   ├── infrastructure-components.yaml
-│       │   └── metadata.yaml
-│       ├── v0.2.0
-│       │   ├── cluster-template.yaml
-│       │   ├── infrastructure-components.yaml
-│       │   └── metadata.yaml
-│       └── v0.3.0
+│       └── v0.4.0
 │           ├── cluster-template.yaml
 │           ├── infrastructure-components.yaml
 │           └── metadata.yaml
@@ -122,30 +80,24 @@ directory contents to ~/.clusterapi/overrides v0.1.0 or v0.2.0 or v0.3.0 dependi
 
 run
 ```shell
-clusterctl init --infrastructure maas:v0.1.1
-or 
-clusterctl init --infrastructure maas:v0.2.0
+clusterctl init --infrastructure maas:v0.4.0
+```
+
+
+## install CRDs
+
+### v1beta1 v0.4.0 release
+generate cluster using
+```shell
+clusterctl generate cluster t-cluster  --infrastructure=maas:v0.4.0 | kubectl apply -f -
+```
 or
-clusterctl init --infrastructure maas:v0.3.0
 ```
-
-
-## install CRDs 
-
-### v1alpha3 v0.1.1 release
-run example from for v1alpha3 or v0.1.0 release
-```shell
-kubectl apply -f examples/sample-with-workerpool.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 > my_cluster.yaml
+kubectl apply -f my_cluster.yaml
 ```
-
-### v1alpah4 v0.2.0 release
-generate cluster using
-```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.2.0
+or
 ```
-
-### v1beta1 v0.3.0 release
-generate cluster using
-```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.3.0
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
+kubectl apply -f my_cluster.yaml
 ```
