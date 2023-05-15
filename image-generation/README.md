@@ -1,9 +1,9 @@
-Set up docker image location
+Set up Docker image location
 
 BUILDER_IMG in Makefile
 
 run
-```
+```shell
 make docker
 ```
 
@@ -19,8 +19,8 @@ run
 kubectl apply -f pod.yaml
 ```
 
-if you want to publish you images to s3 bucket 
-change to you bucket name ${S3_BUCKET} buildmaasimage.sh line: 80
+If you want to publish you images to s3 bucket 
+change to you bucket name ${S3_BUCKET} buildmaasimage.sh at [line 80](image-generation/buildmaasimage.sh#L80)
 
 and you must provide aws-credentials, refer secret.yaml
 

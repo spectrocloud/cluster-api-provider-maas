@@ -59,10 +59,7 @@ make docker-build && make docker-push
 make dev-manifests
 ```
 
-move 
-    _build/dev/
-
-directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you are working with
+- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you are working with
 
 ```text
 .
@@ -77,8 +74,7 @@ directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you ar
 
 ```
 
-
-run
+- Run
 ```shell
 clusterctl init --infrastructure maas:v0.4.0
 ```
@@ -87,17 +83,17 @@ clusterctl init --infrastructure maas:v0.4.0
 ## Install CRDs
 
 ### v1beta1 v0.4.0 release
-Generate cluster using
+- Generate cluster using
 ```shell
 clusterctl generate cluster t-cluster  --infrastructure=maas:v0.4.0 | kubectl apply -f -
 ```
 or
-```
+```shell
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
-```
+```shell
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
