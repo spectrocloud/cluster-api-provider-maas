@@ -85,7 +85,7 @@ sha256checksum=$(sha256sum <image-filename> | awk '{print $1;}')
 maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic sha256=$sha256checksum size=$size content@=<image-filename>
 ```
 
-## SpectroCloud public images 
+## Spectro Cloud public images 
 | kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
 | 1.21.14            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz      |
