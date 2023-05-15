@@ -7,7 +7,7 @@ Welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/man
 # Getting Started
 
 ## Public Images
-Spectrocloud public images
+Spectro Cloud public images
 
 | Kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
