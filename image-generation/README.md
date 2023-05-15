@@ -75,7 +75,7 @@ sha256checksum=$(sha256sum <image-filename> | awk '{print $1;}')
 maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic sha256=$sha256checksum size=$size content@=<image-filename>
 ```
 
-## spectrocloud public images 
+## SpectroCloud public images 
 | kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
 | 1.21.14            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz      |
@@ -84,4 +84,14 @@ maas <profile-name> boot-resources create name=custom/<image-display-name> archi
 | 1.24.3             | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-1243-0.tar.gz       |
 | 1.25.6             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1256-0.tar.gz       |
 | 1.26.1             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1261-0.tar.gz       |
+
+Next step assumes that you have maas-cli installed on your currrent machine.
+```bash
+curl https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz -o ubuntu-1804-k8s-1.21.14.tar.gz
+```
+
+Use <profile-name> profile which has access to create boot-resources or admin
+```bash 
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+```
 

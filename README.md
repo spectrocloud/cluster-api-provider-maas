@@ -1,4 +1,4 @@
-# cluster-api-provider-maas
+# Cluster-API-Provider-MAAS
 Cluster API Provider for Canonical Metal-As-A-Service [maas.io](https://maas.io/)
 
 Welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
@@ -7,9 +7,9 @@ Welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/man
 # Getting Started
 
 ## Public Images
-spectrocloud public images
+Spectrocloud public images
 
-| kubernetes Version | URL                                                                        |
+| Kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
 | 1.21.14            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz      |
 | 1.22.12            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12212-0.tar.gz      |
@@ -26,37 +26,35 @@ Refer [image-generation/](image-generation/README.md)
 ## Set up
 
 ### v1beta1
-create kind cluster
-
+- Create kind cluster
 ```bash
 kind create cluster
 ```
 
-install clusterctl v1beta1
+- Install clusterctl v1beta1
 https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
 
-run
+- Run
 ```bash
 clusterctl init --infrastructure maas:v0.4.0
 ```
 
 
 ### Developer Guide
-create kind cluster
-
+- Create kind cluster
 ```shell
 kind create cluster
 ```
 
-install clusterctl v1 depending on the version you are working with
+- Install clusterctl v1 depending on the version you are working with
 
-Makefile set IMG=<your docker repo>
-run 
+- Makefile set IMG=<your docker repo>
+- Run 
 ```shell
 make docker-build && make docker-push
 ```
     
-generate dev manifests
+- Generate dev manifests
 ```shell
 make dev-manifests
 ```
@@ -86,10 +84,10 @@ clusterctl init --infrastructure maas:v0.4.0
 ```
 
 
-## install CRDs
+## Install CRDs
 
 ### v1beta1 v0.4.0 release
-generate cluster using
+Generate cluster using
 ```shell
 clusterctl generate cluster t-cluster  --infrastructure=maas:v0.4.0 | kubectl apply -f -
 ```
