@@ -25,7 +25,6 @@ Refer [image-generation/](image-generation/README.md)
 
 ## Set up
 
-### v1beta1
 - Create kind cluster
 ```bash
 kind create cluster
