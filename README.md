@@ -1,15 +1,15 @@
-# cluster-api-provider-maas
+# Cluster-API-Provider-MAAS
 Cluster API Provider for Canonical Metal-As-A-Service [maas.io](https://maas.io/)
 
-Welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
+You're welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
 
 
 # Getting Started
 
 ## Public Images
-spectrocloud public images
+Spectro Cloud public images
 
-| kubernetes Version | URL                                                                        |
+| Kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
 | 1.21.14            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz      |
 | 1.22.12            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12212-0.tar.gz      |
@@ -25,46 +25,40 @@ Refer [image-generation/](image-generation/README.md)
 
 ## Set up
 
-### v1beta1
-create kind cluster
-
+- Create kind cluster
 ```bash
 kind create cluster
 ```
 
-install clusterctl v1beta1
+- Install clusterctl v1beta1
 https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
 
-run
+- Run
 ```bash
 clusterctl init --infrastructure maas:v0.4.0
 ```
 
 
 ### Developer Guide
-create kind cluster
-
+- Create kind cluster
 ```shell
 kind create cluster
 ```
 
-install clusterctl v1 depending on the version you are working with
+- Install clusterctl v1 depending on the version you are working with
 
-Makefile set IMG=<your docker repo>
-run 
+- Makefile set IMG=<your docker repo>
+- Run 
 ```shell
 make docker-build && make docker-push
 ```
     
-generate dev manifests
+- Generate dev manifests
 ```shell
 make dev-manifests
 ```
 
-move 
-    _build/dev/
-
-directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you are working with
+- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you are working with
 
 ```text
 .
@@ -79,27 +73,26 @@ directory contents to ~/.clusterapi/overrides v0.4.0 depending on version you ar
 
 ```
 
-
-run
+- Run
 ```shell
 clusterctl init --infrastructure maas:v0.4.0
 ```
 
 
-## install CRDs
+## Install CRDs
 
 ### v1beta1 v0.4.0 release
-generate cluster using
+- Generate cluster using
 ```shell
 clusterctl generate cluster t-cluster  --infrastructure=maas:v0.4.0 | kubectl apply -f -
 ```
 or
-```
+```shell
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
-```
+```shell
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.4.0 --kubernetes-version v1.24.3 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```

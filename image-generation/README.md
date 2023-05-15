@@ -1,44 +1,54 @@
-Set up docker image location
+- Set up Docker image location for `BUILDER_IMG` in Makefile.
 
-BUILDER_IMG in Makefile
-
-run
-```
+- Run
+```shell
 make docker
 ```
 
-use pod.yaml to deploy the image builder
-vm or machine must have kvm enabled
+- Use pod.yaml to deploy the image builder vm or machine must have kvm enabled.
 
-make sure you have replaced 
+- make sure you have replaced `BUILDER_IMG` in pod.yaml.
 
-BUILDER_IMG in pod.yaml
-
-run
+- Run
 ```shell
 kubectl apply -f pod.yaml
 ```
 
-if you want to publish you images to s3 bucket 
-change to you bucket name ${S3_BUCKET} buildmaasimage.sh line: 80
+### NOTE:
+If you want to publish your images to s3 bucket replace bucket name ${S3_BUCKET} buildmaasimage.sh at [line 80](image-generation/buildmaasimage.sh#L80) with your bucket name and you must provide aws-credentials, refer secret.yaml
 
-and you must provide aws-credentials, refer secret.yaml
-
-
-if you do not want to upload images to s3
-remove lines
-
+### NOTE:
+If you do not want to upload images to s3 bucket, kindly remove below lines from [pod.yaml](image-generation/pod.yaml)
 ```yaml
     envFrom:
     - secretRef:
         name: aws-credentials
 ```
+and kindly remove below lines from [buildmaasimage.sh](image-generation/buildmaasimage.sh).
+```shell
+  mkdir -p $HOME/.aws
 
-from pod.yaml
+  if [[ -z "${AWS_ACCESS_KEY_ID}" ]]; then
+    echo "aws access key id not set exiting"
+    exit 1
+  fi
 
-remove lines
-https://github.com/spectrocloud/cluster-api-provider-maas/blob/818c818131b69fe35d5637a9e7c6510f82d39f13/image-generation/buildmaasimage.sh#L61-L82
+  if [[ -z "${AWS_SECRET_ACCESS_KEY}" ]]; then
+    echo "aws access key secret not set exiting"
+    exit 1
+  fi
 
+  echo "[image-bucket]
+  aws_access_key_id = ${AWS_ACCESS_KEY_ID}
+  aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}
+  region =  us-east-1" > $HOME/.aws/credentials
+
+  export AWS_PROFILE=image-bucket
+
+  aws s3api put-object --acl public-read --bucket ${S3_BUCKET} --key "u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz" --body u-${OUTPUT_OS_VERSION}-0-k-${IMAGE_K8S_VERSION}-0.tar.gz
+
+  echo 'image upload done'
+```
 
 ## Upload Custom Image to MAAS using maas cli
  
@@ -75,7 +85,7 @@ sha256checksum=$(sha256sum <image-filename> | awk '{print $1;}')
 maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic sha256=$sha256checksum size=$size content@=<image-filename>
 ```
 
-## spectrocloud public images 
+## Spectro Cloud public images 
 | kubernetes Version | URL                                                                        |
 |--------------------|----------------------------------------------------------------------------|
 | 1.21.14            | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz      |
@@ -84,4 +94,14 @@ maas <profile-name> boot-resources create name=custom/<image-display-name> archi
 | 1.24.3             | https://maas-images-public.s3.amazonaws.com/u-2004-0-k-1243-0.tar.gz       |
 | 1.25.6             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1256-0.tar.gz       |
 | 1.26.1             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1261-0.tar.gz       |
+
+Next step assumes that you have maas-cli installed on your currrent machine.
+```bash
+curl https://maas-images-public.s3.amazonaws.com/u-2004-0-k-12114-0.tar.gz -o ubuntu-1804-k8s-1.21.14.tar.gz
+```
+
+Use <profile-name> profile which has access to create boot-resources or admin
+```bash 
+maas <profile-name> boot-resources create name=custom/<image-display-name> architecture=amd64/generic content=<image-filename>
+```
 
