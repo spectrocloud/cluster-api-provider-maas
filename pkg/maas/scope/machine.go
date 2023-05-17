@@ -33,6 +33,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
 )
 
 // MachineScopeParams defines the input parameters used to create a new Scope.
@@ -271,7 +272,7 @@ func (m *MachineScope) SetNodeProviderID() error {
 	}
 
 	node := &corev1.Node{}
-	if err := remoteClient.Get(ctx, client.ObjectKey{Name: m.GetMachineHostname()}, node); err != nil {
+	if err := remoteClient.Get(ctx, client.ObjectKey{Name: strings.ToLower(m.GetMachineHostname())}, node); err != nil {
 		return err
 	}
 
