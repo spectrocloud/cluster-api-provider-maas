@@ -179,11 +179,11 @@ const (
 )
 
 func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
-	maasPreferredSubent := &v1.ConfigMap{}
+	maasPreferredSubnet := &v1.ConfigMap{}
 	err := s.client.Get(context.Background(), types.NamespacedName{
 		Namespace: s.Cluster.GetNamespace(),
 		Name:      maasPreferredSubnetConfigmap,
-	}, maasPreferredSubent)
+	}, maasPreferredSubnet)
 	switch {
 	case err != nil && !apierrors.IsNotFound(err):
 		return nil, err
@@ -191,7 +191,7 @@ func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
 		return nil, nil
 	}
 
-	subnetsString := maasPreferredSubent.Data[preferredSubnetKey]
+	subnetsString := maasPreferredSubnet.Data[preferredSubnetKey]
 	var result []string
 	for _, subnet := range strings.Split(subnetsString, ",") {
 		result = append(result, strings.TrimSpace(subnet))
