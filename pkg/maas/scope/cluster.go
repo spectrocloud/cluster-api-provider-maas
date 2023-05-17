@@ -24,6 +24,7 @@ import (
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"strings"
 	"sync"
 	"time"
 )
@@ -169,6 +171,32 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, er
 	}
 
 	return machines, nil
+}
+
+const (
+	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
+	preferredSubnetKey           = "preferredSubnets"
+)
+
+func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
+	maasPreferredSubnet := &v1.ConfigMap{}
+	err := s.client.Get(context.Background(), types.NamespacedName{
+		Namespace: s.Cluster.GetNamespace(),
+		Name:      maasPreferredSubnetConfigmap,
+	}, maasPreferredSubnet)
+	switch {
+	case err != nil && !apierrors.IsNotFound(err):
+		return nil, err
+	case err != nil && apierrors.IsNotFound(err):
+		return nil, nil
+	}
+
+	subnetsString := maasPreferredSubnet.Data[preferredSubnetKey]
+	var result []string
+	for _, subnet := range strings.Split(subnetsString, ",") {
+		result = append(result, strings.TrimSpace(subnet))
+	}
+	return result, nil
 }
 
 var (
