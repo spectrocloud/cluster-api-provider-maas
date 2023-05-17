@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"net"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -154,6 +156,11 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return errors.Wrapf(err, "Unable to list all maas machines")
 	}
 
+	preferredSubnets, err := clusterScope.GetPreferredSubnets()
+	if err != nil {
+		return errors.Wrapf(err, "unable to find preferred subnets")
+	}
+
 	var runningIpAddresses []string
 
 	currentIPs, err := dnssvc.GetAPIServerDNSRecords()
@@ -169,7 +176,7 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 			continue
 		}
 
-		machineIP := getExternalMachineIP(m)
+		machineIP := getExternalMachineIP(clusterScope.Logger, preferredSubnets, m)
 		attached := currentIPs.Has(machineIP)
 		isRunningHealthy := IsRunning(m)
 
@@ -217,13 +224,36 @@ func IsRunning(m *infrav1beta1.MaasMachine) bool {
 	return state != nil && infrav1beta1.MachineRunningStates.Has(string(*state))
 }
 
-func getExternalMachineIP(machine *infrav1beta1.MaasMachine) string {
+func getExternalMachineIP(log logr.Logger, preferredSubnets []string, machine *infrav1beta1.MaasMachine) string {
 	for _, i := range machine.Status.Addresses {
-		if i.Type == clusterv1.MachineExternalIP {
+		if i.Type == clusterv1.MachineExternalIP && addressInPreferredSubnets(log, preferredSubnets, i.Address) {
 			return i.Address
 		}
 	}
 	return ""
+}
+
+func addressInPreferredSubnets(log logr.Logger, preferredSubnets []string, address string) bool {
+	if len(preferredSubnets) == 0 {
+		return true
+	}
+
+	for _, subnet := range preferredSubnets {
+		_, subnetParsed, err := net.ParseCIDR(subnet)
+		if err != nil {
+			log.Error(err, "unable to parse subent", "subnet", subnet)
+			continue
+		}
+
+		addressParsed := net.ParseIP(address)
+		if subnetParsed.Contains(addressParsed) {
+			return true
+		} else {
+			continue
+		}
+	}
+
+	return false
 }
 
 func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
