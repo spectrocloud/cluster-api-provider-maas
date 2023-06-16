@@ -97,7 +97,7 @@ ifeq ($(VERSION), 0.0.0)
 endif
 
 .PHONY: release-manifests
-release-manifests: test
+release-manifests: 
 	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION)
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 	$(MAKE) templates OUTPUT_DIR=$(RELEASE_DIR)
@@ -148,7 +148,7 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
-docker-build: test
+docker-build: 
 	docker build . -t ${IMG}
 
 # Push the docker image
