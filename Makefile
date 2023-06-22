@@ -12,11 +12,18 @@ BUILD_DIR :=_build
 RELEASE_DIR := _build/release
 DEV_DIR := _build/dev
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
+FIPS_ENABLE ?= ""
+
+RELEASE_LOC := release
+ifeq ($(FIPS_ENABLE),yes)
+  RELEASE_LOC := release-fips
+endif
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= spectro-v0.2.0-v1beta1-20230517.0809
+SPECTRO_VERSION ?= 4.0.0-dev
+IMG_TAG ?= spectro-v0.2.0-spectro-${SPECTRO_VERSION}
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
