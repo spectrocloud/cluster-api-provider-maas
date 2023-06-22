@@ -21,10 +21,10 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
+REGISTRY ?= gcr.io/spectro-dev-public/release/cluster-api
 SPECTRO_VERSION ?= 4.0.0-dev
-IMG_TAG ?= spectro-v0.2.0-spectro-${SPECTRO_VERSION}
-IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
+IMG_TAG ?= v0.2.0-spectro-${SPECTRO_VERSION}
+IMG ?= ${REGISTRY}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
@@ -156,7 +156,7 @@ generate-manifests:  ## Generate manifests
 
 # Build the docker image
 docker-build: #test
-	docker build . -t ${IMG}
+	docker build --build-arg CRYPTO_LIB=${FIPS_ENABLE}  . -t ${IMG}
 
 # Push the docker image
 docker-push: ## Push the docker image to gcr
