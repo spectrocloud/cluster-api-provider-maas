@@ -1,5 +1,8 @@
 # Build the manager binary
-FROM golang:1.19.8 as builder
+FROM golang:1.19.10-alpine3.18 as builder
+
+RUN apk update
+RUN apk add git gcc g++ curl
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
