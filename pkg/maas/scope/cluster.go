@@ -19,6 +19,9 @@ package scope
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
@@ -33,8 +36,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sync"
-	"time"
 )
 
 const (
@@ -224,9 +225,9 @@ func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
 func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	ctx := context.TODO()
-
 	cluster := &clusterv1.Cluster{}
 	if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil {
+		s.Info("Cannot get cluster object", "cluster", cluster.Name)
 		return false, err
 	} else if !cluster.DeletionTimestamp.IsZero() {
 		s.Info("Cluster is deleting; abort APIServerOnline check", "cluster", cluster.Name)
@@ -235,11 +236,14 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
 	if err != nil {
-		s.V(2).Info("Waiting for online server to come online")
 		return false, nil
 	}
 
 	err = remoteClient.List(ctx, new(v1.NodeList))
+	if err != nil {
+		s.Info("Can't list cluster nodes", "cluster", cluster.Name, "error", err.Error())
+		return false, err
+	}
 
 	return err == nil, nil
 }

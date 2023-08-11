@@ -19,8 +19,9 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -148,6 +149,7 @@ func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScop
 }
 
 func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc *dns.Service) error {
+
 	machines, err := clusterScope.GetClusterMaasMachines()
 	if err != nil {
 		return errors.Wrapf(err, "Unable to list all maas machines")
@@ -260,15 +262,17 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	// Mark the maasCluster ready
 	conditions.MarkTrue(maasCluster, infrav1beta1.DNSReadyCondition)
 
-	if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
-		if errors.Is(err, ErrRequeueDNS) {
-			return ctrl.Result{}, nil
-			//return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	if clusterScope.MaasCluster.Spec.DNSDomain != "" {
+		if err := r.reconcileDNSAttachments(clusterScope, dnsService); err != nil {
+			if errors.Is(err, ErrRequeueDNS) {
+				return ctrl.Result{}, nil
+				//return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+
+			clusterScope.Error(err, "failed to reconcile load balancer")
+			return reconcile.Result{}, err
+
 		}
-
-		clusterScope.Error(err, "failed to reconcile load balancer")
-		return reconcile.Result{}, err
-
 	}
 
 	clusterScope.ReconcileMaasClusterWhenAPIServerIsOnline()

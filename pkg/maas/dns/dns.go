@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
@@ -29,21 +30,23 @@ func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
 	ctx := context.TODO()
 
-	dnsResource, err := s.GetDNSResource()
-	if err != nil && !errors.Is(err, ErrNotFound) {
-		return err
-	}
-
 	dnsName := s.scope.GetDNSName()
 
-	if dnsResource == nil {
-		if _, err = s.maasClient.DNSResources().
-			Builder().
-			WithFQDN(s.scope.GetDNSName()).
-			WithAddressTTL("10").
-			WithIPAddresses(nil).
-			Create(ctx); err != nil {
-			return errors.Wrapf(err, "Unable to create DNS Resources")
+	if s.scope.MaasCluster.Spec.DNSDomain != "" {
+		dnsResource, err := s.GetDNSResource()
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+
+		if dnsResource == nil {
+			if _, err = s.maasClient.DNSResources().
+				Builder().
+				WithFQDN(s.scope.GetDNSName()).
+				WithAddressTTL("10").
+				WithIPAddresses(nil).
+				Create(ctx); err != nil {
+				return errors.Wrapf(err, "Unable to create DNS Resources")
+			}
 		}
 	}
 

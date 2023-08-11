@@ -20,8 +20,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -336,7 +337,6 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 
 		// Set the address if good
 		machineScope.SetAddresses(m.Addresses)
-
 		if err := r.reconcileDNSAttachment(machineScope, clusterScope, m); err != nil {
 			if errors.Is(err, ErrRequeueDNS) {
 				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
@@ -349,7 +349,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// tasks that can only take place during operational instance states
 	// Tried to not requeue here, but during error conditions (e.g: machine fails to boot)
 	// there is no easy way to check other than a requeue
-	if o, _ := clusterScope.IsAPIServerOnline(); !o {
+	if o, err := clusterScope.IsAPIServerOnline(); !o {
+		if err != nil {
+			machineScope.Info(err.Error())
+		}
 		machineScope.Info("API Server is not online; requeue")
 		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	} else if !machineScope.MachineIsOperational() {
@@ -398,45 +401,48 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 		return nil
 	}
 
-	dnssvc := maasdns.NewService(clusterScope)
+	if clusterScope.MaasCluster.Spec.DNSDomain != "" {
 
-	// In order to prevent sending request to a "not-ready" control plane machines, it is required to remove the machine
-	// from the DNS as soon as the machine gets deleted or when the machine is in a not running state.
-	if !machineScope.MaasMachine.DeletionTimestamp.IsZero() || !machineScope.MachineIsRunning() {
+		dnssvc := maasdns.NewService(clusterScope)
+
+		// In order to prevent sending request to a "not-ready" control plane machines, it is required to remove the machine
+		// from the DNS as soon as the machine gets deleted or when the machine is in a not running state.
+		if !machineScope.MaasMachine.DeletionTimestamp.IsZero() || !machineScope.MachineIsRunning() {
+			registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
+			if err != nil {
+				//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
+				//	"Failed to deregister control plane instance %q from DNS: failed to determine registration status: %v", m.ID, err)
+				return errors.Wrapf(err, "machine %q - error determining registration status", m.ID)
+			}
+
+			machineScope.MaasMachine.Status.DNSAttached = registered
+
+			if registered {
+				// Wait for Cluster to delete this guy
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSDetachPending, clusterv1.ConditionSeverityWarning, "")
+				machineScope.Info("machine waiting for cluster to de-register DNS")
+				return ErrRequeueDNS
+			}
+
+			// Already deregistered - nothing more to do
+			return nil
+		}
+
 		registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
 		if err != nil {
-			//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedDetachControlPlaneDNS",
-			//	"Failed to deregister control plane instance %q from DNS: failed to determine registration status: %v", m.ID, err)
-			return errors.Wrapf(err, "machine %q - error determining registration status", m.ID)
+			//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedAttachControlPlaneELB",
+			//	"Failed to register control plane instance %q with load balancer: failed to determine registration status: %v", i.ID, err)
+			return errors.Wrapf(err, "normal machine %q - error determining registration status", m.ID)
 		}
 
 		machineScope.MaasMachine.Status.DNSAttached = registered
 
-		if registered {
-			// Wait for Cluster to delete this guy
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSDetachPending, clusterv1.ConditionSeverityWarning, "")
-			machineScope.Info("machine waiting for cluster to de-register DNS")
+		if !registered {
+			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
+			// Wait for Cluster to add me
+			machineScope.Info("machine waiting for cluster to register DNS")
 			return ErrRequeueDNS
 		}
-
-		// Already deregistered - nothing more to do
-		return nil
-	}
-
-	registered, err := dnssvc.MachineIsRegisteredWithAPIServerDNS(m)
-	if err != nil {
-		//r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "FailedAttachControlPlaneELB",
-		//	"Failed to register control plane instance %q with load balancer: failed to determine registration status: %v", i.ID, err)
-		return errors.Wrapf(err, "normal machine %q - error determining registration status", m.ID)
-	}
-
-	machineScope.MaasMachine.Status.DNSAttached = registered
-
-	if !registered {
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition, infrav1beta1.DNSAttachPending, clusterv1.ConditionSeverityWarning, "")
-		// Wait for Cluster to add me
-		machineScope.Info("machine waiting for cluster to register DNS")
-		return ErrRequeueDNS
 	}
 
 	conditions.MarkTrue(machineScope.MaasMachine, infrav1beta1.DNSAttachedCondition)

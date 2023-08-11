@@ -29,9 +29,10 @@ const (
 
 // MaasClusterSpec defines the desired state of MaasCluster
 type MaasClusterSpec struct {
-	// DNSDomain configures the MaaS domain to create the cluster on (e.g maas)
-	// +kubebuilder:validation:MinLength=1
-	DNSDomain string `json:"dnsDomain"`
+	// DNSDomain configures the MaaS domain to create the cluster on (e.g maas) leave
+	// empty if you don't want Capmaas to manage the loadbalancer endpoint
+	// +optional
+	DNSDomain string `json:"dnsDomain,omitempty"`
 
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
