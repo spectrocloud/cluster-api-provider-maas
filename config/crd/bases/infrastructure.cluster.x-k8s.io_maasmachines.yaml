@@ -363,11 +363,6 @@ spec:
               systemID:
                 description: SystemID will be the MaaS machine ID
                 type: string
-              tags:
-                description: Tags for placement
-                items:
-                  type: string
-                type: array
             required:
             - image
             - minCPU

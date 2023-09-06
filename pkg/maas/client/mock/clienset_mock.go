@@ -135,20 +135,6 @@ func (mr *MockClientSetInterfaceMockRecorder) ResourcePools() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourcePools", reflect.TypeOf((*MockClientSetInterface)(nil).ResourcePools))
 }
 
-// SSHKeys mocks base method.
-func (m *MockClientSetInterface) SSHKeys() maasclient.SSHKeys {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SSHKeys")
-	ret0, _ := ret[0].(maasclient.SSHKeys)
-	return ret0
-}
-
-// SSHKeys indicates an expected call of SSHKeys.
-func (mr *MockClientSetInterfaceMockRecorder) SSHKeys() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SSHKeys", reflect.TypeOf((*MockClientSetInterface)(nil).SSHKeys))
-}
-
 // Spaces mocks base method.
 func (m *MockClientSetInterface) Spaces() maasclient.Spaces {
 	m.ctrl.T.Helper()
@@ -405,20 +391,6 @@ func (m *MockMachine) OSSystem() string {
 func (mr *MockMachineMockRecorder) OSSystem() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OSSystem", reflect.TypeOf((*MockMachine)(nil).OSSystem))
-}
-
-// PowerManagerOn mocks base method.
-func (m *MockMachine) PowerManagerOn() maasclient.PowerManagerOn {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PowerManagerOn")
-	ret0, _ := ret[0].(maasclient.PowerManagerOn)
-	return ret0
-}
-
-// PowerManagerOn indicates an expected call of PowerManagerOn.
-func (mr *MockMachineMockRecorder) PowerManagerOn() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PowerManagerOn", reflect.TypeOf((*MockMachine)(nil).PowerManagerOn))
 }
 
 // PowerState mocks base method.
@@ -1225,20 +1197,6 @@ func (m *MockMachineAllocator) WithSystemID(arg0 string) maasclient.MachineAlloc
 func (mr *MockMachineAllocatorMockRecorder) WithSystemID(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithSystemID", reflect.TypeOf((*MockMachineAllocator)(nil).WithSystemID), arg0)
-}
-
-// WithTags mocks base method.
-func (m *MockMachineAllocator) WithTags(arg0 []string) maasclient.MachineAllocator {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WithTags", arg0)
-	ret0, _ := ret[0].(maasclient.MachineAllocator)
-	return ret0
-}
-
-// WithTags indicates an expected call of WithTags.
-func (mr *MockMachineAllocatorMockRecorder) WithTags(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTags", reflect.TypeOf((*MockMachineAllocator)(nil).WithTags), arg0)
 }
 
 // WithZone mocks base method.

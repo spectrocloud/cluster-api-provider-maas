@@ -56,10 +56,6 @@ type MaasMachineSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	MinMemoryInMB *int `json:"minMemory"`
 
-	// Tags for placement
-	// +optional
-	Tags []string `json:"tags,omitempty"`
-
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`

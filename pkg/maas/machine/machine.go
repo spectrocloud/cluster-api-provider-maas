@@ -76,10 +76,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			allocator.WithResourcePool(*mm.Spec.ResourcePool)
 		}
 
-		if len(mm.Spec.Tags) > 0 {
-			allocator.WithTags(mm.Spec.Tags)
-		}
-
 		m, err = allocator.Allocate(ctx)
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
