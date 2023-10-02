@@ -68,6 +68,9 @@ spec:
                       resourcePool:
                         description: ResourcePool will be the MAAS Machine resourcepool
                         type: string
+                      storage:
+                        description: Storage will be the MaaS Machine's storage configuration.
+                        type: string
                       systemID:
                         description: SystemID will be the MaaS machine ID
                         type: string
@@ -135,6 +138,9 @@ spec:
                         type: string
                       resourcePool:
                         description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      storage:
+                        description: Storage will be the MaaS Machine's storage configuration.
                         type: string
                       systemID:
                         description: SystemID will be the MaaS machine ID
@@ -207,6 +213,9 @@ spec:
                         type: string
                       resourcePool:
                         description: ResourcePool will be the MAAS Machine resourcepool
+                        type: string
+                      storage:
+                        description: Storage will be the MaaS Machine's storage configuration.
                         type: string
                       systemID:
                         description: SystemID will be the MaaS machine ID

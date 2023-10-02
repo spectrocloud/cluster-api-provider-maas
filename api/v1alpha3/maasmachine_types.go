@@ -56,6 +56,10 @@ type MaasMachineSpec struct {
 	// +optional
 	MinMemory *int `json:"minMemory,omitempty"`
 
+	// Storage will be the MaaS Machine's storage configuration.
+	// +optional
+	Storage *string `json:"storage,omitempty"`
+
 	// Image will be the MaaS image id
 	Image string `json:"image"`
 }
