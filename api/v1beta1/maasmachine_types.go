@@ -56,6 +56,10 @@ type MaasMachineSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	MinMemoryInMB *int `json:"minMemory"`
 
+	// Storage will be the MaaS Machine's storage configuration.
+	// +optional
+	Storage *string `json:"storage,omitempty"`
+
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
