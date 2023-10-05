@@ -27,7 +27,7 @@ func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 
 	maasEndpoint := os.Getenv("MAAS_ENDPOINT")
 	if maasEndpoint == "" {
-		panic("missing env MAAS_ENDPOINT; e.g: MAAS_ENDPOINT=http://10.11.130.10:5240/MAAS")
+		panic("missing env MAAS_ENDPOINT; e.g: MAAS_ENDPOINT=http://10.11.130.11:5240/MAAS")
 	}
 
 	maasAPIKey := os.Getenv("MAAS_API_KEY")
