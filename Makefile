@@ -13,6 +13,9 @@ RELEASE_DIR := _build/release
 DEV_DIR := _build/dev
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
 FIPS_ENABLE ?= ""
+BUILDER_GOLANG_VERSION ?= 1.21
+BUILD_ARGS = --build-arg CRYPTO_LIB=${FIPS_ENABLE} --build-arg BUILDER_GOLANG_VERSION=${BUILDER_GOLANG_VERSION}
+ALL_ARCH = amd64 arm64
 
 RELEASE_LOC := release
 ifeq ($(FIPS_ENABLE),yes)
@@ -24,7 +27,7 @@ IMAGE_NAME := cluster-api-provider-maas-controller
 REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
 SPECTRO_VERSION ?= 4.0.0-dev
 IMG_TAG ?= v0.2.0-spectro-${SPECTRO_VERSION}
-IMG ?= ${REGISTRY}/${IMAGE_NAME}:${IMG_TAG}
+CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
@@ -150,17 +153,36 @@ generate-go:
 		--output-file-base=zz_generated.conversion $(GEN_OUTPUT_BASE) \
 		--go-header-file=./hack/boilerplate.go.txt
 
+.PHONY: generate-manifests
 generate-manifests:  ## Generate manifests
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 
 # Build the docker image
+.PHONY: docker-build
 docker-build: #test
-	docker build --build-arg CRYPTO_LIB=${FIPS_ENABLE}  . -t ${IMG}
+	docker buildx build --load --platform linux/${ARCH} ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
+.PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-	docker push ${IMG}
+	docker push  $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
+
+## --------------------------------------
+## Docker — All ARCH
+## --------------------------------------
+.PHONY: docker-build-all ## Build all the architecture docker images
+docker-build-all: $(addprefix docker-build-,$(ALL_ARCH))
+
+docker-build-%:
+	$(MAKE) ARCH=$* docker-build
+
+.PHONY: docker-push-all ## Push all the architecture docker images
+docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
+	$(MAKE) docker-push-manifest
+
+docker-push-%:
+	$(MAKE) ARCH=$* docker-push
 
 docker-rmi: ## Remove the docker image locally
 	docker rmi ${IMG}
