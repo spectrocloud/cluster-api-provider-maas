@@ -184,6 +184,13 @@ docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
 docker-push-%:
 	$(MAKE) ARCH=$* docker-push
 
+.PHONY: docker-push-manifest
+docker-push-manifest: ## Push the fat manifest docker image.
+	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
+	docker manifest create --amend $(CONTROLLER_IMG):$(IMG_TAG) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(CONTROLLER_IMG)\-&:$(IMG_TAG)~g")
+	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
+	docker manifest push --insecure --purge ${CONTROLLER_IMG}:${IMG_TAG}
+
 docker-rmi: ## Remove the docker image locally
 	docker rmi ${IMG}
 
