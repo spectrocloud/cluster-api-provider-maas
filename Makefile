@@ -82,7 +82,7 @@ uninstall: manifests ## Uninstall CRDs from a cluster
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: manifests  ## Deploy controller in the configured Kubernetes cluster
-	cd config/manager && kustomize edit set image controller=${IMG}
+	cd config/manager && kustomize edit set image controller=$(CONTROLLER_IMG):$(IMG_TAG)
 	kustomize build config/default | kubectl apply -f -
 
 $(MANIFEST_DIR):
@@ -118,7 +118,7 @@ release-overrides:
 
 .PHONY: dev-manifests
 dev-manifests:
-	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(IMG)
+	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(CONTROLLER_IMG):$(IMG_TAG)
 	cp metadata.yaml $(DEV_DIR)/metadata.yaml
 	$(MAKE) templates OUTPUT_DIR=$(DEV_DIR)
 
@@ -189,10 +189,10 @@ docker-push-manifest: ## Push the fat manifest docker image.
 	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
 	docker manifest create --amend $(CONTROLLER_IMG):$(IMG_TAG) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(CONTROLLER_IMG)\-&:$(IMG_TAG)~g")
 	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
-	docker manifest push --insecure --purge ${CONTROLLER_IMG}:${IMG_TAG}
+	docker manifest push --insecure --purge $(CONTROLLER_IMG):$(IMG_TAG)
 
 docker-rmi: ## Remove the docker image locally
-	docker rmi ${IMG}
+	docker rmi $(CONTROLLER_IMG):$(IMG_TAG)
 
 mock: $(MOCKGEN)
 	go generate ./...
