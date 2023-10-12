@@ -15,6 +15,7 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 FIPS_ENABLE ?= ""
 BUILDER_GOLANG_VERSION ?= 1.21
 BUILD_ARGS = --build-arg CRYPTO_LIB=${FIPS_ENABLE} --build-arg BUILDER_GOLANG_VERSION=${BUILDER_GOLANG_VERSION}
+ARCH ?= amd64
 ALL_ARCH = amd64 arm64
 
 RELEASE_LOC := release
@@ -161,7 +162,7 @@ generate-manifests:  ## Generate manifests
 # Build the docker image
 .PHONY: docker-build
 docker-build: #test
-	docker buildx build --load --platform linux/${ARCH} ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
+	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
 .PHONY: docker-push
