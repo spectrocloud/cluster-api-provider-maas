@@ -21,6 +21,7 @@ import (
 	"flag"
 	"math/rand"
 	"os"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"time"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
@@ -36,7 +37,6 @@ import (
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"

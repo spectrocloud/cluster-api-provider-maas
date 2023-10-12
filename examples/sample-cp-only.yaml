@@ -1,64 +1,53 @@
-# Creates a cluster with one control-plane node and one worker node
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+# Creates a cluster with one control-plane node
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
-  name: my-cluster
+  name: t-cluster
   namespace: default
-  labels:
-    cluster.x-k8s.io/provider: infrastructure-zks
-    cluster.x-k8s.io/v1alpha4: v1alpha4
 spec:
   dnsDomain: maas.sc
-  failureDomains: ['az1']
 ---
-apiVersion: cluster.x-k8s.io/v1alpha3
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: my-cluster
+  name: t-cluster
   namespace: default
 spec:
   clusterNetwork:
-    services:
-      cidrBlocks: ["10.96.0.0/12"]
     pods:
-      cidrBlocks: ["192.168.0.0/16"]
-    serviceDomain: "cluster.local"
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: KubeadmControlPlane
-    name: controlplane
-    namespace: default
+    name: t-cluster-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
-    name: my-cluster
-    namespace: default
+    name: t-cluster
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
-  name: controlplane
+  name: t-cluster-control-plane
   namespace: default
 spec:
   template:
     spec:
+      image: u-2004-0-k-1243-0
       minCPU: 4
       minMemory: 8192
-      image: u-1804-0-k-1208-0
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
-  name: controlplane
+  name: t-cluster-control-plane
   namespace: default
 spec:
-  replicas: 1
-  version: v1.20.8
-  infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha3
-    kind: MaasMachineTemplate
-    name: controlplane
-    namespace: default
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
@@ -69,11 +58,9 @@ spec:
           default-unreachable-toleration-seconds: "60"
           disable-admission-plugins: AlwaysAdmit
           enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
-          insecure-port: "0"
         timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
-          address: 0.0.0.0
           feature-gates: RotateKubeletServerCertificate=true
           pod-eviction-timeout: 1m0s
           terminated-pod-gc-threshold: "25"
@@ -82,8 +69,7 @@ spec:
       etcd: {}
       networking: {}
       scheduler:
-        extraArgs:
-          address: 0.0.0.0
+        extraArgs: null
     initConfiguration:
       localAPIEndpoint:
         advertiseAddress: ""
@@ -109,4 +95,6 @@ spec:
     preKubeadmCommands:
     - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
       sleep 1; done
+    - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+    - swapoff -a
     useExperimentalRetryJoin: true
