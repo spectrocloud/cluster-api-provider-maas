@@ -67,16 +67,11 @@ jobs:
           make docker-build
           make docker-push
       -
-        name: Create Release
+        name: Create Tag
         if: ${{ github.event.inputs.rel_type == 'release' }}
-        id: create_release
-        uses: actions/create-release@v1
+        id: tag_create
+        uses: rickstaa/action-create-tag@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ github.event.inputs.release_version }}-spectro
-          release_name: Release v${{ github.event.inputs.release_version }}-spectro
-          body: |
-            Release version v${{ github.event.inputs.release_version }}-spectro
-          draft: false
-          prerelease: false
+          tag: v${{ github.event.inputs.release_version }}-spectro
