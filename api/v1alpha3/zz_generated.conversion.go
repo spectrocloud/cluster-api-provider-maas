@@ -418,6 +418,7 @@ func autoConvert_v1beta1_MaasMachineSpec_To_v1alpha3_MaasMachineSpec(in *v1beta1
 	out.ResourcePool = (*string)(unsafe.Pointer(in.ResourcePool))
 	out.MinCPU = (*int)(unsafe.Pointer(in.MinCPU))
 	// WARNING: in.MinMemoryInMB requires manual conversion: does not exist in peer-type
+	// WARNING: in.Tags requires manual conversion: does not exist in peer-type
 	out.Image = in.Image
 	return nil
 }

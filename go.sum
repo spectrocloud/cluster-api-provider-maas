@@ -453,6 +453,8 @@ github.com/soheilhy/cmux v0.1.5/go.mod h1:T7TcVDs9LWfQgPlPsdngu6I6QIoyIFZDDC6sNE
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230325022351-83e132faf065 h1:9Hp6bTsg2Vpi4EYboy9/pLG3sRpDlePXEVDyvB9FljA=
 github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230325022351-83e132faf065/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230830132549-2f7491722359 h1:Rx+qfNFGE1Oh+cfNB+MW4JGod04jaaJemZ84yAn8HwQ=
+github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230830132549-2f7491722359/go.mod h1:ih7QvZPySD8fiIo56wO+W40w1ojiqNnpLP0Zb6nKvKk=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
 github.com/spf13/afero v1.2.2/go.mod h1:9ZxEEn6pIJ8Rxe320qSDBk6AsU0r9pR7Q4OcevTdifk=
 github.com/spf13/afero v1.6.0/go.mod h1:Ai8FlHk4v/PARR026UzYexafAt9roJ7LcLMAmO6Z93I=

@@ -1227,6 +1227,20 @@ func (mr *MockMachineAllocatorMockRecorder) WithSystemID(arg0 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithSystemID", reflect.TypeOf((*MockMachineAllocator)(nil).WithSystemID), arg0)
 }
 
+// WithTags mocks base method.
+func (m *MockMachineAllocator) WithTags(arg0 []string) maasclient.MachineAllocator {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithTags", arg0)
+	ret0, _ := ret[0].(maasclient.MachineAllocator)
+	return ret0
+}
+
+// WithTags indicates an expected call of WithTags.
+func (mr *MockMachineAllocatorMockRecorder) WithTags(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithTags", reflect.TypeOf((*MockMachineAllocator)(nil).WithTags), arg0)
+}
+
 // WithZone mocks base method.
 func (m *MockMachineAllocator) WithZone(arg0 string) maasclient.MachineAllocator {
 	m.ctrl.T.Helper()
