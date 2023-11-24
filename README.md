@@ -19,7 +19,7 @@ Spectro Cloud public images
 ## Custom Image Generation
 Refer [image-generation/](image-generation/README.md)
 
-## Set up
+## Hello world
 
 - Create kind cluster
 ```bash
@@ -29,13 +29,35 @@ kind create cluster --name=maas-cluster
 - Install clusterctl v1beta1
 https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
 
+- Setup clusterctl configuration `~/.cluster-api/clusterctl.yaml`
+```
+# MAAS access endpoint and key
+MAAS_API_KEY: <maas-api-key>
+MAAS_ENDPOINT: http://<maas-endpoint>/MAAS
+MAAS_DNS_DOMAIN: maas.domain
+
+# Cluster configuration
+KUBERNETES_VERSION: v1.26.4
+CONTROL_PLANE_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
+CONTROL_PLANE_MACHINE_MINCPU: 4
+CONTROL_PLANE_MACHINE_MINMEMORY: 8192
+WORKER_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
+WORKER_MACHINE_MINCPU: 4
+WORKER_MACHINE_MINMEMORY: 8192
+
+# Selecting machine based on resourcepool (optional) and machine tag (optional)
+CONTROL_PLANE_MACHINE_RESOURCEPOOL: resorcepool-controller
+CONTROL_PLANE_MACHINE_TAG: hello-world
+WORKER_MACHINE_RESOURCEPOOL: resourcepool-worker
+WORKER_MACHINE_TAG: hello-world
+```
 - Initialize infrastructure
 ```bash
 clusterctl init --infrastructure maas:v0.5.0
 ```
 - Generate and create cluster
 ```
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.5.0 | kubectl apply -f -
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
 ## Developer Guide
@@ -79,7 +101,6 @@ clusterctl init --infrastructure maas:v0.5.0
 
 
 ## Install CRDs
-
 ### v1beta1 v0.5.0 release
 - Generate cluster using
 ```shell
