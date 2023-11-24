@@ -38,6 +38,8 @@ spec:
       minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
       minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
       image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      tags: [ ${ CONTROL_PLANE_MACHINE_TAG } ]
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
@@ -112,6 +114,8 @@ spec:
       minCPU: ${WORKER_MACHINE_MINCPU}
       minMemory: ${WORKER_MACHINE_MINMEMORY}
       image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [ ${ WORKER_MACHINE_TAG } ]
 ---
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
