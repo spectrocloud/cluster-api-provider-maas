@@ -27,6 +27,13 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 // ReconcileDNS reconciles the load balancers for the given cluster.
 func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
+
+	if util.IsCustomEndpointPresent(s.scope.MaasCluster.GetAnnotations()) {
+		s.scope.GetDNSName()
+		s.scope.V(0).Info("custom dns is provided skipping dns reconcile", "dns", s.scope.GetDNSName())
+		return nil
+	}
+
 	ctx := context.TODO()
 
 	dnsResource, err := s.GetDNSResource()

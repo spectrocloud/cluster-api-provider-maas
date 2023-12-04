@@ -132,6 +132,11 @@ func (s *ClusterScope) SetDNSName(dnsName string) {
 // GetDNSName sets the Network systemID in spec.
 // This can't do a lookup on Status.Network.DNSDomain name since it's derviced from here
 func (s *ClusterScope) GetDNSName() string {
+	if infrautil.IsCustomEndpointPresent(s.MaasCluster.GetAnnotations()) {
+		s.SetDNSName(s.MaasCluster.Spec.ControlPlaneEndpoint.Host)
+		return s.MaasCluster.Spec.ControlPlaneEndpoint.Host
+	}
+
 	if !s.Cluster.Spec.ControlPlaneEndpoint.IsZero() {
 		return s.Cluster.Spec.ControlPlaneEndpoint.Host
 	}
