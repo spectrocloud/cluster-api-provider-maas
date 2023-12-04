@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	util2 "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -28,7 +29,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
 
-	if util.IsCustomEndpointPresent(s.scope.MaasCluster.GetAnnotations()) {
+	if util2.IsCustomEndpointPresent(s.scope.MaasCluster.GetAnnotations()) {
 		s.scope.GetDNSName()
 		s.scope.V(0).Info("custom dns is provided skipping dns reconcile", "dns", s.scope.GetDNSName())
 		return nil
