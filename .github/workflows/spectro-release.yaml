@@ -51,8 +51,8 @@ jobs:
           FIPS_ENABLE: yes
           REGISTRY: gcr.io/spectro-images-public/release-fips/cluster-api-maas
         run: |
-          make docker-build
-          make docker-push
+          make docker-build-all
+          make docker-push-all
       -
         name: Create Release
         id: create_release
