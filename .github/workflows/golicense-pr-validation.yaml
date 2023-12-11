@@ -1,0 +1,31 @@
+name: GoLicenses
+on: [pull_request]
+
+concurrency:
+  group: golicenses-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golicense-pr-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: install-git
+        run: sudo apt-get install -y git
+
+      - name: install-golicenses
+        run: GOBIN=/usr/local/bin go install github.com/google/go-licenses@latest
+
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: set-github-access
+        run: |
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf ssh://git@github
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf https://github
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf git@github
+
+      - name: golicense-scan
+        run: |
+          go-licenses check --ignore github.com/spectrocloud ./
+#          go-licenses check --ignore github.com/spectrocloud ./hack/tools
+#          go-licenses check --ignore github.com/spectrocloud ./spate/xk6-spate

@@ -1,0 +1,36 @@
+name: BulwarkGitLeaks
+on: [pull_request]
+
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks-pr-scan:
+    runs-on: ubuntu-latest
+    container:
+      image: gcr.io/spectro-dev-public/bulwark/gitleaks:latest
+      env:
+        REPO: ${{ github.event.repository.name }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_CONFIG: /workspace/config.toml
+    steps:
+
+      - name: run-bulwark-gitleaks-scan
+        shell: sh
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: /workspace/bulwark -name CodeSASTGitLeaks -target $REPO -tags "branch:$BRANCH,options:--log-opts origin..HEAD"
+
+      - name: check-result
+        shell: sh
+        run: |
+          resultPath=./$REPO/gitleaks.json
+          cat $resultPath | grep -v \"Match\"\: | grep -v \"Secret\"\:
+          total_failed_tests=`cat $resultPath | grep \"Fingerprint\"\: | wc -l`
+          if [ "$total_failed_tests" -gt 0 ]; then
+            echo "GitLeaks validation check failed with above findings..."
+            exit 1
+          else 
+            echo "GitLeaks validation check passed"
+          fi
