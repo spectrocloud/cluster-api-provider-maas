@@ -63,7 +63,9 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	failureDomain := mm.Spec.FailureDomain
 	if failureDomain == nil {
-		failureDomain = s.scope.Machine.Spec.FailureDomain
+		if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
+			failureDomain = s.scope.Machine.Spec.FailureDomain
+		}
 	}
 
 	var m maasclient.Machine
