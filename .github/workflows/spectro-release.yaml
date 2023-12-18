@@ -64,8 +64,8 @@ jobs:
           FIPS_ENABLE: yes
           REGISTRY: ${{ env.FIPS_REGISTRY }}
         run: |
-          make docker-build
-          make docker-push
+          make docker-build-all
+          make docker-push-all
       -
         name: Create Tag
         if: ${{ github.event.inputs.rel_type == 'release' }}
