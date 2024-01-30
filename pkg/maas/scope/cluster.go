@@ -119,15 +119,12 @@ func (s *ClusterScope) Close() error {
 
 // APIServerPort returns the APIServerPort to use when creating the load balancer.
 func (s *ClusterScope) APIServerPort() int {
-	if infrautil.IsCustomEndpointPresent(s.MaasCluster.GetAnnotations()) {
-		if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
-			*s.Cluster.Spec.ClusterNetwork.APIServerPort = int32(s.MaasCluster.Spec.ControlPlaneEndpoint.Port)
-			return s.MaasCluster.Spec.ControlPlaneEndpoint.Port
-		}
-	}
-
 	if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
 		return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+	}
+
+	if infrautil.IsCustomEndpointPresent(s.MaasCluster.GetAnnotations()) {
+		return s.MaasCluster.Spec.ControlPlaneEndpoint.Port
 	}
 	return 6443
 }
