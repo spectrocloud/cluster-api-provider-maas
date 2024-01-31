@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	util2 "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
@@ -395,6 +396,12 @@ func (r *MaasMachineReconciler) resolveUserData(machineScope *scope.MachineScope
 
 func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, m *infrav1beta1.Machine) error {
 	if !machineScope.IsControlPlane() {
+		return nil
+	}
+
+	if util2.IsCustomEndpointPresent(clusterScope.MaasCluster.GetAnnotations()) {
+		clusterScope.GetDNSName()
+		clusterScope.V(0).Info("custom dns is provided skipping dns reconcile", "dns", clusterScope.GetDNSName())
 		return nil
 	}
 
