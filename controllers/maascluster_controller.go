@@ -150,9 +150,7 @@ func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScop
 
 func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc *dns.Service) error {
 
-	if infrautil.IsCustomEndpointPresent(clusterScope.MaasCluster.GetAnnotations()) {
-		clusterScope.GetDNSName()
-		clusterScope.V(0).Info("custom dns is provided skipping dns reconcile", "dns", clusterScope.GetDNSName())
+	if clusterScope.IsCustomEndpoint() {
 		return nil
 	}
 
