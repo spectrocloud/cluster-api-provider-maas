@@ -284,3 +284,12 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 
 	return err == nil, nil
 }
+
+func (s *ClusterScope) IsCustomEndpoint() bool {
+	if infrautil.IsCustomEndpointPresent(s.MaasCluster.GetAnnotations()) {
+		s.GetDNSName()
+		s.V(0).Info("custom dns is provided skipping dns reconcile", "dns", s.GetDNSName())
+		return true
+	}
+	return false
+}
