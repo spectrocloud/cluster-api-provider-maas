@@ -5,7 +5,6 @@ import (
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -29,9 +28,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 func (s *Service) ReconcileDNS() error {
 	s.scope.V(2).Info("Reconciling DNS")
 
-	if util.IsCustomEndpointPresent(s.scope.MaasCluster.GetAnnotations()) {
-		s.scope.GetDNSName()
-		s.scope.V(0).Info("custom dns is provided skipping dns reconcile", "dns", s.scope.GetDNSName())
+	if s.scope.IsCustomEndpoint() {
 		return nil
 	}
 
@@ -63,6 +60,11 @@ func (s *Service) ReconcileDNS() error {
 // UpdateAttachments reconciles the load balancers for the given cluster.
 func (s *Service) UpdateDNSAttachments(IPs []string) error {
 	s.scope.V(2).Info("Updating DNS Attachments")
+
+	if s.scope.IsCustomEndpoint() {
+		return nil
+	}
+
 	ctx := context.TODO()
 	// get ID of loadbalancer
 	dnsResource, err := s.GetDNSResource()
@@ -96,6 +98,10 @@ func (s *Service) UpdateDNSAttachments(IPs []string) error {
 
 // InstanceIsRegisteredWithAPIServerELB returns true if the instance is already registered with the APIServer ELB.
 func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1beta1.Machine) (bool, error) {
+	if s.scope.IsCustomEndpoint() {
+		return true, nil
+	}
+
 	ips, err := s.GetAPIServerDNSRecords()
 	if err != nil {
 		return false, err
@@ -111,6 +117,11 @@ func (s *Service) MachineIsRegisteredWithAPIServerDNS(i *infrainfrav1beta1.Machi
 }
 
 func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
+
+	if s.scope.IsCustomEndpoint() {
+		return nil, nil
+	}
+
 	dnsResource, err := s.GetDNSResource()
 	if err != nil {
 		return nil, err
@@ -127,6 +138,11 @@ func (s *Service) GetAPIServerDNSRecords() (sets.String, error) {
 }
 
 func (s *Service) GetDNSResource() (maasclient.DNSResource, error) {
+
+	if s.scope.IsCustomEndpoint() {
+		return nil, nil
+	}
+
 	dnsName := s.scope.GetDNSName()
 	if dnsName == "" {
 		return nil, errors.New("No DNS on the cluster set!")
