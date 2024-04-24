@@ -2,6 +2,8 @@ module github.com/spectrocloud/cluster-api-provider-maas
 
 go 1.22
 
+toolchain go1.22.2
+
 require (
 	github.com/go-logr/logr v1.2.0
 	github.com/golang/mock v1.6.0
