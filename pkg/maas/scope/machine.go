@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/noderefutil"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
@@ -163,11 +162,8 @@ func (m *MachineScope) Role() string {
 
 // GetInstanceID returns the MaasMachine instance id by parsing Spec.ProviderID.
 func (m *MachineScope) GetInstanceID() *string {
-	parsed, err := noderefutil.NewProviderID(m.GetProviderID())
-	if err != nil {
-		return nil
-	}
-	return pointer.StringPtr(parsed.ID())
+	providerId := m.GetProviderID()
+	return &providerId
 }
 
 // GetProviderID returns the MaasMachine providerID from the spec.

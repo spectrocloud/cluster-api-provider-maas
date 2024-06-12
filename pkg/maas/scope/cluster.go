@@ -149,7 +149,7 @@ func (s *ClusterScope) GetDNSName() string {
 func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
 
 	machineList := &infrav1beta1.MaasMachineList{}
-	labels := map[string]string{clusterv1.ClusterLabelName: s.Cluster.Name}
+	labels := map[string]string{clusterv1.ClusterNameLabel: s.Cluster.Name}
 
 	if err := s.client.List(
 		context.TODO(),

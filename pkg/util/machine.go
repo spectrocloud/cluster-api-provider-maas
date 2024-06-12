@@ -29,7 +29,7 @@ func GetMAASMachinesInCluster(
 	controllerClient client.Client,
 	namespace, clusterName string) ([]*v1beta1.MaasMachine, error) {
 
-	labels := map[string]string{clusterv1.ClusterLabelName: clusterName}
+	labels := map[string]string{clusterv1.ClusterNameLabel: clusterName}
 	machineList := &v1beta1.MaasMachineList{}
 
 	if err := controllerClient.List(
