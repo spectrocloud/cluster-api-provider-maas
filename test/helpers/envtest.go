@@ -24,6 +24,8 @@ import (
 	"path"
 	"path/filepath"
 	goruntime "runtime"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"strconv"
 	"strings"
 	"time"
@@ -193,10 +195,12 @@ func (t *TestEnvironmentConfiguration) Build() (*TestEnvironment, error) {
 	}
 
 	options := manager.Options{
-		Scheme:             scheme.Scheme,
-		MetricsBindAddress: "0",
-		CertDir:            t.env.WebhookInstallOptions.LocalServingCertDir,
-		Port:               t.env.WebhookInstallOptions.LocalServingPort,
+		Scheme:  scheme.Scheme,
+		Metrics: metricsserver.Options{BindAddress: "0"},
+		WebhookServer: webhookserver.NewServer(webhookserver.Options{
+			CertDir: t.env.WebhookInstallOptions.LocalServingCertDir,
+			Port:    t.env.WebhookInstallOptions.LocalServingPort,
+		}),
 	}
 
 	mgr, err := ctrl.NewManager(t.env.Config, options)

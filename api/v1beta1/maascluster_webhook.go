@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,27 +50,27 @@ func (r *MaasCluster) Default() {
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateCreate() error {
+func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
 	maasclusterlog.Info("validate create", "name", r.Name)
-	return nil
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateUpdate(old runtime.Object) error {
+func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	maasclusterlog.Info("validate update", "name", r.Name)
 	oldC, ok := old.(*MaasCluster)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", old))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", old))
 	}
 
 	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
-		return apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
+		return nil, apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
 	}
-	return nil
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateDelete() error {
+func (r *MaasCluster) ValidateDelete() (admission.Warnings, error) {
 	maasclusterlog.Info("validate delete", "name", r.Name)
-	return nil
+	return nil, nil
 }

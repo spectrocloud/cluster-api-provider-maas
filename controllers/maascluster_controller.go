@@ -202,7 +202,7 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 
 // IsControlPlaneMachine checks machine is a control plane node.
 func IsControlPlaneMachine(m *infrav1beta1.MaasMachine) bool {
-	_, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabelName]
+	_, ok := m.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]
 	return ok
 }
 
@@ -292,21 +292,23 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1beta1.MaasCluster{}).
 		Watches(
-			&source.Kind{Type: &infrav1beta1.MaasMachine{}},
+			&infrav1beta1.MaasMachine{},
 			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
-		).
-		Watches(
-			&source.Channel{Source: r.GenericEventChannel},
-			&handler.EnqueueRequestForObject{},
 		).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
 		Build(r)
 	if err != nil {
 		return err
 	}
+	if err := c.Watch(
+		&source.Channel{Source: r.GenericEventChannel},
+		&handler.EnqueueRequestForObject{},
+	); err != nil {
+		return err
+	}
 	return c.Watch(
-		&source.Kind{Type: &clusterv1.Cluster{}},
-		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(infrav1beta1.GroupVersion.WithKind("MaasCluster"))),
+		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
+		handler.EnqueueRequestsFromMapFunc(util.ClusterToInfrastructureMapFunc(context.Background(), infrav1beta1.GroupVersion.WithKind("MaasCluster"), mgr.GetClient(), &infrav1beta1.MaasCluster{})),
 		predicates.ClusterUnpaused(r.Log),
 	)
 }
@@ -314,7 +316,7 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used
 // to enqueue requests for reconciliation for MaasCluster to update
 // its status.apiEndpoints field.
-func (r *MaasClusterReconciler) controlPlaneMachineToCluster(o client.Object) []ctrl.Request {
+func (r *MaasClusterReconciler) controlPlaneMachineToCluster(_ context.Context, o client.Object) []ctrl.Request {
 	maasMachine, ok := o.(*infrav1beta1.MaasMachine)
 	if !ok {
 		r.Log.Error(nil, fmt.Sprintf("expected a MaasMachine but got a %T", o))

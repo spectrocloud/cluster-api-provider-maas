@@ -18,6 +18,7 @@ package v1beta1
 
 import (
 	"fmt"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,32 +50,32 @@ func (r *MaasMachine) Default() {
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateCreate() error {
+func (r *MaasMachine) ValidateCreate() (admission.Warnings, error) {
 	maasmachinelog.Info("validate create", "name", r.Name)
-	return nil
+	return nil, nil
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateDelete() error {
+func (r *MaasMachine) ValidateDelete() (admission.Warnings, error) {
 	maasmachinelog.Info("validate delete", "name", r.Name)
-	return nil
+	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachine) ValidateUpdate(old runtime.Object) error {
+func (r *MaasMachine) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
 	maasmachinelog.Info("validate update", "name", r.Name)
 	oldM := old.(*MaasMachine)
 
 	if r.Spec.Image != oldM.Spec.Image {
-		return apierrors.NewBadRequest(fmt.Sprintf("maas machine image change is not allowed, old=%s, new=%s", oldM.Spec.Image, r.Spec.Image))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine image change is not allowed, old=%s, new=%s", oldM.Spec.Image, r.Spec.Image))
 	}
 
 	if *r.Spec.MinCPU != *oldM.Spec.MinCPU {
-		return apierrors.NewBadRequest(fmt.Sprintf("maas machine min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.MinCPU, r.Spec.MinCPU))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.MinCPU, r.Spec.MinCPU))
 	}
 
 	if *r.Spec.MinMemoryInMB != *oldM.Spec.MinMemoryInMB {
-		return apierrors.NewBadRequest(fmt.Sprintf("maas machine min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.MinMemoryInMB, r.Spec.MinMemoryInMB))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.MinMemoryInMB, r.Spec.MinMemoryInMB))
 	}
-	return nil
+	return nil, nil
 }

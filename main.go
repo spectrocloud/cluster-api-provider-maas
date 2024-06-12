@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	"flag"
+	"k8s.io/klog/v2/textlogger"
 	"math/rand"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -32,15 +33,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
-	infrav1alpha4 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha4"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -62,9 +63,7 @@ func init() {
 	klog.InitFlags(nil)
 
 	_ = clientgoscheme.AddToScheme(scheme)
-	_ = infrav1alpha3.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
-	_ = infrav1alpha4.AddToScheme(scheme)
 	_ = infrav1beta1.AddToScheme(scheme)
 	// +kubebuilder:scaffold:scheme
 }
@@ -80,17 +79,25 @@ func main() {
 		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
 	}
 
-	ctrl.SetLogger(klogr.New())
+	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		MetricsBindAddress:     metricsBindAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "controller-leader-election-capmaas",
-		SyncPeriod:             &syncPeriod,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: metricsBindAddr,
+		},
+		LeaderElection:   enableLeaderElection,
+		LeaderElectionID: "controller-leader-election-capmaas",
+		Cache: cache.Options{
+			SyncPeriod: &syncPeriod,
+			DefaultNamespaces: map[string]cache.Config{
+				watchNamespace: {},
+			},
+		},
 		HealthProbeBindAddress: healthAddr,
-		Port:                   webhookPort,
-		Namespace:              watchNamespace,
+		WebhookServer: webhookserver.NewServer(webhookserver.Options{
+			Port: webhookPort,
+		}),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -119,7 +126,7 @@ func main() {
 		mgr,
 		remote.ClusterCacheTrackerOptions{
 			Log:     &log,
-			Indexes: remote.DefaultIndexes,
+			Indexes: []remote.Index{remote.NodeProviderIDIndex},
 		},
 	)
 	if err != nil {
@@ -127,8 +134,8 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&remote.ClusterCacheReconciler{
-		Client:  mgr.GetClient(),
-		Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
+		Client: mgr.GetClient(),
+		//Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
 		Tracker: tracker,
 	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")

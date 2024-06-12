@@ -447,7 +447,7 @@ func (r *MaasMachineReconciler) reconcileDNSAttachment(machineScope *scope.Machi
 
 // SetupWithManager will add watches for this controller
 func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Manager, options controller.Options) error {
-	clusterToMaasMachines, err := util.ClusterToObjectsMapper(mgr.GetClient(), &infrav1beta1.MaasMachineList{}, mgr.GetScheme())
+	clusterToMaasMachines, err := util.ClusterToTypedObjectsMapper(mgr.GetClient(), &infrav1beta1.MaasMachineList{}, mgr.GetScheme())
 	if err != nil {
 		return err
 	}
@@ -456,11 +456,11 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 		For(&infrav1beta1.MaasMachine{}).
 		WithOptions(options).
 		Watches(
-			&source.Kind{Type: &clusterv1.Machine{}},
+			&clusterv1.Machine{},
 			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1beta1.GroupVersion.WithKind("MaasMachine"))),
 		).
 		Watches(
-			&source.Kind{Type: &infrav1beta1.MaasCluster{}},
+			&infrav1beta1.MaasCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
 		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
@@ -469,7 +469,7 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 		return err
 	}
 	return c.Watch(
-		&source.Kind{Type: &clusterv1.Cluster{}},
+		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
 		handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
 		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
 	)
@@ -477,7 +477,7 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 
 // MaasClusterToMaasMachines is a handler.ToRequestsFunc to be used to enqeue
 // requests for reconciliation of MaasMachines.
-func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o client.Object) []ctrl.Request {
+func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o client.Object) []ctrl.Request {
 	var result []ctrl.Request
 	c, ok := o.(*infrav1beta1.MaasCluster)
 	if !ok {
@@ -492,7 +492,7 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(o client.Object) []ctr
 		return result
 	}
 
-	labels := map[string]string{clusterv1.ClusterLabelName: cluster.Name}
+	labels := map[string]string{clusterv1.ClusterNameLabel: cluster.Name}
 	machineList := &clusterv1.MachineList{}
 	if err := r.Client.List(context.TODO(), machineList, client.InNamespace(c.Namespace), client.MatchingLabels(labels)); err != nil {
 		return nil
