@@ -1,7 +1,7 @@
 # Build the manager binary
 ARG BUILDER_GOLANG_VERSION
 # First stage: build the executable.
-FROM --platform=$TARGETPLATFORM gcr.io/spectro-images-public/golang:${BUILDER_GOLANG_VERSION}-alpine as toolchain
+FROM --platform=$TARGETPLATFORM us-docker.pkg.dev/palette-images/build-base-images/golang:${BUILDER_GOLANG_VERSION}-alpine as toolchain
 
 FROM toolchain as builder
 WORKDIR /workspace
