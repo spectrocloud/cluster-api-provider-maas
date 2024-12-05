@@ -21,8 +21,8 @@ jobs:
     # Ensure that the credentials are provided as encrypted secrets
     env:
       SPECTRO_VERSION: ${{ github.event.inputs.release_version }}
-      LEGACY_REGISTRY: gcr.io/spectro-images-public/release/cluster-api-maas
-      FIPS_REGISTRY: gcr.io/spectro-images-public/release-fips/cluster-api-maas
+      LEGACY_REGISTRY: us-docker.pkg.dev/palette-images/palette/cluster-api-maas
+      FIPS_REGISTRY: us-docker.pkg.dev/palette-images-fips/palette/cluster-api-maas
     steps:
       -
         uses: mukunku/tag-exists-action@v1.2.0
