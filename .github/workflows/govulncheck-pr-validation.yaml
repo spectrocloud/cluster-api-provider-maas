@@ -1,0 +1,33 @@
+name: GoVulnCheck
+on: [pull_request]
+
+concurrency:
+  group: govulncheck-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  govulncheck-pr-scan:
+    runs-on: ubuntu-latest
+    container:
+      image:  gcr.io/spectro-images-public/golang:alpine
+    steps:
+      - name: install-govulncheck
+        run: GOBIN=/usr/local/bin go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: set-github-access
+        run: |
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf ssh://git@github
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf https://github
+          /usr/bin/git config --global --add url."https://${{ secrets.GH_TOKEN }}:x-oauth-basic@github".insteadOf git@github
+
+      - name: govulncheck-scan
+        run: |
+          go version
+          govulncheck -mode source ./
+          govulncheck -mode source ./hack/tools
+          
+   
+

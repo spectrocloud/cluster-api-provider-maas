@@ -1,0 +1,35 @@
+name: BulwarkGoSec
+on: [pull_request]
+
+concurrency:
+  group: gosec-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gosec-pr-scan:
+    runs-on: ubuntu-latest
+    container:
+      image: gcr.io/spectro-dev-public/bulwark/gosec:latest
+    steps:
+
+      - name: run-gosec-scan
+        shell: sh
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          GO111MODULE: on
+        run: |
+          /workspace/bulwark -name CodeSASTGoSec -verbose -target $REPO -tags "branch:$BRANCH,rules:all"
+
+      - name: check-result
+        shell: sh
+        run: |
+          resultPath=$REPO-result.json
+          issues=$(cat $resultPath | jq -r '.Stats.found')
+          echo "Found ${issues} issues"
+          if [ "$issues" -gt 0 ]; then
+            echo "GoSec SAST scan failed with below findings..."
+            cat $resultPath
+            exit 1
+          else 
+            echo "GoSec SAST scan passed"
+          fi
