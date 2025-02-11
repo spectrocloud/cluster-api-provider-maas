@@ -20,8 +20,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -463,16 +464,16 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 			&infrav1beta1.MaasCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
-		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Build(r)
 	if err != nil {
 		return err
 	}
 	return c.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
-		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
-	)
+		source.Kind[client.Object](mgr.GetCache(), &clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
+			predicates.ClusterPausedTransitionsOrInfrastructureReady(mgr.GetScheme(), r.Log),
+		))
 }
 
 // MaasClusterToMaasMachines is a handler.ToRequestsFunc to be used to enqeue
