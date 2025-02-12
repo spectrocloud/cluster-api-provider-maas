@@ -21,8 +21,8 @@ jobs:
     # Ensure that the credentials are provided as encrypted secrets
     env:
       SPECTRO_VERSION: ${{ github.event.inputs.release_version }}
-      LEGACY_REGISTRY: gcr.io/spectro-images-public/release/cluster-api-maas
-      FIPS_REGISTRY: gcr.io/spectro-images-public/release-fips/cluster-api-maas
+      LEGACY_REGISTRY: us-docker.pkg.dev/palette-images/palette/cluster-api-maas
+      FIPS_REGISTRY: us-docker.pkg.dev/palette-images-fips/palette/cluster-api-maas
     steps:
       -
         uses: mukunku/tag-exists-action@v1.2.0
@@ -37,8 +37,8 @@ jobs:
       -
         if: ${{ github.event.inputs.rel_type == 'rc' }}
         run: |
-          echo "LEGACY_REGISTRY=gcr.io/spectro-dev-public/release/cluster-api-maas" >> $GITHUB_ENV
-          echo "FIPS_REGISTRY=gcr.io/spectro-dev-public/release-fips/cluster-api-maas" >> $GITHUB_ENV
+          echo "LEGACY_REGISTRY=us-east1-docker.pkg.dev/spectro-images/dev/cluster-api-maas" >> $GITHUB_ENV
+          echo "FIPS_REGISTRY=us-east1-docker.pkg.dev/spectro-images/dev-fips/cluster-api-maas" >> $GITHUB_ENV
       -
         uses: actions/checkout@v3
       -
@@ -51,6 +51,13 @@ jobs:
           registry: ${{ secrets.REGISTRY_URL }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
+      -
+        name: Login to dev private registry
+        uses: docker/login-action@v1
+        with:
+          registry: ${{ secrets.DEV_REGISTRY_URL }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}          
       -
         name: Build Image
         env:
