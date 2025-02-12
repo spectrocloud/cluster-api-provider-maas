@@ -1,8 +1,8 @@
 module github.com/spectrocloud/cluster-api-provider-maas
 
-go 1.22.0
+go 1.22.7
 
-toolchain go1.23.6
+toolchain go1.22.12
 
 require (
 	github.com/go-logr/logr v1.4.2
