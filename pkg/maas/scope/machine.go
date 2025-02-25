@@ -22,6 +22,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
@@ -162,8 +163,12 @@ func (m *MachineScope) Role() string {
 
 // GetInstanceID returns the MaasMachine instance id by parsing Spec.ProviderID.
 func (m *MachineScope) GetInstanceID() *string {
-	providerId := m.GetProviderID()
-	return &providerId
+	parsed, err := infrautil.NewProviderID(m.GetProviderID())
+	if err != nil {
+		m.Error(err, "failed to parse providerID", "providerID", m.GetProviderID())
+		return nil
+	}
+	return pointer.StringPtr(parsed.ID())
 }
 
 // GetProviderID returns the MaasMachine providerID from the spec.

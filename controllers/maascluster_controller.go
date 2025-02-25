@@ -19,9 +19,8 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
-
 	"k8s.io/apimachinery/pkg/runtime"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -45,6 +44,7 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
 // MaasClusterReconciler reconciles a MaasCluster object
@@ -286,34 +286,55 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 // SetupWithManager will add watches for this controller
 func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	recover := true
 	if r.GenericEventChannel == nil {
 		r.GenericEventChannel = make(chan event.GenericEvent)
 	}
 
 	c, err := ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1beta1.MaasCluster{}).
+		WithOptions(controller.Options{
+			RecoverPanic: &recover,
+		}).
 		Watches(
 			&infrav1beta1.MaasMachine{},
 			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
+		).
+		// Handled below at line 322
+		//Watches(
+		//	&event.GenericEvent{},
+		//	source.Channel(r.GenericEventChannel, &handler.EnqueueRequestForObject{}),
+		//	&handler.EnqueueRequestForObject{},
+		//).
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(
+				util.ClusterToInfrastructureMapFunc(context.Background(), infrav1beta1.GroupVersion.WithKind("MaasCluster"), mgr.GetClient(), &infrav1beta1.MaasCluster{}),
+			),
+			//predicates.ClusterUnpaused(mgr.GetScheme(), r.Log),
 		).
 		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
 		Build(r)
 	if err != nil {
 		return err
 	}
+
 	if err := c.Watch(
 		source.Channel(r.GenericEventChannel, &handler.EnqueueRequestForObject{}),
 	); err != nil {
 		return err
 	}
-	return c.Watch(source.Kind[client.Object](
-		mgr.GetCache(),
-		&clusterv1.Cluster{},
-		handler.EnqueueRequestsFromMapFunc(
-			util.ClusterToInfrastructureMapFunc(context.Background(), infrav1beta1.GroupVersion.WithKind("MaasCluster"), mgr.GetClient(), &infrav1beta1.MaasCluster{}),
-		),
-		predicates.ClusterUnpaused(mgr.GetScheme(), r.Log),
-	))
+
+	return err
+
+	//return c.Watch(source.Kind[client.Object](
+	//	mgr.GetCache(),
+	//	&clusterv1.Cluster{},
+	//	handler.EnqueueRequestsFromMapFunc(
+	//		util.ClusterToInfrastructureMapFunc(context.Background(), infrav1beta1.GroupVersion.WithKind("MaasCluster"), mgr.GetClient(), &infrav1beta1.MaasCluster{}),
+	//	),
+	//	predicates.ClusterUnpaused(mgr.GetScheme(), r.Log),
+	//))
 }
 
 // controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used

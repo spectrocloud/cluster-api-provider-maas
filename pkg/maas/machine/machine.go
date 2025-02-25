@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
@@ -27,6 +26,11 @@ func NewService(machineScope *scope.MachineScope) *Service {
 }
 
 func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
+
+	if systemID == "" {
+		return nil, nil
+	}
+
 	m, err := s.maasClient.Machines().Machine(systemID).Get(context.Background())
 	if err != nil {
 		return nil, err
