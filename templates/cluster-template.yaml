@@ -67,7 +67,6 @@ spec:
       controllerManager:
         extraArgs:
           feature-gates: RotateKubeletServerCertificate=true
-          pod-eviction-timeout: 1m0s
           terminated-pod-gc-threshold: "25"
           use-service-account-credentials: "true"
       dns: {}

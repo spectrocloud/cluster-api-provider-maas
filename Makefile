@@ -12,7 +12,7 @@ BUILD_DIR :=_build
 RELEASE_DIR := _build/release
 DEV_DIR := _build/dev
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
-ARCH ?= arm64
+ARCH ?= amd64
 ALL_ARCH = amd64 arm64
 
 # Image URL to use all building/pushing image targets
