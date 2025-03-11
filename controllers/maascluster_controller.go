@@ -300,12 +300,6 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&infrav1beta1.MaasMachine{},
 			handler.EnqueueRequestsFromMapFunc(r.controlPlaneMachineToCluster),
 		).
-		// Handled below at line 322
-		//Watches(
-		//	&event.GenericEvent{},
-		//	source.Channel(r.GenericEventChannel, &handler.EnqueueRequestForObject{}),
-		//	&handler.EnqueueRequestForObject{},
-		//).
 		Watches(
 			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(
@@ -327,14 +321,6 @@ func (r *MaasClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return err
 
-	//return c.Watch(source.Kind[client.Object](
-	//	mgr.GetCache(),
-	//	&clusterv1.Cluster{},
-	//	handler.EnqueueRequestsFromMapFunc(
-	//		util.ClusterToInfrastructureMapFunc(context.Background(), infrav1beta1.GroupVersion.WithKind("MaasCluster"), mgr.GetClient(), &infrav1beta1.MaasCluster{}),
-	//	),
-	//	predicates.ClusterUnpaused(mgr.GetScheme(), r.Log),
-	//))
 }
 
 // controlPlaneMachineToCluster is a handler.ToRequestsFunc to be used
