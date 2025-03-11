@@ -12,14 +12,23 @@ BUILD_DIR :=_build
 RELEASE_DIR := _build/release
 DEV_DIR := _build/dev
 REPO_ROOT := $(shell git rev-parse --show-toplevel)
+FIPS_ENABLE ?= ""
+BUILDER_GOLANG_VERSION ?= 1.23
+BUILD_ARGS = --build-arg CRYPTO_LIB=${FIPS_ENABLE} --build-arg BUILDER_GOLANG_VERSION=${BUILDER_GOLANG_VERSION}
 ARCH ?= amd64
 ALL_ARCH = amd64 arm64
 
+RELEASE_LOC := release
+ifeq ($(FIPS_ENABLE),yes)
+  RELEASE_LOC := release-fips
+endif
+
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= v0.6.0
-IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
+REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
+SPECTRO_VERSION ?= 4.0.0-dev
+IMG_TAG ?= v0.6.0-spectro-${SPECTRO_VERSION}
+CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
@@ -74,7 +83,7 @@ uninstall: manifests ## Uninstall CRDs from a cluster
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: manifests  ## Deploy controller in the configured Kubernetes cluster
-	cd config/manager && kustomize edit set image controller=${IMG}
+	cd config/manager && kustomize edit set image controller=$(CONTROLLER_IMG):$(IMG_TAG)
 	kustomize build config/default | kubectl apply -f -
 
 $(MANIFEST_DIR):
@@ -110,7 +119,7 @@ release-overrides:
 
 .PHONY: dev-manifests
 dev-manifests:
-	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(IMG)
+	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(CONTROLLER_IMG):$(IMG_TAG)
 	cp metadata.yaml $(DEV_DIR)/metadata.yaml
 	$(MAKE) templates OUTPUT_DIR=$(DEV_DIR)
 
@@ -150,39 +159,40 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
+.PHONY: docker-build
 docker-build: #test
-	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t ${IMG}-$(ARCH)
+	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
+.PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-#	docker push ${IMG}
-	docker push  ${IMG}-$(ARCH)
+	docker push  $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
-### --------------------------------------
-### Docker — All ARCH
-### --------------------------------------
-#.PHONY: docker-build-all ## Build all the architecture docker images
-#docker-build-all: $(addprefix docker-build-,$(ALL_ARCH))
-#
-#docker-build-%:
-#	$(MAKE) ARCH=$* docker-build
-#
-#.PHONY: docker-push-all ## Push all the architecture docker images
-#docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
-#	$(MAKE) docker-push-manifest
-#
-#docker-push-%:
-#	$(MAKE) ARCH=$* docker-push
-#
-#.PHONY: docker-push-manifest
-#docker-push-manifest: ## Push the fat manifest docker image.
-#	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
-#	docker manifest create --amend ${IMG}-$(ARCH) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(IMG)\-&:$(ARCH)~g")
-#	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
-	#docker manifest push --insecure --purge $(CONTROLLER_IMG):$(IMG_TAG)
+## --------------------------------------
+## Docker — All ARCH
+## --------------------------------------
+.PHONY: docker-build-all ## Build all the architecture docker images
+docker-build-all: $(addprefix docker-build-,$(ALL_ARCH))
+
+docker-build-%:
+	$(MAKE) ARCH=$* docker-build
+
+.PHONY: docker-push-all ## Push all the architecture docker images
+docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
+	$(MAKE) docker-push-manifest
+
+docker-push-%:
+	$(MAKE) ARCH=$* docker-push
+
+.PHONY: docker-push-manifest
+docker-push-manifest: ## Push the fat manifest docker image.
+	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
+	docker manifest create --amend $(CONTROLLER_IMG):$(IMG_TAG) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(CONTROLLER_IMG)\-&:$(IMG_TAG)~g")
+	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
+	docker manifest push --insecure --purge $(CONTROLLER_IMG):$(IMG_TAG)
 
 docker-rmi: ## Remove the docker image locally
-	docker rmi ${IMG}
+	docker rmi $(CONTROLLER_IMG):$(IMG_TAG)
 
 mock: $(MOCKGEN)
 	go generate ./...
