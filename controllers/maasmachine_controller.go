@@ -41,8 +41,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
-
 	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
@@ -211,13 +209,15 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
 func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta1.Machine, error) {
+
 	id := machineScope.GetInstanceID()
-	if id == nil {
+	if id == nil || *id == "" {
 		return nil, nil
 	}
 
 	m, err := machineSvc.GetMachine(*id)
 	if err != nil {
+		r.Log.Error(err, "Unable to find machine")
 		return nil, errors.Wrapf(err, "Unable to find machine")
 	}
 
@@ -452,7 +452,7 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 		return err
 	}
 
-	c, err := ctrl.NewControllerManagedBy(mgr).
+	err = ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1beta1.MaasMachine{}).
 		WithOptions(options).
 		Watches(
@@ -463,16 +463,18 @@ func (r *MaasMachineReconciler) SetupWithManager(_ context.Context, mgr ctrl.Man
 			&infrav1beta1.MaasCluster{},
 			handler.EnqueueRequestsFromMapFunc(r.MaasClusterToMaasMachines),
 		).
-		WithEventFilter(predicates.ResourceNotPaused(r.Log)).
-		Build(r)
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
+		).
+		WithEventFilter(predicates.ResourceNotPaused(mgr.GetScheme(), r.Log)).
+		Complete(r)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed setting up with a controller manager")
 	}
-	return c.Watch(
-		source.Kind(mgr.GetCache(), &clusterv1.Cluster{}),
-		handler.EnqueueRequestsFromMapFunc(clusterToMaasMachines),
-		predicates.ClusterUnpausedAndInfrastructureReady(r.Log),
-	)
+
+	r.Recorder = mgr.GetEventRecorderFor("maasmachine-controller")
+	return err
 }
 
 // MaasClusterToMaasMachines is a handler.ToRequestsFunc to be used to enqeue

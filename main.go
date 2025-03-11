@@ -90,9 +90,6 @@ func main() {
 		LeaderElectionID: "controller-leader-election-capmaas",
 		Cache: cache.Options{
 			SyncPeriod: &syncPeriod,
-			DefaultNamespaces: map[string]cache.Config{
-				watchNamespace: {},
-			},
 		},
 		HealthProbeBindAddress: healthAddr,
 		WebhookServer: webhookserver.NewServer(webhookserver.Options{
