@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -29,7 +30,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
@@ -53,10 +53,10 @@ var ErrRequeueDNS = errors.New("need to requeue DNS")
 // MaasMachineReconciler reconciles a MaasMachine object
 type MaasMachineReconciler struct {
 	client.Client
-	Log      logr.Logger
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
-	Tracker  *remote.ClusterCacheTracker
+	Log          logr.Logger
+	Scheme       *runtime.Scheme
+	Recorder     record.EventRecorder
+	ClusterCache clustercache.ClusterCache
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;create;update;patch;delete
@@ -120,7 +120,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Logger:         log,
 		Cluster:        cluster,
 		MaasCluster:    maasCluster,
-		Tracker:        r.Tracker,
+		ClusterCache:   r.ClusterCache,
 		ControllerName: "maasmachine",
 	})
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	machineScope, err := scope.NewMachineScope(scope.MachineScopeParams{
 		Logger:       log,
 		Client:       r.Client,
-		Tracker:      r.Tracker,
+		ClusterCache: r.ClusterCache,
 		Cluster:      cluster,
 		ClusterScope: clusterScope,
 		Machine:      machine,

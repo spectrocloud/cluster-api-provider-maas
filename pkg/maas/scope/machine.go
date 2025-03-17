@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -44,8 +44,7 @@ type MachineScopeParams struct {
 	Machine        *clusterv1.Machine
 	MaasMachine    *infrav1beta1.MaasMachine
 	ControllerName string
-
-	Tracker *remote.ClusterCacheTracker
+	ClusterCache   clustercache.ClusterCache
 }
 
 // MachineScope defines the basic context for an actuator to operate upon.
@@ -61,7 +60,7 @@ type MachineScope struct {
 	MaasMachine *infrav1beta1.MaasMachine
 
 	controllerName string
-	tracker        *remote.ClusterCacheTracker
+	ClusterCache   clustercache.ClusterCache
 }
 
 // NewMachineScope creates a new Scope from the supplied parameters.
@@ -80,7 +79,7 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 		ClusterScope:   params.ClusterScope,
 		patchHelper:    helper,
 		client:         params.Client,
-		tracker:        params.Tracker,
+		ClusterCache:   params.ClusterCache,
 		controllerName: params.ControllerName,
 	}, nil
 }
@@ -265,7 +264,7 @@ func (m *MachineScope) GetRawBootstrapData() ([]byte, error) {
 // SetNodeProviderID patches the node with the ID
 func (m *MachineScope) SetNodeProviderID() error {
 	ctx := context.TODO()
-	remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
+	remoteClient, err := m.ClusterCache.GetClient(ctx, util.ObjectKey(m.Cluster))
 	if err != nil {
 		return err
 	}

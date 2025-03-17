@@ -27,7 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -48,7 +48,7 @@ type ClusterScopeParams struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
+	ClusterCache        clustercache.ClusterCache
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -61,7 +61,7 @@ type ClusterScope struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	controllerName      string
-	tracker             *remote.ClusterCacheTracker
+	ClusterCache        clustercache.ClusterCache
 	clusterEventChannel chan event.GenericEvent
 }
 
@@ -80,7 +80,7 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		MaasCluster:         params.MaasCluster,
 		patchHelper:         helper,
 		controllerName:      params.ControllerName,
-		tracker:             params.Tracker,
+		ClusterCache:        params.ClusterCache,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
 }
@@ -233,7 +233,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
 	}
 
-	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	remoteClient, err := s.ClusterCache.GetClient(ctx, util.ObjectKey(s.Cluster))
 	if err != nil {
 		s.V(2).Info("Waiting for online server to come online")
 		return false, nil

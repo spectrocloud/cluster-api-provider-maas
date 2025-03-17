@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -28,7 +29,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/predicates"
@@ -54,7 +54,7 @@ type MaasClusterReconciler struct {
 	Scheme              *runtime.Scheme
 	Recorder            record.EventRecorder
 	GenericEventChannel chan event.GenericEvent
-	Tracker             *remote.ClusterCacheTracker
+	ClusterCache        clustercache.ClusterCache
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
@@ -91,7 +91,7 @@ func (r *MaasClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		MaasCluster:         maasCluster,
 		ClusterEventChannel: r.GenericEventChannel,
 		ControllerName:      "maascluster",
-		Tracker:             r.Tracker,
+		ClusterCache:        r.ClusterCache,
 	})
 	if err != nil {
 		return reconcile.Result{}, errors.Errorf("failed to create scope: %+v", err)
