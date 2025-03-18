@@ -43,7 +43,7 @@ RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-ma
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
-CRD_OPTIONS ?= "crd:trivialVersions=true"
+CRD_OPTIONS ?= "crd"
 
 MOCKGEN := $(TOOLS_BIN_DIR)/mockgen
 CONTROLLER_GEN := $(TOOLS_BIN_DIR)/controller-gen
@@ -151,7 +151,6 @@ generate-go:
 		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
 		--output-file=zz_generated.conversion \
 		--go-header-file=./hack/boilerplate.go.txt \
-		--v=5 \
 		./api/v1beta1
 
 generate-manifests:  ## Generate manifests
