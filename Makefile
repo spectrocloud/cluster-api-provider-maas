@@ -18,7 +18,7 @@ ALL_ARCH = amd64 arm64
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= v0.6.0-
+IMG_TAG ?= v0.6.0
 IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
