@@ -142,7 +142,6 @@ generate-go:
 		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
 		--output-file=zz_generated.conversion \
 		--go-header-file=./hack/boilerplate.go.txt \
-		--v=5 \
 		./api/v1beta1
 
 generate-manifests:  ## Generate manifests
@@ -150,7 +149,7 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
-docker-build: #test
+docker-build: generate manifests #test
 	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t ${IMG}-$(ARCH)
 
 # Push the docker image
