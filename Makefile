@@ -27,7 +27,7 @@ endif
 IMAGE_NAME := cluster-api-provider-maas-controller
 REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
 SPECTRO_VERSION ?= 4.0.0-dev
-IMG_TAG ?= v0.6.0-spectro-${SPECTRO_VERSION}
+IMG_TAG ?= v0.6.1-spectro-${SPECTRO_VERSION}
 CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
