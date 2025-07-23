@@ -1,0 +1,36 @@
+---
+# Test configuration for LXD VM with DHCP (backward compatibility)
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: lxd-dhcp-test
+  namespace: default
+spec:
+  # Use LXD provisioning mode
+  provisioningMode: lxd
+  
+  # LXD configuration
+  lxd:
+    # Resource allocation
+    resourceConfig:
+      cores: 1
+      memory: 2048
+      disks:
+        - size: "10GB"
+          pool: "default"
+    
+    # Host selection - will be updated with actual host info
+    hostSelection:
+      hostTags: ["lxd"]
+    
+    # Network configuration without static IP (uses DHCP)
+    networkConfig:
+      # Optional bridge configuration
+      # bridge: "br-lxd"
+    
+    # LXD-specific settings
+    profile: "default"
+    project: "default"
+  
+  # Global machine settings
+  tags: ["test", "lxd", "dhcp"]

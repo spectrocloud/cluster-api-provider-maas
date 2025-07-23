@@ -50,6 +50,111 @@ spec:
                 description: Image will be the MaaS image id
                 minLength: 1
                 type: string
+              lxdConfig:
+                description: |-
+                  LXDConfig provides configuration for LXD VM provisioning
+                  Only used when ProvisioningMode is "lxd"
+                properties:
+                  hostSelection:
+                    description: HostSelection defines how to select LXD hosts
+                    properties:
+                      availabilityZones:
+                        description: AvailabilityZones lists preferred availability
+                          zones for host selection
+                        items:
+                          type: string
+                        type: array
+                      preferredHosts:
+                        description: PreferredHosts lists preferred LXD hosts by system
+                          ID
+                        items:
+                          type: string
+                        type: array
+                      resourcePools:
+                        description: ResourcePools lists preferred resource pools
+                          for host selection
+                        items:
+                          type: string
+                        type: array
+                      tags:
+                        description: Tags for host selection
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  networkConfig:
+                    description: NetworkConfig defines network configuration for the
+                      LXD VM
+                    properties:
+                      bridge:
+                        description: Bridge specifies which bridge to connect the
+                          VM to
+                        type: string
+                      macAddress:
+                        description: MacAddress allows specifying a custom MAC address
+                        type: string
+                      staticIPConfig:
+                        description: StaticIPConfig defines static IP configuration
+                          for the LXD VM
+                        properties:
+                          dnsServers:
+                            description: DNSServers is a list of DNS server IP addresses
+                            items:
+                              type: string
+                            type: array
+                          gateway:
+                            description: Gateway is the default gateway for the static
+                              IP configuration
+                            pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$
+                            type: string
+                          interface:
+                            description: |-
+                              Interface specifies the network interface to configure with static IP
+                              If not specified, the default interface will be used
+                            type: string
+                          ipAddress:
+                            description: IPAddress is the static IP address to assign
+                              to the VM
+                            pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$
+                            type: string
+                          subnet:
+                            description: Subnet defines the subnet mask or CIDR notation
+                              for the static IP
+                            pattern: ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)|\/([0-9]|[1-2][0-9]|3[0-2])$
+                            type: string
+                        required:
+                        - gateway
+                        - ipAddress
+                        - subnet
+                        type: object
+                    type: object
+                  resourceAllocation:
+                    description: ResourceAllocation defines resources for the LXD
+                      VM
+                    properties:
+                      cpu:
+                        description: CPU allocation in cores
+                        minimum: 1
+                        type: integer
+                      disk:
+                        description: Disk size in GB
+                        minimum: 1
+                        type: integer
+                      memory:
+                        description: Memory allocation in MB
+                        minimum: 512
+                        type: integer
+                    type: object
+                  storageConfig:
+                    description: StorageConfig defines storage configuration for the
+                      LXD VM
+                    properties:
+                      storagePool:
+                        description: StoragePool specifies which LXD storage pool
+                          to use
+                        type: string
+                    type: object
+                type: object
               minCPU:
                 description: MinCPU minimum number of CPUs
                 minimum: 0
@@ -60,6 +165,15 @@ spec:
                 type: integer
               providerID:
                 description: ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
+                type: string
+              provisioningMode:
+                default: baremetal
+                description: |-
+                  ProvisioningMode defines how this machine should be provisioned
+                  Defaults to "baremetal" for backward compatibility
+                enum:
+                - baremetal
+                - lxd
                 type: string
               resourcePool:
                 description: ResourcePool will be the MAAS Machine resourcepool
@@ -163,6 +277,67 @@ spec:
               hostname:
                 description: Hostname is the actual MaaS hostname
                 type: string
+              lxdMachine:
+                description: |-
+                  LXDMachine contains status information for LXD VM provisioning
+                  Only populated when ProvisioningMode is "lxd"
+                properties:
+                  hostAddress:
+                    description: HostAddress is the IP address of the LXD host
+                    type: string
+                  hostSystemID:
+                    description: HostSystemID is the system ID of the host machine
+                      running the LXD VM
+                    type: string
+                  networkStatus:
+                    description: NetworkStatus contains the actual network configuration
+                      of the LXD VM
+                    properties:
+                      assignedIP:
+                        description: AssignedIP is the actual IP address assigned
+                          to the VM
+                        type: string
+                      configMethod:
+                        description: ConfigMethod indicates how the IP was configured
+                          ("dhcp" or "static")
+                        type: string
+                      dnsServers:
+                        description: DNSServers is the list of DNS servers configured
+                          for the VM
+                        items:
+                          type: string
+                        type: array
+                      gateway:
+                        description: Gateway is the gateway IP address being used
+                        type: string
+                      interface:
+                        description: Interface is the network interface name that
+                          has the assigned IP
+                        type: string
+                    required:
+                    - configMethod
+                    type: object
+                  resourceAllocation:
+                    description: ResourceAllocation shows the actual resources allocated
+                      to the LXD VM
+                    properties:
+                      cpu:
+                        description: CPU allocation in cores
+                        minimum: 1
+                        type: integer
+                      disk:
+                        description: Disk size in GB
+                        minimum: 1
+                        type: integer
+                      memory:
+                        description: Memory allocation in MB
+                        minimum: 512
+                        type: integer
+                    type: object
+                  vmName:
+                    description: VMName is the name of the LXD VM
+                    type: string
+                type: object
               machinePowered:
                 description: MachinePowered is if the machine is "Powered" on
                 type: boolean

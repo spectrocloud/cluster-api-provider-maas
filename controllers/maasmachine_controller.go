@@ -225,7 +225,7 @@ func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, ma
 }
 
 func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
-	machineScope.Info("Reconciling MaasMachine")
+	machineScope.Info("Reconciling MaasMachine", "provisioning-mode", machineScope.MaasMachine.Spec.ProvisioningMode)
 
 	maasMachine := machineScope.MaasMachine
 
@@ -258,13 +258,18 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, err
 	}
 
-	// Create new m
+	// Create new machine (bare metal or LXD VM)
 	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
 	// if there used to be a m
 	if m == nil || !(m.State == infrav1beta1.MachineStateDeployed || m.State == infrav1beta1.MachineStateDeploying) {
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
 		if conditions.GetReason(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition) != infrav1beta1.MachineDeployFailedReason {
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
+			// Use appropriate condition reason based on provisioning mode
+			if machineScope.IsLXDProvisioning() {
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.LXDVMDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
+			} else {
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
+			}
 			if patchErr := machineScope.PatchObject(); patchErr != nil {
 				machineScope.Error(patchErr, "failed to patch conditions")
 				return ctrl.Result{}, patchErr
@@ -272,16 +277,31 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		}
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
-			machineScope.Error(err, "unable to create m")
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			machineScope.Error(err, "unable to create machine")
+			// Use appropriate condition reason based on provisioning mode
+			if machineScope.IsLXDProvisioning() {
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.LXDVMDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			} else {
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			}
 			return ctrl.Result{}, err
 		}
 	}
 
 	// Make sure Spec.ProviderID and Spec.InstanceID are always set.
-	machineScope.SetProviderID(m.ID, m.AvailabilityZone)
+	if machineScope.IsLXDProvisioning() {
+		// For LXD VMs, the provider ID should already be set during deployment
+		// but ensure other fields are updated
+		lxdStatus := machineScope.GetLXDStatus()
+		if lxdStatus != nil && lxdStatus.HostSystemID != nil {
+			machineScope.SetSystemID(*lxdStatus.HostSystemID)
+		}
+	} else {
+		// For bare metal, set provider ID using traditional format
+		machineScope.SetProviderID(m.ID, m.AvailabilityZone)
+		machineScope.SetSystemID(m.ID)
+	}
 	machineScope.SetFailureDomain(m.AvailabilityZone)
-	machineScope.SetSystemID(m.ID)
 	machineScope.SetMachineHostname(m.Hostname)
 
 	existingMachineState := machineScope.GetMachineState()
@@ -367,7 +387,11 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 }
 
 func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, machineSvc *maasmachine.Service) (*infrav1beta1.Machine, error) {
-	machineScope.Info("Deploying on MaaS machine")
+	if machineScope.IsLXDProvisioning() {
+		machineScope.Info("Deploying LXD VM")
+	} else {
+		machineScope.Info("Deploying bare metal machine")
+	}
 
 	userDataB64, userDataErr := r.resolveUserData(machineScope)
 	if userDataErr != nil {
@@ -376,6 +400,9 @@ func (r *MaasMachineReconciler) deployMachine(machineScope *scope.MachineScope, 
 
 	m, err := machineSvc.DeployMachine(userDataB64)
 	if err != nil {
+		if machineScope.IsLXDProvisioning() {
+			return nil, errors.Wrapf(err, "failed to deploy LXD VM")
+		}
 		return nil, errors.Wrapf(err, "failed to deploy MaasMachine instance")
 	}
 

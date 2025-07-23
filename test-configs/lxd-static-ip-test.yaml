@@ -1,0 +1,51 @@
+---
+# Test configuration for LXD VM with static IP assignment
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: lxd-static-ip-test
+  namespace: default
+spec:
+  # Use LXD provisioning mode
+  provisioningMode: lxd
+  
+  # LXD configuration
+  lxd:
+    # Resource allocation
+    resourceConfig:
+      cores: 2
+      memory: 4096
+      disks:
+        - size: "20GB"
+          pool: "default"
+    
+    # Host selection - will be updated with actual host info
+    hostSelection:
+      # preferredHosts: ["lxd-host-1"]  # Uncomment and set actual host ID
+      # availabilityZone: "zone-a"      # Uncomment and set actual zone
+      # resourcePool: "compute-pool"    # Uncomment and set actual pool
+      hostTags: ["lxd"]
+    
+    # Network configuration with static IP
+    networkConfig:
+      staticIPConfig:
+        ipAddress: "192.168.1.150"    # Update with actual IP
+        gateway: "192.168.1.1"        # Update with actual gateway
+        subnet: "255.255.255.0"       # Update with actual subnet
+        dnsServers: 
+          - "8.8.8.8"
+          - "1.1.1.1"
+        interface: "eth0"
+      # Bridge configuration (optional)
+      # bridge: "br-lxd"                # Uncomment and set actual bridge
+    
+    # LXD-specific settings
+    profile: "default"
+    project: "default"
+  
+  # Global machine settings
+  tags: ["test", "lxd", "static-ip"]
+  
+  # Resource constraints (will override LXD config if higher)
+  minCPU: 2
+  minMemoryInMB: 4096

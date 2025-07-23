@@ -148,6 +148,7 @@ func NewTestEnvironmentConfiguration(crdDirectoryPaths []string) *TestEnvironmen
 		env: &envtest.Environment{
 			ErrorIfCRDPathMissing: true,
 			CRDDirectoryPaths:     resolvedCrdDirectoryPaths,
+			BinaryAssetsDirectory: "/Users/junzhou/code/spectro/palette/bin/k8s/1.28.0-darwin-arm64",
 			CRDs: []*apiextensionsv1.CustomResourceDefinition{
 				external.TestClusterCRD.DeepCopy(),
 				external.TestMachineCRD.DeepCopy(),

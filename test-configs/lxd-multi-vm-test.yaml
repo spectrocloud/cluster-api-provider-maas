@@ -1,0 +1,62 @@
+---
+# Test configuration for multiple LXD VMs with different configurations
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: lxd-multi-1
+  namespace: default
+spec:
+  provisioningMode: lxd
+  lxd:
+    resourceConfig:
+      cores: 1
+      memory: 1024
+    hostSelection:
+      hostTags: ["lxd"]
+    networkConfig:
+      staticIPConfig:
+        ipAddress: "192.168.1.151"
+        gateway: "192.168.1.1"
+        subnet: "255.255.255.0"
+        dnsServers: ["8.8.8.8"]
+        interface: "eth0"
+  tags: ["test", "multi", "vm-1"]
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: lxd-multi-2
+  namespace: default
+spec:
+  provisioningMode: lxd
+  lxd:
+    resourceConfig:
+      cores: 1
+      memory: 1024
+    hostSelection:
+      hostTags: ["lxd"]
+    networkConfig:
+      staticIPConfig:
+        ipAddress: "192.168.1.152"
+        gateway: "192.168.1.1"
+        subnet: "255.255.255.0"
+        dnsServers: ["8.8.8.8"]
+        interface: "eth0"
+  tags: ["test", "multi", "vm-2"]
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachine
+metadata:
+  name: lxd-multi-3-dhcp
+  namespace: default
+spec:
+  provisioningMode: lxd
+  lxd:
+    resourceConfig:
+      cores: 1
+      memory: 1024
+    hostSelection:
+      hostTags: ["lxd"]
+    networkConfig:
+      # No static IP configuration - uses DHCP
+  tags: ["test", "multi", "vm-3", "dhcp"]
