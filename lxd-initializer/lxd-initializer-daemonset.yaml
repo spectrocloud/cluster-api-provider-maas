@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: lxd-initializer
+  namespace: capmaas-system
+  labels:
+    app: lxd-initializer
+spec:
+  selector:
+    matchLabels:
+      app: lxd-initializer
+  template:
+    metadata:
+      labels:
+        app: lxd-initializer
+    spec:
+      hostNetwork: true
+      hostPID: true
+      containers:
+      - name: lxd-initializer
+        image: ${REGISTRY}/lxd-initializer:${TAG}
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: var-lib-lxd
+          mountPath: /var/lib/lxd
+        - name: var-snap-lxd
+          mountPath: /var/snap/lxd
+        - name: run
+          mountPath: /run
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: STORAGE_BACKEND
+          value: "zfs"
+        - name: STORAGE_SIZE
+          value: "50"
+        - name: NETWORK_BRIDGE
+          value: "br0"
+        - name: MAAS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: maas-credentials
+              key: apiKey
+        - name: MAAS_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: capmaas-config
+              key: maasEndpoint
+        - name: ZONE
+          value: "default"
+        - name: RESOURCE_POOL
+          value: "vm-generic"
+      volumes:
+      - name: var-lib-lxd
+        hostPath:
+          path: /var/lib/lxd
+      - name: var-snap-lxd
+        hostPath:
+          path: /var/snap/lxd
+      - name: run
+        hostPath:
+          path: /run 
