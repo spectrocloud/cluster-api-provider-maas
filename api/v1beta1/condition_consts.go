@@ -53,6 +53,34 @@ const (
 
 	// MachineDeployStartedReason (Severity=Info) documents a MachineMachine controller started deploying
 	MachineDeployStartedReason = "MachineDeployStartedReason"
+
+	// LXD VM specific conditions
+
+	// LXDVMDeployStartedReason (Severity=Info) documents a MachineMachine controller started deploying an LXD VM
+	LXDVMDeployStartedReason = "LXDVMDeployStarted"
+
+	// LXDVMDeployFailedReason (Severity=Warning) documents a MachineMachine controller detecting
+	// an error while deploying the LXD VM; those kind of errors are usually transient and failed
+	// provisioning are automatically re-tried by the controller.
+	LXDVMDeployFailedReason = "LXDVMDeployFailed"
+
+	// LXDHostSelectionFailedReason (Severity=Warning) documents failure to select appropriate LXD host
+	LXDHostSelectionFailedReason = "LXDHostSelectionFailed"
+
+	// LXDVMCreationFailedReason (Severity=Warning) documents failure to create LXD VM on selected host
+	LXDVMCreationFailedReason = "LXDVMCreationFailed"
+
+	// LXDVMStartFailedReason (Severity=Warning) documents failure to start LXD VM
+	LXDVMStartFailedReason = "LXDVMStartFailed"
+
+	// LXDVMNotFoundReason (Severity=Warning) documents that LXD VM could not be found on the host
+	LXDVMNotFoundReason = "LXDVMNotFound"
+
+	// WaitingForLXDHostReason (Severity=Info) documents waiting for available LXD host
+	WaitingForLXDHostReason = "WaitingForLXDHost"
+
+	// LXDVMDeletionFailedReason (Severity=Warning) documents failure to delete LXD VM during cleanup
+	LXDVMDeletionFailedReason = "LXDVMDeletionFailed"
 )
 
 const (

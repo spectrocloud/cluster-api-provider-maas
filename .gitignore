@@ -26,3 +26,5 @@ bin
 maas-credentials.env
 
 _build
+
+.local

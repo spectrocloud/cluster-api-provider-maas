@@ -1,0 +1,2119 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>client: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/integration.go (100.0%)</option>
+				
+				<option value="file1">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/vmhost.go (93.3%)</option>
+				
+				<option value="file2">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd/errors.go (90.0%)</option>
+				
+				<option value="file3">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd/interfaces.go (0.0%)</option>
+				
+				<option value="file4">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd/service.go (36.4%)</option>
+				
+				<option value="file5">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope/client.go (100.0%)</option>
+				
+				<option value="file6">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope/cluster.go (17.5%)</option>
+				
+				<option value="file7">github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope/machine.go (0.0%)</option>
+				
+				<option value="file8">github.com/spectrocloud/cluster-api-provider-maas/pkg/util/machine.go (70.2%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package client
+
+import (
+        "context"
+        
+        "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
+        "github.com/spectrocloud/maas-client-go/maasclient"
+)
+
+// ClientExtensions provides extended functionality for MAAS client operations
+// This acts as a bridge between the generic MAAS client and provider-specific operations
+type ClientExtensions struct {
+        client        maasclient.ClientSetInterface
+        vmHostExt     *VMHostExtension
+}
+
+// NewClientExtensions creates a new client extensions instance
+func NewClientExtensions(client maasclient.ClientSetInterface) *ClientExtensions <span class="cov8" title="1">{
+        return &amp;ClientExtensions{
+                client:    client,
+                vmHostExt: NewVMHostExtension(client),
+        }
+}</span>
+
+// VMHostExtensionInterface defines the interface for VM host operations
+// This allows for easier testing and future implementation flexibility
+type VMHostExtensionInterface interface {
+        QueryVMHosts(ctx context.Context, params VMHostQueryParams) ([]VMHost, error)
+        ComposeVM(ctx context.Context, params ComposeVMParams) (*ComposedVM, error)
+        DecomposeVM(ctx context.Context, vmHostID, systemID string) error
+        GetVMHostResources(ctx context.Context, vmHostID string) (*VMHostResources, error)
+}
+
+// VMHosts returns the VM host extension
+func (c *ClientExtensions) VMHosts() VMHostExtensionInterface <span class="cov8" title="1">{
+        return c.vmHostExt
+}</span>
+
+// LXDHostAdapter adapts VMHost to lxd.LXDHost for integration
+type LXDHostAdapter struct {
+        vmHost VMHost
+}
+
+// NewLXDHostAdapter creates an adapter from VMHost to LXDHost
+func NewLXDHostAdapter(vmHost VMHost) *LXDHostAdapter <span class="cov8" title="1">{
+        return &amp;LXDHostAdapter{vmHost: vmHost}
+}</span>
+
+// ToLXDHost converts VMHost to lxd.LXDHost
+func (a *LXDHostAdapter) ToLXDHost() lxd.LXDHost <span class="cov8" title="1">{
+        return lxd.LXDHost{
+                SystemID:         a.vmHost.ID,
+                Hostname:         a.vmHost.Name,
+                AvailabilityZone: a.vmHost.AvailabilityZone,
+                ResourcePool:     a.vmHost.ResourcePool,
+                Available: lxd.ResourceInfo{
+                        Cores:  a.vmHost.Resources.Available.Cores,
+                        Memory: a.vmHost.Resources.Available.Memory,
+                },
+                Used: lxd.ResourceInfo{
+                        Cores:  a.vmHost.Resources.Used.Cores,
+                        Memory: a.vmHost.Resources.Used.Memory,
+                },
+                LXDCapabilities: lxd.LXDCapabilities{
+                        VMSupport:      true,
+                        Projects:       []string{"default", "maas"},
+                        Profiles:       []string{"default", "maas"},
+                        StoragePools:   []string{"default", "ssd-pool", "hdd-pool"},
+                        NetworkBridges: []string{"br0", "lxdbr0"},
+                },
+        }
+}</span>
+
+// VMHostsToLXDHosts converts a slice of VMHost to a slice of lxd.LXDHost
+func VMHostsToLXDHosts(vmHosts []VMHost) []lxd.LXDHost <span class="cov8" title="1">{
+        lxdHosts := make([]lxd.LXDHost, 0, len(vmHosts))
+        for _, vmHost := range vmHosts </span><span class="cov8" title="1">{
+                adapter := NewLXDHostAdapter(vmHost)
+                lxdHosts = append(lxdHosts, adapter.ToLXDHost())
+        }</span>
+        <span class="cov8" title="1">return lxdHosts</span>
+}
+
+// LXDVMSpecAdapter adapts lxd.VMSpec to ComposeVMParams
+type LXDVMSpecAdapter struct {
+        vmSpec *lxd.VMSpec
+        hostID string
+}
+
+// NewLXDVMSpecAdapter creates an adapter from lxd.VMSpec to ComposeVMParams
+func NewLXDVMSpecAdapter(vmSpec *lxd.VMSpec, hostID string) *LXDVMSpecAdapter <span class="cov8" title="1">{
+        return &amp;LXDVMSpecAdapter{vmSpec: vmSpec, hostID: hostID}
+}</span>
+
+// ToComposeVMParams converts lxd.VMSpec to ComposeVMParams
+func (a *LXDVMSpecAdapter) ToComposeVMParams() ComposeVMParams <span class="cov8" title="1">{
+        params := ComposeVMParams{
+                VMHostID: a.hostID,
+                Cores:    a.vmSpec.Cores,
+                Memory:   a.vmSpec.Memory,
+                UserData: a.vmSpec.UserData,
+                Tags:     a.vmSpec.Tags,
+                Profile:  a.vmSpec.Profile,
+                Project:  a.vmSpec.Project,
+        }
+
+        // Convert disks
+        if len(a.vmSpec.Disks) &gt; 0 </span><span class="cov8" title="1">{
+                params.Disks = make([]DiskSpec, 0, len(a.vmSpec.Disks))
+                for _, disk := range a.vmSpec.Disks </span><span class="cov8" title="1">{
+                        params.Disks = append(params.Disks, DiskSpec{
+                                Size: disk.Size,
+                                Pool: disk.Pool,
+                        })
+                }</span>
+        }
+
+        <span class="cov8" title="1">return params</span>
+}
+
+// ComposedVMAdapter adapts ComposedVM to lxd.LXDVMResult
+type ComposedVMAdapter struct {
+        composedVM *ComposedVM
+}
+
+// NewComposedVMAdapter creates an adapter from ComposedVM to lxd.LXDVMResult
+func NewComposedVMAdapter(composedVM *ComposedVM) *ComposedVMAdapter <span class="cov8" title="1">{
+        return &amp;ComposedVMAdapter{composedVM: composedVM}
+}</span>
+
+// ToLXDVMResult converts ComposedVM to lxd.LXDVMResult
+func (a *ComposedVMAdapter) ToLXDVMResult(project string) *lxd.LXDVMResult <span class="cov8" title="1">{
+        result := &amp;lxd.LXDVMResult{
+                SystemID:      a.composedVM.SystemID,
+                HostID:        a.composedVM.VMHostID,
+                FailureDomain: a.composedVM.AvailabilityZone,
+                Project:       project,
+        }
+
+        // Generate provider ID if we have availability zone
+        if result.FailureDomain != "" </span><span class="cov8" title="1">{
+                result.ProviderID = "maas://" + result.FailureDomain + "/" + result.SystemID
+        }</span> else<span class="cov8" title="1"> {
+                result.ProviderID = "maas:///" + result.SystemID
+        }</span>
+
+        <span class="cov8" title="1">return result</span>
+}
+
+// ClientExtensionFactory provides a factory for creating client extensions
+// This allows for easier testing and dependency injection
+type ClientExtensionFactory interface {
+        CreateExtensions(client maasclient.ClientSetInterface) *ClientExtensions
+}
+
+// DefaultClientExtensionFactory is the default factory implementation
+type DefaultClientExtensionFactory struct{}
+
+// CreateExtensions creates new client extensions using the default implementation
+func (f *DefaultClientExtensionFactory) CreateExtensions(client maasclient.ClientSetInterface) *ClientExtensions <span class="cov8" title="1">{
+        return NewClientExtensions(client)
+}</span>
+
+// GetDefaultClientExtensionFactory returns the default factory instance
+func GetDefaultClientExtensionFactory() ClientExtensionFactory <span class="cov8" title="1">{
+        return &amp;DefaultClientExtensionFactory{}
+}</pre>
+		
+		<pre class="file" id="file1" style="display: none">package client
+
+import (
+        "context"
+        
+        "github.com/spectrocloud/maas-client-go/maasclient"
+)
+
+// VMHostExtension provides extensions to the MAAS client for VM host operations
+// These extensions will be integrated once the MAAS client library supports VMHosts API
+type VMHostExtension struct {
+        client maasclient.ClientSetInterface
+}
+
+// NewVMHostExtension creates a new VM host extension
+func NewVMHostExtension(client maasclient.ClientSetInterface) *VMHostExtension <span class="cov8" title="1">{
+        return &amp;VMHostExtension{
+                client: client,
+        }
+}</span>
+
+// VMHostQueryParams represents parameters for querying VM hosts
+type VMHostQueryParams struct {
+        Type         string  // lxd, kvm, etc.
+        Zone         *string // availability zone filter
+        ResourcePool *string // resource pool filter
+        Tags         []string
+}
+
+// VMHost represents a MAAS VM host (LXD host, KVM host, etc.)
+type VMHost struct {
+        ID               string
+        Name             string
+        Type             string
+        AvailabilityZone string
+        ResourcePool     string
+        Tags             []string
+        Resources        VMHostResources
+}
+
+// VMHostResources represents resource information for a VM host
+type VMHostResources struct {
+        Total     ResourceInfo
+        Used      ResourceInfo
+        Available ResourceInfo
+}
+
+// ResourceInfo represents CPU and memory resource information
+type ResourceInfo struct {
+        Cores  int
+        Memory int // in MB
+}
+
+// ComposedVM represents a VM created through MAAS VM composition
+type ComposedVM struct {
+        SystemID         string
+        VMHostID         string
+        AvailabilityZone string
+        Status           string
+}
+
+// ComposeVMParams represents parameters for VM composition
+type ComposeVMParams struct {
+        VMHostID string
+        Cores    int
+        Memory   int // in MB
+        Disks    []DiskSpec
+        Profile  string
+        Project  string
+        UserData string
+        Tags     []string
+}
+
+// DiskSpec represents disk specification for VM composition
+type DiskSpec struct {
+        Size string // e.g., "20GB"
+        Pool string // storage pool name
+}
+
+// QueryVMHosts queries available VM hosts based on parameters
+// This method will use the MAAS VMHosts API once available
+func (e *VMHostExtension) QueryVMHosts(ctx context.Context, params VMHostQueryParams) ([]VMHost, error) <span class="cov8" title="1">{
+        // TODO: Implement when MAAS client supports VMHosts API
+        // Example implementation would be:
+        //
+        // queryParams := maasclient.ParamsBuilder()
+        // if params.Type != "" {
+        //     queryParams.Set("type", params.Type)
+        // }
+        // if params.Zone != nil {
+        //     queryParams.Set("zone", *params.Zone)
+        // }
+        // if params.ResourcePool != nil {
+        //     queryParams.Set("pool", *params.ResourcePool)
+        // }
+        // 
+        // vmHosts, err := e.client.VMHosts().Query(ctx, queryParams.Build())
+        // if err != nil {
+        //     return nil, err
+        // }
+        //
+        // return convertToVMHosts(vmHosts), nil
+        
+        // For now, return mock data for testing
+        return e.getMockVMHosts(params), nil
+}</span>
+
+// ComposeVM creates a VM on the specified VM host
+// This method will use the MAAS VMHosts API once available
+func (e *VMHostExtension) ComposeVM(ctx context.Context, params ComposeVMParams) (*ComposedVM, error) <span class="cov8" title="1">{
+        // TODO: Implement when MAAS client supports VMHosts API
+        // Example implementation would be:
+        //
+        // composeParams := maasclient.ParamsBuilder().
+        //     Set("cores", strconv.Itoa(params.Cores)).
+        //     Set("memory", strconv.Itoa(params.Memory))
+        //
+        // if params.UserData != "" {
+        //     composeParams.Set("user_data", params.UserData)
+        // }
+        //
+        // if params.Profile != "" {
+        //     composeParams.Set("profile", params.Profile)
+        // }
+        //
+        // if params.Project != "" {
+        //     composeParams.Set("project", params.Project)
+        // }
+        //
+        // if len(params.Disks) &gt; 0 {
+        //     diskSpecs := make([]string, 0, len(params.Disks))
+        //     for _, disk := range params.Disks {
+        //         spec := fmt.Sprintf("size=%s", disk.Size)
+        //         if disk.Pool != "" {
+        //             spec += fmt.Sprintf(",pool=%s", disk.Pool)
+        //         }
+        //         diskSpecs = append(diskSpecs, spec)
+        //     }
+        //     composeParams.Set("disks", strings.Join(diskSpecs, ";"))
+        // }
+        //
+        // composedVM, err := e.client.VMHosts().VMHost(params.VMHostID).Composer().
+        //     Compose(ctx, composeParams.Build())
+        // if err != nil {
+        //     return nil, err
+        // }
+        //
+        // return &amp;ComposedVM{
+        //     SystemID:         composedVM.SystemID(),
+        //     VMHostID:         params.VMHostID,
+        //     AvailabilityZone: composedVM.Zone().Name(),
+        //     Status:           composedVM.Status(),
+        // }, nil
+
+        // For now, return mock data for testing
+        return e.getMockComposedVM(params), nil
+}</span>
+
+// DecomposeVM destroys a composed VM
+// This method will use the MAAS VMHosts API once available
+func (e *VMHostExtension) DecomposeVM(ctx context.Context, vmHostID, systemID string) error <span class="cov8" title="1">{
+        // TODO: Implement when MAAS client supports VMHosts API
+        // Example implementation would be:
+        //
+        // return e.client.VMHosts().VMHost(vmHostID).Machine(systemID).
+        //     Decomposer().Decompose(ctx)
+
+        // For now, use the standard machine release API
+        if e.client == nil </span><span class="cov8" title="1">{
+                // In test mode with nil client, simulate success
+                return nil
+        }</span>
+        
+        <span class="cov0" title="0">_, err := e.client.Machines().Machine(systemID).Releaser().Release(ctx)
+        return err</span>
+}
+
+// GetVMHostResources retrieves resource usage information for a VM host
+// This method will use the MAAS VMHosts API once available
+func (e *VMHostExtension) GetVMHostResources(ctx context.Context, vmHostID string) (*VMHostResources, error) <span class="cov8" title="1">{
+        // TODO: Implement when MAAS client supports VMHosts API
+        // Example implementation would be:
+        //
+        // vmHost, err := e.client.VMHosts().VMHost(vmHostID).Get(ctx)
+        // if err != nil {
+        //     return nil, err
+        // }
+        //
+        // return &amp;VMHostResources{
+        //     Total: ResourceInfo{
+        //         Cores:  vmHost.TotalCores(),
+        //         Memory: vmHost.TotalMemory(),
+        //     },
+        //     Used: ResourceInfo{
+        //         Cores:  vmHost.UsedCores(),
+        //         Memory: vmHost.UsedMemory(),
+        //     },
+        //     Available: ResourceInfo{
+        //         Cores:  vmHost.AvailableCores(),
+        //         Memory: vmHost.AvailableMemory(),
+        //     },
+        // }, nil
+
+        // For now, return mock data for testing
+        return e.getMockVMHostResources(vmHostID), nil
+}</span>
+
+// Mock implementations for testing until MAAS client supports VMHosts API
+
+func (e *VMHostExtension) getMockVMHosts(params VMHostQueryParams) []VMHost <span class="cov8" title="1">{
+        hosts := []VMHost{
+                {
+                        ID:               "lxd-host-1",
+                        Name:             "LXD Host 1",
+                        Type:             "lxd",
+                        AvailabilityZone: "zone-a",
+                        ResourcePool:     "default",
+                        Tags:             []string{"lxd", "compute"},
+                        Resources: VMHostResources{
+                                Total:     ResourceInfo{Cores: 16, Memory: 32768},
+                                Used:      ResourceInfo{Cores: 4, Memory: 8192},
+                                Available: ResourceInfo{Cores: 12, Memory: 24576},
+                        },
+                },
+                {
+                        ID:               "lxd-host-2",
+                        Name:             "LXD Host 2",
+                        Type:             "lxd",
+                        AvailabilityZone: "zone-b",
+                        ResourcePool:     "default",
+                        Tags:             []string{"lxd", "compute"},
+                        Resources: VMHostResources{
+                                Total:     ResourceInfo{Cores: 16, Memory: 32768},
+                                Used:      ResourceInfo{Cores: 2, Memory: 4096},
+                                Available: ResourceInfo{Cores: 14, Memory: 28672},
+                        },
+                },
+                {
+                        ID:               "lxd-host-3",
+                        Name:             "LXD Host 3",
+                        Type:             "lxd",
+                        AvailabilityZone: "zone-c",
+                        ResourcePool:     "compute-pool",
+                        Tags:             []string{"lxd", "compute", "high-memory"},
+                        Resources: VMHostResources{
+                                Total:     ResourceInfo{Cores: 32, Memory: 65536},
+                                Used:      ResourceInfo{Cores: 8, Memory: 16384},
+                                Available: ResourceInfo{Cores: 24, Memory: 49152},
+                        },
+                },
+        }
+
+        // Filter by zone if specified
+        if params.Zone != nil &amp;&amp; *params.Zone != "" </span><span class="cov8" title="1">{
+                filteredHosts := make([]VMHost, 0)
+                for _, host := range hosts </span><span class="cov8" title="1">{
+                        if host.AvailabilityZone == *params.Zone </span><span class="cov8" title="1">{
+                                filteredHosts = append(filteredHosts, host)
+                        }</span>
+                }
+                <span class="cov8" title="1">hosts = filteredHosts</span>
+        }
+
+        // Filter by resource pool if specified
+        <span class="cov8" title="1">if params.ResourcePool != nil &amp;&amp; *params.ResourcePool != "" </span><span class="cov8" title="1">{
+                filteredHosts := make([]VMHost, 0)
+                for _, host := range hosts </span><span class="cov8" title="1">{
+                        if host.ResourcePool == *params.ResourcePool </span><span class="cov8" title="1">{
+                                filteredHosts = append(filteredHosts, host)
+                        }</span>
+                }
+                <span class="cov8" title="1">hosts = filteredHosts</span>
+        }
+
+        // Filter by type
+        <span class="cov8" title="1">if params.Type != "" </span><span class="cov8" title="1">{
+                filteredHosts := make([]VMHost, 0)
+                for _, host := range hosts </span><span class="cov8" title="1">{
+                        if host.Type == params.Type </span><span class="cov8" title="1">{
+                                filteredHosts = append(filteredHosts, host)
+                        }</span>
+                }
+                <span class="cov8" title="1">hosts = filteredHosts</span>
+        }
+
+        <span class="cov8" title="1">return hosts</span>
+}
+
+func (e *VMHostExtension) getMockComposedVM(params ComposeVMParams) *ComposedVM <span class="cov8" title="1">{
+        return &amp;ComposedVM{
+                SystemID:         "vm-" + params.VMHostID + "-001",
+                VMHostID:         params.VMHostID,
+                AvailabilityZone: "zone-a", // Mock zone
+                Status:           "Allocating",
+        }
+}</span>
+
+func (e *VMHostExtension) getMockVMHostResources(vmHostID string) *VMHostResources <span class="cov8" title="1">{
+        return &amp;VMHostResources{
+                Total:     ResourceInfo{Cores: 16, Memory: 32768},
+                Used:      ResourceInfo{Cores: 6, Memory: 12288},
+                Available: ResourceInfo{Cores: 10, Memory: 20480},
+        }
+}</pre>
+		
+		<pre class="file" id="file2" style="display: none">package lxd
+
+import (
+        "fmt"
+
+        "github.com/pkg/errors"
+)
+
+// LXDErrorType defines the type of LXD-related errors
+type LXDErrorType string
+
+const (
+        // LXDErrorHostUnavailable indicates the selected LXD host is unavailable
+        LXDErrorHostUnavailable LXDErrorType = "HostUnavailable"
+        // LXDErrorInsufficientResources indicates insufficient resources for VM creation
+        LXDErrorInsufficientResources LXDErrorType = "InsufficientResources"
+        // LXDErrorProfileNotFound indicates the specified LXD profile was not found
+        LXDErrorProfileNotFound LXDErrorType = "ProfileNotFound"
+        // LXDErrorProjectNotFound indicates the specified LXD project was not found
+        LXDErrorProjectNotFound LXDErrorType = "ProjectNotFound"
+        // LXDErrorVMCreationFailed indicates VM composition failed
+        LXDErrorVMCreationFailed LXDErrorType = "VMCreationFailed"
+        // LXDErrorVMDeploymentFailed indicates VM deployment failed
+        LXDErrorVMDeploymentFailed LXDErrorType = "VMDeploymentFailed"
+        // LXDErrorNetworkConfiguration indicates network configuration issues
+        LXDErrorNetworkConfiguration LXDErrorType = "NetworkConfiguration"
+        // LXDErrorStorageConfiguration indicates storage configuration issues
+        LXDErrorStorageConfiguration LXDErrorType = "StorageConfiguration"
+)
+
+// LXDError represents an LXD-specific error with detailed context
+type LXDError struct {
+        // Type is the category of the error
+        Type LXDErrorType
+        // Message is the human-readable error message
+        Message string
+        // HostID is the system ID of the involved LXD host (if applicable)
+        HostID string
+        // Details contains additional error context
+        Details interface{}
+        // Cause is the underlying error that caused this LXD error
+        Cause error
+}
+
+// Error implements the error interface
+func (e *LXDError) Error() string <span class="cov8" title="1">{
+        if e.HostID != "" </span><span class="cov8" title="1">{
+                return fmt.Sprintf("LXD %s [host:%s]: %s", e.Type, e.HostID, e.Message)
+        }</span>
+        <span class="cov8" title="1">return fmt.Sprintf("LXD %s: %s", e.Type, e.Message)</span>
+}
+
+// Unwrap returns the underlying error for error chain inspection
+func (e *LXDError) Unwrap() error <span class="cov8" title="1">{
+        return e.Cause
+}</span>
+
+// NewLXDError creates a new LXD error with the specified type and message
+func NewLXDError(errorType LXDErrorType, message string) *LXDError <span class="cov8" title="1">{
+        return &amp;LXDError{
+                Type:    errorType,
+                Message: message,
+        }
+}</span>
+
+// NewLXDErrorf creates a new LXD error with formatted message
+func NewLXDErrorf(errorType LXDErrorType, format string, args ...interface{}) *LXDError <span class="cov8" title="1">{
+        return &amp;LXDError{
+                Type:    errorType,
+                Message: fmt.Sprintf(format, args...),
+        }
+}</span>
+
+// WrapLXDError wraps an existing error with LXD error context
+func WrapLXDError(err error, errorType LXDErrorType, message string) *LXDError <span class="cov8" title="1">{
+        return &amp;LXDError{
+                Type:    errorType,
+                Message: message,
+                Cause:   err,
+        }
+}</span>
+
+// WrapLXDErrorf wraps an existing error with formatted LXD error context
+func WrapLXDErrorf(err error, errorType LXDErrorType, format string, args ...interface{}) *LXDError <span class="cov0" title="0">{
+        return &amp;LXDError{
+                Type:    errorType,
+                Message: fmt.Sprintf(format, args...),
+                Cause:   err,
+        }
+}</span>
+
+// WithHost adds host context to an LXD error
+func (e *LXDError) WithHost(hostID string) *LXDError <span class="cov8" title="1">{
+        e.HostID = hostID
+        return e
+}</span>
+
+// WithDetails adds additional details to an LXD error
+func (e *LXDError) WithDetails(details interface{}) *LXDError <span class="cov8" title="1">{
+        e.Details = details
+        return e
+}</span>
+
+// IsLXDError checks if an error is an LXD error of a specific type
+func IsLXDError(err error, errorType LXDErrorType) bool <span class="cov8" title="1">{
+        var lxdErr *LXDError
+        if errors.As(err, &amp;lxdErr) </span><span class="cov8" title="1">{
+                return lxdErr.Type == errorType
+        }</span>
+        <span class="cov8" title="1">return false</span>
+}
+
+// IsRetryableError determines if an error is retryable
+func IsRetryableError(err error) bool <span class="cov8" title="1">{
+        var lxdErr *LXDError
+        if errors.As(err, &amp;lxdErr) </span><span class="cov8" title="1">{
+                switch lxdErr.Type </span>{
+                case LXDErrorHostUnavailable:<span class="cov8" title="1">
+                        return true</span>
+                case LXDErrorInsufficientResources:<span class="cov8" title="1">
+                        return true</span>
+                case LXDErrorVMCreationFailed:<span class="cov8" title="1">
+                        return true</span>
+                case LXDErrorVMDeploymentFailed:<span class="cov0" title="0">
+                        return true</span>
+                case LXDErrorNetworkConfiguration:<span class="cov0" title="0">
+                        return true</span>
+                default:<span class="cov8" title="1">
+                        return false</span>
+                }
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// GetErrorDetails extracts details from an LXD error
+func GetErrorDetails(err error) interface{} <span class="cov8" title="1">{
+        var lxdErr *LXDError
+        if errors.As(err, &amp;lxdErr) </span><span class="cov8" title="1">{
+                return lxdErr.Details
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package lxd
+
+import (
+        "context"
+
+        infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+        "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+        "github.com/spectrocloud/maas-client-go/maasclient"
+)
+
+// Service provides LXD VM provisioning operations following existing service patterns
+type Service struct {
+        scope      *scope.MachineScope
+        maasClient maasclient.ClientSetInterface
+}
+
+// NewService creates a new LXD service instance following existing service patterns
+func NewService(machineScope *scope.MachineScope) *Service <span class="cov0" title="0">{
+        return &amp;Service{
+                scope:      machineScope,
+                maasClient: scope.NewMaasClient(machineScope.ClusterScope),
+        }
+}</span>
+
+// VMSpec defines the specification for creating an LXD VM
+type VMSpec struct {
+        // Cores is the number of CPU cores to allocate
+        Cores int
+        // Memory is the amount of memory in MB to allocate
+        Memory int
+        // Disks defines the disk configuration for the VM
+        Disks []DiskSpec
+        // Profile is the LXD profile to apply
+        Profile string
+        // Project is the LXD project where the VM will be created
+        Project string
+        // UserData is the cloud-init user data for the VM
+        UserData string
+        // HostID is the preferred LXD host system ID
+        HostID string
+        // Tags for resource constraints and placement
+        Tags []string
+}
+
+// DiskSpec defines disk configuration for LXD VMs
+type DiskSpec struct {
+        // Size of the disk (e.g., "20GB")
+        Size string
+        // Pool is the storage pool to use
+        Pool string
+}
+
+// LXDVMResult contains the result of VM composition and deployment
+type LXDVMResult struct {
+        // SystemID is the MAAS system ID of the created VM
+        SystemID string
+        // HostID is the system ID of the LXD host
+        HostID string
+        // ProviderID is the cluster-api provider ID
+        ProviderID string
+        // FailureDomain is the availability zone of the VM
+        FailureDomain string
+        // IPAddresses contains the assigned IP addresses
+        IPAddresses []string
+        // Project is the LXD project name
+        Project string
+}
+
+// LXDHost represents an LXD-capable host with resource information
+type LXDHost struct {
+        // SystemID is the MAAS system ID of the host
+        SystemID string
+        // Hostname is the host's hostname
+        Hostname string
+        // AvailabilityZone is the failure domain/zone of the host
+        AvailabilityZone string
+        // ResourcePool is the MAAS resource pool the host belongs to
+        ResourcePool string
+        // Available resources on the host
+        Available ResourceInfo
+        // Used resources on the host
+        Used ResourceInfo
+        // LXDCapabilities describes the LXD capabilities of the host
+        LXDCapabilities LXDCapabilities
+}
+
+// ResourceInfo contains resource allocation information
+type ResourceInfo struct {
+        // Cores is the number of CPU cores
+        Cores int
+        // Memory is the amount of memory in MB
+        Memory int
+        // Disk is the amount of disk space in GB
+        Disk int
+}
+
+// LXDCapabilities describes the capabilities of an LXD host
+type LXDCapabilities struct {
+        // VMSupport indicates if the host supports VMs
+        VMSupport bool
+        // Projects are the available LXD projects
+        Projects []string
+        // Profiles are the available LXD profiles
+        Profiles []string
+        // StoragePools are the available storage pools
+        StoragePools []string
+        // NetworkBridges are the available network bridges
+        NetworkBridges []string
+}
+
+// ServiceInterface defines the interface for LXD operations
+type ServiceInterface interface {
+        // ComposeVM creates a new LXD VM based on the specification
+        ComposeVM(ctx context.Context, vmSpec *VMSpec) (*LXDVMResult, error)
+
+        // DeployVM deploys an existing VM with user data
+        DeployVM(ctx context.Context, systemID, userDataB64 string) (*infrav1beta1.Machine, error)
+
+        // GetVM retrieves VM information by system ID
+        GetVM(ctx context.Context, systemID string) (*infrav1beta1.Machine, error)
+
+        // DeleteVM deletes an LXD VM and cleans up resources
+        DeleteVM(ctx context.Context, systemID string) error
+
+        // GetAvailableLXDHosts returns available LXD hosts based on constraints
+        GetAvailableLXDHosts(ctx context.Context) ([]LXDHost, error)
+
+        // SelectOptimalHost selects the best LXD host from available hosts
+        SelectOptimalHost(ctx context.Context, hosts []LXDHost) (*LXDHost, error)
+
+        // DistributeAcrossAZs distributes VMs across availability zones
+        DistributeAcrossAZs(ctx context.Context, hosts []LXDHost, count int) ([]LXDHost, error)
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package lxd
+
+import (
+        "context"
+        "fmt"
+        "sort"
+        "strconv"
+        "strings"
+
+        infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+        "github.com/spectrocloud/maas-client-go/maasclient"
+        textlogger "k8s.io/klog/v2/textlogger"
+)
+
+// Mock types for testing until MAAS client supports VMHosts API
+type mockComposedVM struct {
+        systemID string
+}
+
+func (m *mockComposedVM) SystemID() string <span class="cov0" title="0">{
+        return m.systemID
+}</span>
+
+type mockVMHost struct {
+        id   string
+        name string
+        zone string
+        pool string
+}
+
+// ComposeVM creates a new LXD VM based on the specification
+func (s *Service) ComposeVM(ctx context.Context, vmSpec *VMSpec) (*LXDVMResult, error) <span class="cov0" title="0">{
+        log := textlogger.NewLogger(textlogger.NewConfig())
+        log.Info("Composing LXD VM", "cores", vmSpec.Cores, "memory", vmSpec.Memory)
+
+        // Get available LXD hosts
+        hosts, err := s.GetAvailableLXDHosts(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, WrapLXDError(err, LXDErrorHostUnavailable, "failed to get available LXD hosts")
+        }</span>
+
+        <span class="cov0" title="0">if len(hosts) == 0 </span><span class="cov0" title="0">{
+                return nil, NewLXDError(LXDErrorHostUnavailable, "no LXD hosts available in specified resource pool")
+        }</span>
+
+        // Select optimal host
+        <span class="cov0" title="0">selectedHost, err := s.SelectOptimalHost(ctx, hosts)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, WrapLXDError(err, LXDErrorHostUnavailable, "failed to select optimal LXD host")
+        }</span>
+
+        // Build VM composition parameters
+        <span class="cov0" title="0">composeParams := maasclient.ParamsBuilder().
+                Set("cores", strconv.Itoa(vmSpec.Cores)).
+                Set("memory", strconv.Itoa(vmSpec.Memory))
+
+        // Add disk configuration
+        if len(vmSpec.Disks) &gt; 0 </span><span class="cov0" title="0">{
+                diskSpecs := make([]string, 0, len(vmSpec.Disks))
+                for _, disk := range vmSpec.Disks </span><span class="cov0" title="0">{
+                        diskSpec := fmt.Sprintf("size=%s", disk.Size)
+                        if disk.Pool != "" </span><span class="cov0" title="0">{
+                                diskSpec += fmt.Sprintf(",pool=%s", disk.Pool)
+                        }</span>
+                        <span class="cov0" title="0">diskSpecs = append(diskSpecs, diskSpec)</span>
+                }
+                <span class="cov0" title="0">composeParams.Set("disks", strings.Join(diskSpecs, ";"))</span>
+        }
+
+        // Add profile if specified
+        <span class="cov0" title="0">if vmSpec.Profile != "" </span><span class="cov0" title="0">{
+                composeParams.Set("profile", vmSpec.Profile)
+        }</span>
+
+        // Add project if specified
+        <span class="cov0" title="0">if vmSpec.Project != "" </span><span class="cov0" title="0">{
+                composeParams.Set("project", vmSpec.Project)
+        }</span>
+
+        // TODO: Implement VM composition when MAAS client supports VMHosts API
+        // For now, return a mock result for testing purposes
+        <span class="cov0" title="0">_ = composeParams // Avoid unused variable warning
+        log.Info("Mock VM composition", "host", selectedHost.SystemID)
+
+        // Create a mock composed VM result
+        mockSystemID := fmt.Sprintf("vm-%s-001", selectedHost.SystemID)
+        composedVM := &amp;mockComposedVM{systemID: mockSystemID}
+
+        log.Info("Successfully composed LXD VM", "systemID", composedVM.SystemID(), "host", selectedHost.SystemID)
+
+        // Build result
+        result := &amp;LXDVMResult{
+                SystemID:      composedVM.SystemID(),
+                HostID:        selectedHost.SystemID,
+                FailureDomain: selectedHost.AvailabilityZone,
+                Project:       vmSpec.Project,
+        }
+
+        // Generate provider ID
+        if result.FailureDomain != "" </span><span class="cov0" title="0">{
+                result.ProviderID = fmt.Sprintf("maas-lxd://%s/%s", result.FailureDomain, result.SystemID)
+        }</span> else<span class="cov0" title="0"> {
+                result.ProviderID = fmt.Sprintf("maas-lxd:///%s", result.SystemID)
+        }</span>
+
+        <span class="cov0" title="0">return result, nil</span>
+}
+
+// DeployVM deploys an existing VM with user data
+func (s *Service) DeployVM(ctx context.Context, systemID, userDataB64 string) (*infrav1beta1.Machine, error) <span class="cov0" title="0">{
+        log := textlogger.NewLogger(textlogger.NewConfig())
+        log.Info("Deploying LXD VM", "systemID", systemID)
+
+        mm := s.scope.MaasMachine
+
+        // Get the VM to ensure it exists
+        vm, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, WrapLXDError(err, LXDErrorVMDeploymentFailed, "failed to get VM for deployment").WithHost(systemID)
+        }</span>
+
+        // Deploy the VM with user data and image
+        <span class="cov0" title="0">deployedVM, err := vm.Deployer().
+                SetUserData(userDataB64).
+                SetOSSystem("custom").
+                SetDistroSeries(mm.Spec.Image).
+                Deploy(ctx)
+
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, WrapLXDError(err, LXDErrorVMDeploymentFailed, "failed to deploy VM").WithHost(systemID)
+        }</span>
+
+        <span class="cov0" title="0">log.Info("Successfully deployed LXD VM", "systemID", systemID, "state", deployedVM.State())
+
+        // Convert to infrav1beta1.Machine
+        machine := s.convertMaasToInfraMachine(deployedVM)
+        return machine, nil</span>
+}
+
+// GetVM retrieves VM information by system ID
+func (s *Service) GetVM(ctx context.Context, systemID string) (*infrav1beta1.Machine, error) <span class="cov0" title="0">{
+        vm, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, WrapLXDError(err, LXDErrorVMCreationFailed, "failed to get VM").WithHost(systemID)
+        }</span>
+
+        <span class="cov0" title="0">return s.convertMaasToInfraMachine(vm), nil</span>
+}
+
+// DeleteVM deletes an LXD VM and cleans up resources
+func (s *Service) DeleteVM(ctx context.Context, systemID string) error <span class="cov0" title="0">{
+        log := textlogger.NewLogger(textlogger.NewConfig())
+        log.Info("Deleting LXD VM", "systemID", systemID)
+
+        // Release the VM back to available pool
+        _, err := s.maasClient.Machines().Machine(systemID).Releaser().Release(ctx)
+        if err != nil </span><span class="cov0" title="0">{
+                return WrapLXDError(err, LXDErrorVMDeploymentFailed, "failed to release VM").WithHost(systemID)
+        }</span>
+
+        <span class="cov0" title="0">log.Info("Successfully released LXD VM", "systemID", systemID)
+        return nil</span>
+}
+
+// GetAvailableLXDHosts returns available LXD hosts based on constraints
+func (s *Service) GetAvailableLXDHosts(ctx context.Context) ([]LXDHost, error) <span class="cov0" title="0">{
+        mm := s.scope.MaasMachine
+
+        // Build query parameters based on machine spec constraints
+        params := maasclient.ParamsBuilder().Set("type", "lxd")
+
+        // Add resource pool filter if specified
+        if mm.Spec.ResourcePool != nil &amp;&amp; *mm.Spec.ResourcePool != "" </span><span class="cov0" title="0">{
+                params.Set("pool", *mm.Spec.ResourcePool)
+        }</span>
+
+        // Add zone filter if specified
+        <span class="cov0" title="0">failureDomain := mm.Spec.FailureDomain
+        if failureDomain == nil </span><span class="cov0" title="0">{
+                failureDomain = s.scope.Machine.Spec.FailureDomain
+        }</span>
+        <span class="cov0" title="0">if failureDomain != nil &amp;&amp; *failureDomain != "" </span><span class="cov0" title="0">{
+                params.Set("zone", *failureDomain)
+        }</span>
+
+        // TODO: Query MAAS for LXD VM hosts when VMHosts API is available
+        // For now, return mock hosts for testing
+        <span class="cov0" title="0">_ = params // Avoid unused variable warning
+        log := textlogger.NewLogger(textlogger.NewConfig())
+        log.Info("Mock LXD host discovery")
+
+        // Create mock LXD hosts for testing
+        vmHosts := []mockVMHost{
+                {id: "host-1", name: "lxd-host-1", zone: "zone-a", pool: "default"},
+                {id: "host-2", name: "lxd-host-2", zone: "zone-b", pool: "default"},
+        }
+
+        // Convert to LXDHost structs and filter by tags if specified
+        hosts := make([]LXDHost, 0, len(vmHosts))
+        for _, vmHost := range vmHosts </span><span class="cov0" title="0">{
+                host := s.convertVMHostToLXDHost(vmHost)
+
+                // Apply tag filtering if tags are specified
+                if len(mm.Spec.Tags) &gt; 0 &amp;&amp; !s.hostMatchesTags(host, mm.Spec.Tags) </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">hosts = append(hosts, host)</span>
+        }
+
+        <span class="cov0" title="0">return hosts, nil</span>
+}
+
+// SelectOptimalHost selects the best LXD host from available hosts
+func (s *Service) SelectOptimalHost(ctx context.Context, hosts []LXDHost) (*LXDHost, error) <span class="cov8" title="1">{
+        if len(hosts) == 0 </span><span class="cov8" title="1">{
+                return nil, NewLXDError(LXDErrorHostUnavailable, "no hosts available for selection")
+        }</span>
+
+        <span class="cov8" title="1">mm := s.scope.MaasMachine
+        requiredCores := 1
+        requiredMemory := 1024 // Default 1GB
+
+        if mm.Spec.MinCPU != nil </span><span class="cov8" title="1">{
+                requiredCores = *mm.Spec.MinCPU
+        }</span>
+        <span class="cov8" title="1">if mm.Spec.MinMemoryInMB != nil </span><span class="cov8" title="1">{
+                requiredMemory = *mm.Spec.MinMemoryInMB
+        }</span>
+
+        // Filter hosts by resource requirements
+        <span class="cov8" title="1">suitableHosts := make([]LXDHost, 0)
+        for _, host := range hosts </span><span class="cov8" title="1">{
+                if host.Available.Cores &gt;= requiredCores &amp;&amp; host.Available.Memory &gt;= requiredMemory </span><span class="cov8" title="1">{
+                        suitableHosts = append(suitableHosts, host)
+                }</span>
+        }
+
+        <span class="cov8" title="1">if len(suitableHosts) == 0 </span><span class="cov8" title="1">{
+                return nil, NewLXDErrorf(LXDErrorInsufficientResources,
+                        "no hosts meet resource requirements: need %d cores and %d MB memory",
+                        requiredCores, requiredMemory)
+        }</span>
+
+        // Sort by available resources (most available first)
+        <span class="cov8" title="1">sort.Slice(suitableHosts, func(i, j int) bool </span><span class="cov8" title="1">{
+                hostI := suitableHosts[i]
+                hostJ := suitableHosts[j]
+
+                // Calculate resource utilization percentage
+                utilizationI := float64(hostI.Used.Cores+hostI.Used.Memory) / float64(hostI.Available.Cores+hostI.Available.Memory+1)
+                utilizationJ := float64(hostJ.Used.Cores+hostJ.Used.Memory) / float64(hostJ.Available.Cores+hostJ.Available.Memory+1)
+
+                return utilizationI &lt; utilizationJ
+        }</span>)
+
+        <span class="cov8" title="1">return &amp;suitableHosts[0], nil</span>
+}
+
+// DistributeAcrossAZs distributes VMs across availability zones
+func (s *Service) DistributeAcrossAZs(ctx context.Context, hosts []LXDHost, count int) ([]LXDHost, error) <span class="cov8" title="1">{
+        if len(hosts) == 0 </span><span class="cov8" title="1">{
+                return nil, NewLXDError(LXDErrorHostUnavailable, "no hosts available for distribution")
+        }</span>
+
+        <span class="cov8" title="1">if count &lt;= 0 </span><span class="cov0" title="0">{
+                return []LXDHost{}, nil
+        }</span>
+
+        // Group hosts by availability zone
+        <span class="cov8" title="1">zoneHosts := make(map[string][]LXDHost)
+        for _, host := range hosts </span><span class="cov8" title="1">{
+                zone := host.AvailabilityZone
+                if zone == "" </span><span class="cov0" title="0">{
+                        zone = "default"
+                }</span>
+                <span class="cov8" title="1">zoneHosts[zone] = append(zoneHosts[zone], host)</span>
+        }
+
+        // Sort zones by name for consistent ordering
+        <span class="cov8" title="1">zones := make([]string, 0, len(zoneHosts))
+        for zone := range zoneHosts </span><span class="cov8" title="1">{
+                zones = append(zones, zone)
+        }</span>
+        <span class="cov8" title="1">sort.Strings(zones)
+
+        // Distribute VMs across zones in round-robin fashion
+        selectedHosts := make([]LXDHost, 0, count)
+        zoneIndex := 0
+
+        for len(selectedHosts) &lt; count </span><span class="cov8" title="1">{
+                zone := zones[zoneIndex%len(zones)]
+                hostsInZone := zoneHosts[zone]
+
+                if len(hostsInZone) &gt; 0 </span><span class="cov8" title="1">{
+                        // Select the best host from this zone
+                        bestHost, err := s.SelectOptimalHost(ctx, hostsInZone)
+                        if err == nil </span><span class="cov8" title="1">{
+                                selectedHosts = append(selectedHosts, *bestHost)
+
+                                // Remove the selected host from the zone to avoid duplication
+                                for i, h := range hostsInZone </span><span class="cov8" title="1">{
+                                        if h.SystemID == bestHost.SystemID </span><span class="cov8" title="1">{
+                                                zoneHosts[zone] = append(hostsInZone[:i], hostsInZone[i+1:]...)
+                                                break</span>
+                                        }
+                                }
+                        }
+                }
+
+                <span class="cov8" title="1">zoneIndex++
+
+                // If we've cycled through all zones and no more hosts are available, break
+                if zoneIndex &gt;= len(zones)*2 &amp;&amp; len(selectedHosts) == 0 </span><span class="cov0" title="0">{
+                        break</span>
+                }
+        }
+
+        <span class="cov8" title="1">if len(selectedHosts) == 0 </span><span class="cov0" title="0">{
+                return nil, NewLXDError(LXDErrorInsufficientResources, "no suitable hosts found for distribution")
+        }</span>
+
+        <span class="cov8" title="1">return selectedHosts, nil</span>
+}
+
+// Helper methods
+
+func (s *Service) convertVMHostToLXDHost(vmHost mockVMHost) LXDHost <span class="cov0" title="0">{
+        host := LXDHost{
+                SystemID:         vmHost.id,
+                Hostname:         vmHost.name,
+                AvailabilityZone: vmHost.zone,
+                ResourcePool:     vmHost.pool,
+        }
+
+        // Mock resource information for testing
+        host.Available = ResourceInfo{
+                Cores:  16,
+                Memory: 32768, // 32GB
+                Disk:   1000,  // 1TB
+        }
+
+        host.Used = ResourceInfo{
+                Cores:  4,
+                Memory: 8192, // 8GB
+                Disk:   200,  // 200GB
+        }
+
+        // Set LXD capabilities
+        host.LXDCapabilities = LXDCapabilities{
+                VMSupport:      true, // Assuming all VM hosts support VMs
+                Projects:       []string{"default"},
+                Profiles:       []string{"default"},
+                StoragePools:   []string{"default"},
+                NetworkBridges: []string{"lxdbr0"},
+        }
+
+        return host
+}</span>
+
+func (s *Service) convertMaasToInfraMachine(maasMachine maasclient.Machine) *infrav1beta1.Machine <span class="cov0" title="0">{
+        // Convert MAAS machine to infrav1beta1.Machine
+        // This is a basic conversion - would need to be expanded based on actual requirements
+        machine := &amp;infrav1beta1.Machine{
+                ID:               maasMachine.SystemID(),
+                Hostname:         maasMachine.Hostname(),
+                State:            infrav1beta1.MachineState(maasMachine.State()),
+                Powered:          maasMachine.PowerState() == "on",
+                AvailabilityZone: maasMachine.Zone().Name(),
+        }
+
+        return machine
+}</span>
+
+func (s *Service) hostMatchesTags(host LXDHost, requiredTags []string) bool <span class="cov0" title="0">{
+        // For now, assume all hosts match tags
+        // This would need to be implemented based on how tags are stored in MAAS VM hosts
+        return true
+}</span>
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package scope
+
+import (
+        "github.com/spectrocloud/maas-client-go/maasclient"
+        "os"
+)
+
+// NewMaasClient creates a new MaaS client for a given session
+// TODO (looking up on Env really the besT? though it is kind of what EC2 does
+func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface <span class="cov8" title="1">{
+
+        maasEndpoint := os.Getenv("MAAS_ENDPOINT")
+        if maasEndpoint == "" </span><span class="cov8" title="1">{
+                panic("missing env MAAS_ENDPOINT; e.g: MAAS_ENDPOINT=http://10.11.130.11:5240/MAAS")</span>
+        }
+
+        <span class="cov8" title="1">maasAPIKey := os.Getenv("MAAS_API_KEY")
+        if maasAPIKey == "" </span><span class="cov8" title="1">{
+                panic("missing env MAAS_API_KEY; e.g: MAAS_API_KEY=x:y:z&gt;")</span>
+        }
+
+        <span class="cov8" title="1">maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+        return maasClient</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package scope
+
+import (
+        "context"
+        "fmt"
+        "github.com/go-logr/logr"
+        "github.com/google/uuid"
+        "github.com/pkg/errors"
+        infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+        v1 "k8s.io/api/core/v1"
+        "k8s.io/apimachinery/pkg/types"
+        "k8s.io/apimachinery/pkg/util/wait"
+        clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+        "sigs.k8s.io/cluster-api/controllers/remote"
+        "sigs.k8s.io/cluster-api/util"
+        "sigs.k8s.io/cluster-api/util/conditions"
+        "sigs.k8s.io/cluster-api/util/patch"
+        "sigs.k8s.io/controller-runtime/pkg/client"
+        "sigs.k8s.io/controller-runtime/pkg/event"
+        "sync"
+        "time"
+)
+
+const (
+        DnsSuffixLength = 6
+)
+
+// ClusterScopeParams defines the input parameters used to create a new Scope.
+type ClusterScopeParams struct {
+        Client              client.Client
+        Logger              logr.Logger
+        Cluster             *clusterv1.Cluster
+        MaasCluster         *infrav1beta1.MaasCluster
+        ControllerName      string
+        Tracker             *remote.ClusterCacheTracker
+        ClusterEventChannel chan event.GenericEvent
+}
+
+// ClusterScope defines the basic context for an actuator to operate upon.
+type ClusterScope struct {
+        logr.Logger
+        client      client.Client
+        patchHelper *patch.Helper
+
+        Cluster             *clusterv1.Cluster
+        MaasCluster         *infrav1beta1.MaasCluster
+        controllerName      string
+        tracker             *remote.ClusterCacheTracker
+        clusterEventChannel chan event.GenericEvent
+}
+
+// NewClusterScope creates a new Scope from the supplied parameters.
+// This is meant to be called for each reconcile iteration.
+func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) <span class="cov8" title="1">{
+
+        helper, err := patch.NewHelper(params.MaasCluster, params.Client)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, errors.Wrap(err, "failed to init patch helper")
+        }</span>
+        <span class="cov8" title="1">return &amp;ClusterScope{
+                Logger:              params.Logger,
+                client:              params.Client,
+                Cluster:             params.Cluster,
+                MaasCluster:         params.MaasCluster,
+                patchHelper:         helper,
+                controllerName:      params.ControllerName,
+                tracker:             params.Tracker,
+                clusterEventChannel: params.ClusterEventChannel,
+        }, nil</span>
+}
+
+// PatchObject persists the cluster configuration and status.
+func (s *ClusterScope) PatchObject() error <span class="cov0" title="0">{
+        // Always update the readyCondition by summarizing the state of other conditions.
+        // A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
+        conditions.SetSummary(s.MaasCluster,
+                conditions.WithConditions(
+                        infrav1beta1.DNSReadyCondition,
+                        infrav1beta1.APIServerAvailableCondition,
+                ),
+                conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
+        )
+
+        // Patch the object, ignoring conflicts on the conditions owned by this controller.
+        return s.patchHelper.Patch(
+                context.TODO(),
+                s.MaasCluster,
+                patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
+                        clusterv1.ReadyCondition,
+                        infrav1beta1.DNSReadyCondition,
+                        infrav1beta1.APIServerAvailableCondition,
+                }},
+        )
+}</span>
+
+// Close closes the current scope persisting the cluster configuration and status.
+func (s *ClusterScope) Close() error <span class="cov0" title="0">{
+        return s.PatchObject()
+}</span>
+
+// APIServerPort returns the APIServerPort to use when creating the load balancer.
+func (s *ClusterScope) APIServerPort() int <span class="cov0" title="0">{
+        if s.Cluster.Spec.ClusterNetwork != nil &amp;&amp; s.Cluster.Spec.ClusterNetwork.APIServerPort != nil </span><span class="cov0" title="0">{
+                return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+        }</span>
+        <span class="cov0" title="0">return 6443</span>
+}
+
+// SetDNSName sets the Network systemID in spec.
+func (s *ClusterScope) SetDNSName(dnsName string) <span class="cov8" title="1">{
+        s.MaasCluster.Status.Network.DNSName = dnsName
+}</span>
+
+// GetDNSName sets the Network systemID in spec.
+// This can't do a lookup on Status.Network.DNSDomain name since it's derviced from here
+func (s *ClusterScope) GetDNSName() string <span class="cov8" title="1">{
+        if !s.Cluster.Spec.ControlPlaneEndpoint.IsZero() </span><span class="cov0" title="0">{
+                return s.Cluster.Spec.ControlPlaneEndpoint.Host
+        }</span>
+
+        <span class="cov8" title="1">if s.MaasCluster.Status.Network.DNSName != "" </span><span class="cov8" title="1">{
+                return s.MaasCluster.Status.Network.DNSName
+        }</span>
+
+        <span class="cov8" title="1">uid := uuid.New().String()
+        dnsName := fmt.Sprintf("%s-%s.%s", s.Cluster.Name, uid[len(uid)-DnsSuffixLength:], s.MaasCluster.Spec.DNSDomain)
+
+        s.SetDNSName(dnsName)
+        return dnsName</span>
+}
+
+// GetActiveMaasMachines all MaaS machines NOT being deleted
+func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, error) <span class="cov0" title="0">{
+
+        machineList := &amp;infrav1beta1.MaasMachineList{}
+        labels := map[string]string{clusterv1.ClusterNameLabel: s.Cluster.Name}
+
+        if err := s.client.List(
+                context.TODO(),
+                machineList,
+                client.InNamespace(s.Cluster.Namespace),
+                client.MatchingLabels(labels)); err != nil </span><span class="cov0" title="0">{
+                return nil, errors.Wrap(err, "failed to list machines")
+        }</span>
+
+        <span class="cov0" title="0">var machines []*infrav1beta1.MaasMachine
+        for i := range machineList.Items </span><span class="cov0" title="0">{
+                m := &amp;machineList.Items[i]
+                machines = append(machines, m)
+                // TODO need active?
+                //if m.DeletionTimestamp.IsZero() {
+                //}
+        }</span>
+
+        <span class="cov0" title="0">return machines, nil</span>
+}
+
+var (
+        // apiServerTriggers is used to prevent multiple goroutines for a single
+        // Cluster that poll to see if the target API server is online.
+        apiServerTriggers   = map[types.UID]struct{}{}
+        apiServerTriggersMu sync.Mutex
+)
+
+func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() <span class="cov0" title="0">{
+        if s.Cluster.Status.ControlPlaneReady </span><span class="cov0" title="0">{
+                s.Info("skipping reconcile when API server is online",
+                        "reason", "ControlPlaneReady")
+                return
+        }</span> else<span class="cov0" title="0"> if !s.Cluster.DeletionTimestamp.IsZero() </span><span class="cov0" title="0">{
+                s.Info("skipping reconcile when API server is online",
+                        "reason", "controlPlaneDeleting")
+                return
+        }</span>
+
+        <span class="cov0" title="0">apiServerTriggersMu.Lock()
+        defer apiServerTriggersMu.Unlock()
+        if _, ok := apiServerTriggers[s.Cluster.UID]; ok </span><span class="cov0" title="0">{
+                s.Info("skipping reconcile when API server is online",
+                        "reason", "alreadyPolling")
+                return
+        }</span>
+        <span class="cov0" title="0">apiServerTriggers[s.Cluster.UID] = struct{}{}
+        go func() </span><span class="cov0" title="0">{
+                // Block until the target API server is online.
+
+                s.Info("start polling API server for online check")
+                _ = wait.PollImmediateInfinite(time.Second*1, func() (bool, error) </span><span class="cov0" title="0">{ return s.IsAPIServerOnline() }</span>)
+                <span class="cov0" title="0">s.Info("stop polling API server for online check")
+                s.Info("triggering GenericEvent", "reason", "api-server-online")
+                s.clusterEventChannel &lt;- event.GenericEvent{
+                        Object: s.MaasCluster,
+                }
+
+                apiServerTriggersMu.Lock()
+                delete(apiServerTriggers, s.Cluster.UID)
+                apiServerTriggersMu.Unlock()</span>
+
+                //// Once the control plane has been marked as initialized it is safe to
+                //// remove the key from the map that prevents multiple goroutines from
+                //// polling the API server to see if it is online.
+                //s.Info("start polling for control plane initialized")
+                //wait.PollImmediateInfinite(time.Second*1, func() (bool, error) { return r.isControlPlaneInitialized(ctx), nil }) // nolint:errcheck
+                //s.Info("stop polling for control plane initialized")
+        }()
+}
+
+func (s *ClusterScope) IsAPIServerOnline() (bool, error) <span class="cov0" title="0">{
+
+        ctx := context.TODO()
+
+        cluster := &amp;clusterv1.Cluster{}
+        if err := s.client.Get(ctx, util.ObjectKey(s.Cluster), cluster); err != nil </span><span class="cov0" title="0">{
+                return false, err
+        }</span> else<span class="cov0" title="0"> if !cluster.DeletionTimestamp.IsZero() </span><span class="cov0" title="0">{
+                s.Info("Cluster is deleting; abort APIServerOnline check", "cluster", cluster.Name)
+                return false, errors.New("Cluster is deleting; abort IsAPIServerOnline")
+        }</span>
+
+        <span class="cov0" title="0">remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+        if err != nil </span><span class="cov0" title="0">{
+                s.V(2).Info("Waiting for online server to come online")
+                return false, nil
+        }</span>
+
+        <span class="cov0" title="0">err = remoteClient.List(ctx, new(v1.NodeList))
+
+        return err == nil, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package scope
+
+import (
+        "context"
+        "fmt"
+        "strings"
+        "github.com/go-logr/logr"
+        "github.com/pkg/errors"
+        infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+        infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+        corev1 "k8s.io/api/core/v1"
+        "k8s.io/apimachinery/pkg/types"
+        "k8s.io/utils/pointer"
+        clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+        "sigs.k8s.io/cluster-api/controllers/remote"
+        capierrors "sigs.k8s.io/cluster-api/errors"
+        "sigs.k8s.io/cluster-api/util"
+        "sigs.k8s.io/cluster-api/util/conditions"
+        "sigs.k8s.io/cluster-api/util/patch"
+        "sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+// MachineScopeParams defines the input parameters used to create a new Scope.
+type MachineScopeParams struct {
+        Client         client.Client
+        Logger         logr.Logger
+        Cluster        *clusterv1.Cluster
+        ClusterScope   *ClusterScope
+        Machine        *clusterv1.Machine
+        MaasMachine    *infrav1beta1.MaasMachine
+        ControllerName string
+
+        Tracker *remote.ClusterCacheTracker
+}
+
+// MachineScope defines the basic context for an actuator to operate upon.
+type MachineScope struct {
+        logr.Logger
+        client      client.Client
+        patchHelper *patch.Helper
+
+        Cluster      *clusterv1.Cluster
+        ClusterScope *ClusterScope
+
+        Machine     *clusterv1.Machine
+        MaasMachine *infrav1beta1.MaasMachine
+
+        controllerName string
+        tracker        *remote.ClusterCacheTracker
+}
+
+// NewMachineScope creates a new Scope from the supplied parameters.
+// This is meant to be called for each reconcile iteration.
+func NewMachineScope(params MachineScopeParams) (*MachineScope, error) <span class="cov0" title="0">{
+
+        helper, err := patch.NewHelper(params.MaasMachine, params.Client)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, errors.Wrap(err, "failed to init patch helper")
+        }</span>
+        <span class="cov0" title="0">return &amp;MachineScope{
+                Logger:         params.Logger,
+                Machine:        params.Machine,
+                MaasMachine:    params.MaasMachine,
+                Cluster:        params.Cluster,
+                ClusterScope:   params.ClusterScope,
+                patchHelper:    helper,
+                client:         params.Client,
+                tracker:        params.Tracker,
+                controllerName: params.ControllerName,
+        }, nil</span>
+}
+
+// PatchObject persists the machine configuration and status.
+func (m *MachineScope) PatchObject() error <span class="cov0" title="0">{
+
+        applicableConditions := []clusterv1.ConditionType{
+                infrav1beta1.MachineDeployedCondition,
+        }
+
+        if m.IsControlPlane() </span><span class="cov0" title="0">{
+                applicableConditions = append(applicableConditions, infrav1beta1.DNSAttachedCondition)
+        }</span>
+
+        // Add LXD-specific conditions if using LXD provisioning
+        <span class="cov0" title="0">if m.isLXDProvisioning() </span><span class="cov0" title="0">{
+                applicableConditions = append(applicableConditions, 
+                        infrav1beta1.LXDHostSelectedCondition,
+                        infrav1beta1.LXDVMCreatedCondition,
+                )
+        }</span>
+        // Always update the readyCondition by summarizing the state of other conditions.
+        // A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
+        <span class="cov0" title="0">conditions.SetSummary(m.MaasMachine,
+                conditions.WithConditions(applicableConditions...),
+                conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
+        )
+
+        // Build owned conditions list
+        ownedConditions := []clusterv1.ConditionType{
+                clusterv1.ReadyCondition,
+                infrav1beta1.MachineDeployedCondition,
+        }
+        
+        // Add LXD-specific conditions to owned conditions
+        if m.isLXDProvisioning() </span><span class="cov0" title="0">{
+                ownedConditions = append(ownedConditions, 
+                        infrav1beta1.LXDHostSelectedCondition,
+                        infrav1beta1.LXDVMCreatedCondition,
+                )
+        }</span>
+
+        // Patch the object, ignoring conflicts on the conditions owned by this controller.
+        <span class="cov0" title="0">return m.patchHelper.Patch(
+                context.TODO(),
+                m.MaasMachine,
+                patch.WithOwnedConditions{Conditions: ownedConditions},
+        )</span>
+}
+
+// Close closes the current scope persisting the cluster configuration and status.
+func (m *MachineScope) Close() error <span class="cov0" title="0">{
+        return m.PatchObject()
+}</span>
+
+// SetAddresses sets the MAAS Machine address status.
+func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) <span class="cov0" title="0">{
+        m.MaasMachine.Status.Addresses = addrs
+}</span>
+
+// SetReady sets the MaasMachine Ready Status
+func (m *MachineScope) SetReady() <span class="cov0" title="0">{
+        m.MaasMachine.Status.Ready = true
+}</span>
+
+// IsReady gets MaasMachine Ready Status
+func (m *MachineScope) IsReady() bool <span class="cov0" title="0">{
+        return m.MaasMachine.Status.Ready
+}</span>
+
+// SetNotReady sets the MaasMachine Ready Status to false
+func (m *MachineScope) SetNotReady() <span class="cov0" title="0">{
+        m.MaasMachine.Status.Ready = false
+}</span>
+
+// SetFailureMessage sets the MaasMachine status failure message.
+func (m *MachineScope) SetFailureMessage(v error) <span class="cov0" title="0">{
+        m.MaasMachine.Status.FailureMessage = pointer.StringPtr(v.Error())
+}</span>
+
+// SetFailureReason sets the MaasMachine status failure reason.
+func (m *MachineScope) SetFailureReason(v capierrors.MachineStatusError) <span class="cov0" title="0">{
+        m.MaasMachine.Status.FailureReason = &amp;v
+}</span>
+
+// IsControlPlane returns true if the machine is a control plane.
+func (m *MachineScope) IsControlPlane() bool <span class="cov0" title="0">{
+        return util.IsControlPlaneMachine(m.Machine)
+}</span>
+
+// Role returns the machine role from the labels.
+func (m *MachineScope) Role() string <span class="cov0" title="0">{
+        if util.IsControlPlaneMachine(m.Machine) </span><span class="cov0" title="0">{
+                return "control-plane"
+        }</span>
+        <span class="cov0" title="0">return "node"</span>
+}
+
+// GetInstanceID returns the MaasMachine instance id by parsing Spec.ProviderID.
+func (m *MachineScope) GetInstanceID() *string <span class="cov0" title="0">{
+        parsed, err := infrautil.NewProviderID(m.GetProviderID())
+        if err != nil </span><span class="cov0" title="0">{
+                m.Error(err, "failed to parse providerID", "providerID", m.GetProviderID())
+                return nil
+        }</span>
+        <span class="cov0" title="0">return pointer.StringPtr(parsed.ID())</span>
+}
+
+// GetProviderID returns the MaasMachine providerID from the spec.
+func (m *MachineScope) GetProviderID() string <span class="cov0" title="0">{
+        if m.MaasMachine.Spec.ProviderID != nil </span><span class="cov0" title="0">{
+                return *m.MaasMachine.Spec.ProviderID
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+// SetProviderID sets the MaasMachine providerID in spec.
+func (m *MachineScope) SetProviderID(systemID, availabilityZone string) <span class="cov0" title="0">{
+        // Generate provider ID based on provisioning mode
+        if m.isLXDProvisioning() </span><span class="cov0" title="0">{
+                m.SetLXDProviderID(systemID, availabilityZone)
+        }</span> else<span class="cov0" title="0"> {
+                m.SetBareMetalProviderID(systemID, availabilityZone)
+        }</span>
+}
+
+// SetBareMetalProviderID sets the provider ID for bare metal machines
+func (m *MachineScope) SetBareMetalProviderID(systemID, availabilityZone string) <span class="cov0" title="0">{
+        providerID := fmt.Sprintf("maas:///%s/%s", availabilityZone, systemID)
+        m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)
+}</span>
+
+// SetLXDProviderID sets the provider ID for LXD VMs
+func (m *MachineScope) SetLXDProviderID(systemID, availabilityZone string) <span class="cov0" title="0">{
+        var providerID string
+        if availabilityZone != "" </span><span class="cov0" title="0">{
+                providerID = fmt.Sprintf("maas-lxd://%s/%s", availabilityZone, systemID)
+        }</span> else<span class="cov0" title="0"> {
+                providerID = fmt.Sprintf("maas-lxd:///%s", systemID)
+        }</span>
+        <span class="cov0" title="0">m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)</span>
+}
+
+// SetFailureDomain sets the MaasMachine systemID in spec.
+func (m *MachineScope) SetFailureDomain(availabilityZone string) <span class="cov0" title="0">{
+        m.MaasMachine.Spec.FailureDomain = pointer.StringPtr(availabilityZone)
+}</span>
+
+// SetInstanceID sets the MaasMachine systemID in spec.
+func (m *MachineScope) SetSystemID(systemID string) <span class="cov0" title="0">{
+        m.MaasMachine.Spec.SystemID = pointer.StringPtr(systemID)
+}</span>
+
+func (m *MachineScope) GetSystemID() string <span class="cov0" title="0">{
+        return *m.MaasMachine.Spec.SystemID
+}</span>
+
+// GetMachineState returns the MaasMachine instance state from the status.
+func (m *MachineScope) GetMachineState() *infrav1beta1.MachineState <span class="cov0" title="0">{
+        return m.MaasMachine.Status.MachineState
+}</span>
+
+// SetMachineState sets the MaasMachine status instance state.
+func (m *MachineScope) SetMachineState(v infrav1beta1.MachineState) <span class="cov0" title="0">{
+        m.MaasMachine.Status.MachineState = &amp;v
+}</span>
+func (m *MachineScope) SetPowered(powered bool) <span class="cov0" title="0">{
+        m.MaasMachine.Status.MachinePowered = powered
+}</span>
+
+// GetMachineHostname retrns the hostname
+func (m *MachineScope) GetMachineHostname() string <span class="cov0" title="0">{
+        if m.MaasMachine.Status.Hostname != nil </span><span class="cov0" title="0">{
+                return *m.MaasMachine.Status.Hostname
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+// SetMachineHostname sets the hostname
+func (m *MachineScope) SetMachineHostname(hostname string) <span class="cov0" title="0">{
+        m.MaasMachine.Status.Hostname = &amp;hostname
+}</span>
+
+func (m *MachineScope) MachineIsRunning() bool <span class="cov0" title="0">{
+        state := m.GetMachineState()
+        return state != nil &amp;&amp; infrav1beta1.MachineRunningStates.Has(string(*state))
+}</span>
+
+func (m *MachineScope) MachineIsOperational() bool <span class="cov0" title="0">{
+        state := m.GetMachineState()
+        return state != nil &amp;&amp; infrav1beta1.MachineOperationalStates.Has(string(*state))
+}</span>
+
+func (m *MachineScope) MachineIsInKnownState() bool <span class="cov0" title="0">{
+        state := m.GetMachineState()
+        return state != nil &amp;&amp; infrav1beta1.MachineKnownStates.Has(string(*state))
+}</span>
+
+// GetRawBootstrapData returns the bootstrap data from the secret in the Machine's bootstrap.dataSecretName.
+func (m *MachineScope) GetRawBootstrapData() ([]byte, error) <span class="cov0" title="0">{
+        if m.Machine.Spec.Bootstrap.DataSecretName == nil </span><span class="cov0" title="0">{
+                return nil, errors.New("error retrieving bootstrap data: linked Machine's bootstrap.dataSecretName is nil")
+        }</span>
+
+        <span class="cov0" title="0">namespace := m.Machine.Namespace
+
+        secret := &amp;corev1.Secret{}
+        key := types.NamespacedName{Namespace: namespace, Name: *m.Machine.Spec.Bootstrap.DataSecretName}
+        if err := m.client.Get(context.TODO(), key, secret); err != nil </span><span class="cov0" title="0">{
+                return nil, errors.Wrapf(err, "failed to retrieve bootstrap data secret for MaasMachine %s/%s", namespace, m.Machine.Name)
+        }</span>
+
+        <span class="cov0" title="0">value, ok := secret.Data["value"]
+        if !ok </span><span class="cov0" title="0">{
+                return nil, errors.New("error retrieving bootstrap data: secret value key is missing")
+        }</span>
+
+        <span class="cov0" title="0">return value, nil</span>
+}
+
+// SetNodeProviderID patches the node with the ID
+func (m *MachineScope) SetNodeProviderID() error <span class="cov0" title="0">{
+        ctx := context.TODO()
+        remoteClient, err := m.tracker.GetClient(ctx, util.ObjectKey(m.Cluster))
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">node := &amp;corev1.Node{}
+        if err := remoteClient.Get(ctx, client.ObjectKey{Name: m.GetMachineHostname()}, node); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">providerID := m.GetProviderID()
+        if node.Spec.ProviderID == providerID </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">patchHelper, err := patch.NewHelper(node, remoteClient)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">node.Spec.ProviderID = providerID
+
+        return patchHelper.Patch(ctx, node)</span>
+}
+
+// isLXDProvisioning returns true if the machine is using LXD provisioning
+func (m *MachineScope) isLXDProvisioning() bool <span class="cov0" title="0">{
+        return m.MaasMachine.Spec.ProvisioningMode != nil &amp;&amp; 
+                *m.MaasMachine.Spec.ProvisioningMode == infrav1beta1.ProvisioningModeLXD
+}</span>
+
+// IsLXDProvisioning is a public method for external access
+func (m *MachineScope) IsLXDProvisioning() bool <span class="cov0" title="0">{
+        return m.isLXDProvisioning()
+}</span>
+
+// GetLXDHost returns the LXD host ID for this machine
+func (m *MachineScope) GetLXDHost() string <span class="cov0" title="0">{
+        if m.MaasMachine.Status.LXDHost != nil </span><span class="cov0" title="0">{
+                return *m.MaasMachine.Status.LXDHost
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+// SetLXDHost sets the LXD host ID in the machine status
+func (m *MachineScope) SetLXDHost(hostID string) <span class="cov0" title="0">{
+        m.MaasMachine.Status.LXDHost = pointer.StringPtr(hostID)
+}</span>
+
+// GetLXDProject returns the LXD project for this machine
+func (m *MachineScope) GetLXDProject() string <span class="cov0" title="0">{
+        if m.MaasMachine.Status.LXDProject != nil </span><span class="cov0" title="0">{
+                return *m.MaasMachine.Status.LXDProject
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+// SetLXDProject sets the LXD project in the machine status
+func (m *MachineScope) SetLXDProject(project string) <span class="cov0" title="0">{
+        m.MaasMachine.Status.LXDProject = pointer.StringPtr(project)
+}</span>
+
+// GetProviderIDType returns the provider ID type based on the format
+func (m *MachineScope) GetProviderIDType() string <span class="cov0" title="0">{
+        providerID := m.GetProviderID()
+        if providerID == "" </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        
+        <span class="cov0" title="0">if strings.HasPrefix(providerID, "maas-lxd://") </span><span class="cov0" title="0">{
+                return "lxd"
+        }</span> else<span class="cov0" title="0"> if strings.HasPrefix(providerID, "maas://") </span><span class="cov0" title="0">{
+                return "bare-metal"
+        }</span>
+        
+        <span class="cov0" title="0">return "unknown"</span>
+}
+
+// IsProviderIDLXD returns true if the provider ID indicates an LXD VM
+func (m *MachineScope) IsProviderIDLXD() bool <span class="cov0" title="0">{
+        return m.GetProviderIDType() == "lxd"
+}</span>
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">/*
+
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package util
+
+import (
+        "context"
+        "regexp"
+        "strings"
+        "github.com/pkg/errors"
+        "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+        clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+        "sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+var (
+        // ErrEmptyProviderID means that the provider id is empty.
+        ErrEmptyProviderID = errors.New("providerID is empty")
+
+        // ErrInvalidProviderID means that the provider id has an invalid form.
+        ErrInvalidProviderID = errors.New("providerID must be of the form &lt;cloudProvider&gt;://&lt;optional&gt;/&lt;segments&gt;/&lt;provider id&gt;")
+)
+
+// ProviderID is a struct representation of a Kubernetes ProviderID.
+// Format: cloudProvider://optional/segments/etc/id
+type ProviderID struct {
+        original      string
+        cloudProvider string
+        id            string
+}
+
+/*
+- must start with at least one non-colon
+- followed by ://
+- followed by any number of characters
+- must end with a non-slash.
+*/
+var providerIDRegex = regexp.MustCompile("^[^:]+://.*[^/]$")
+
+// LXD provider ID regex supports both maas-lxd:// format
+var lxdProviderIDRegex = regexp.MustCompile("^maas-lxd://.*[^/]$")
+
+// GetMAASMachinesInCluster gets a cluster's MAASMachine resources.
+func GetMAASMachinesInCluster(
+        ctx context.Context,
+        controllerClient client.Client,
+        namespace, clusterName string) ([]*v1beta1.MaasMachine, error) <span class="cov0" title="0">{
+
+        labels := map[string]string{clusterv1.ClusterNameLabel: clusterName}
+        machineList := &amp;v1beta1.MaasMachineList{}
+
+        if err := controllerClient.List(
+                ctx, machineList,
+                client.InNamespace(namespace),
+                client.MatchingLabels(labels)); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">machines := make([]*v1beta1.MaasMachine, len(machineList.Items))
+        for i := range machineList.Items </span><span class="cov0" title="0">{
+                machines[i] = &amp;machineList.Items[i]
+        }</span>
+
+        <span class="cov0" title="0">return machines, nil</span>
+}
+
+// NewProviderID parses the input string and returns a new ProviderID.
+func NewProviderID(id string) (*ProviderID, error) <span class="cov8" title="1">{
+        if id == "" </span><span class="cov8" title="1">{
+                return nil, ErrEmptyProviderID
+        }</span>
+
+        <span class="cov8" title="1">if !providerIDRegex.MatchString(id) </span><span class="cov8" title="1">{
+                return nil, ErrInvalidProviderID
+        }</span>
+
+        <span class="cov8" title="1">colonIndex := strings.Index(id, ":")
+        cloudProvider := id[0:colonIndex]
+
+        lastSlashIndex := strings.LastIndex(id, "/")
+        instance := id[lastSlashIndex+1:]
+
+        res := &amp;ProviderID{
+                original:      id,
+                cloudProvider: cloudProvider,
+                id:            instance,
+        }
+
+        if !res.Validate() </span><span class="cov0" title="0">{
+                return nil, ErrInvalidProviderID
+        }</span>
+
+        <span class="cov8" title="1">return res, nil</span>
+}
+
+// CloudProvider returns the cloud provider portion of the ProviderID.
+func (p *ProviderID) CloudProvider() string <span class="cov8" title="1">{
+        return p.cloudProvider
+}</span>
+
+// ID returns the identifier portion of the ProviderID.
+func (p *ProviderID) ID() string <span class="cov8" title="1">{
+        return p.id
+}</span>
+
+// Equals returns true if this ProviderID string matches another ProviderID string.
+func (p *ProviderID) Equals(o *ProviderID) bool <span class="cov0" title="0">{
+        return p.String() == o.String()
+}</span>
+
+// String returns the string representation of this object.
+func (p ProviderID) String() string <span class="cov8" title="1">{
+        return p.original
+}</span>
+
+// Validate returns true if the provider id is valid.
+func (p *ProviderID) Validate() bool <span class="cov8" title="1">{
+        return p.CloudProvider() != "" &amp;&amp; p.ID() != ""
+}</span>
+
+// IndexKey returns the required level of uniqueness
+// to represent and index machines uniquely from their node providerID.
+func (p *ProviderID) IndexKey() string <span class="cov8" title="1">{
+        return p.String()
+}</span>
+
+// IsLXDProviderID returns true if this is an LXD provider ID
+func (p *ProviderID) IsLXDProviderID() bool <span class="cov8" title="1">{
+        return p.cloudProvider == "maas-lxd"
+}</span>
+
+// GetProvisioningType returns the provisioning type based on the provider ID format
+func (p *ProviderID) GetProvisioningType() string <span class="cov8" title="1">{
+        if p.cloudProvider == "maas-lxd" </span><span class="cov8" title="1">{
+                return "lxd"
+        }</span> else<span class="cov8" title="1"> if p.cloudProvider == "maas" </span><span class="cov8" title="1">{
+                return "bare-metal"
+        }</span>
+        <span class="cov0" title="0">return "unknown"</span>
+}
+
+// ParseLXDProviderID parses an LXD provider ID and returns the VM ID and host information
+// Expected format: maas-lxd://zone/vmid or maas-lxd:///vmid
+func ParseLXDProviderID(providerID string) (vmID string, zone string, err error) <span class="cov8" title="1">{
+        parsed, err := NewProviderID(providerID)
+        if err != nil </span><span class="cov8" title="1">{
+                return "", "", err
+        }</span>
+        
+        <span class="cov8" title="1">if !parsed.IsLXDProviderID() </span><span class="cov8" title="1">{
+                return "", "", errors.New("not an LXD provider ID")
+        }</span>
+        
+        // Extract zone from the provider ID path
+        // Format: maas-lxd://zone/vmid or maas-lxd:///vmid
+        <span class="cov8" title="1">pathStart := strings.Index(providerID, "://") + 3
+        if pathStart &gt;= len(providerID) </span><span class="cov0" title="0">{
+                return "", "", errors.New("invalid LXD provider ID format")
+        }</span>
+        
+        <span class="cov8" title="1">path := providerID[pathStart:]
+        parts := strings.Split(path, "/")
+        
+        if len(parts) == 1 </span><span class="cov0" title="0">{
+                // Format: maas-lxd:///vmid
+                return parts[0], "", nil
+        }</span> else<span class="cov8" title="1"> if len(parts) == 2 </span><span class="cov8" title="1">{
+                // Format: maas-lxd://zone/vmid
+                return parts[1], parts[0], nil
+        }</span>
+        
+        <span class="cov0" title="0">return "", "", errors.New("invalid LXD provider ID path format")</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

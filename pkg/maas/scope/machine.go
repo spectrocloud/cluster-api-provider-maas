@@ -164,12 +164,48 @@ func (m *MachineScope) Role() string {
 
 // GetInstanceID returns the MaasMachine instance id by parsing Spec.ProviderID.
 func (m *MachineScope) GetInstanceID() *string {
-	parsed, err := infrautil.NewProviderID(m.GetProviderID())
+	providerID := m.GetProviderID()
+	if providerID == "" {
+		return nil
+	}
+
+	// Handle LXD provider IDs differently
+	if m.IsLXDProviderID() {
+		return m.getLXDInstanceID()
+	}
+
+	parsed, err := infrautil.NewProviderID(providerID)
 	if err != nil {
-		m.Error(err, "failed to parse providerID", "providerID", m.GetProviderID())
+		m.Error(err, "failed to parse providerID", "providerID", providerID)
 		return nil
 	}
 	return pointer.StringPtr(parsed.ID())
+}
+
+// getLXDInstanceID extracts the host system ID from LXD provider ID
+func (m *MachineScope) getLXDInstanceID() *string {
+	providerID := m.GetProviderID()
+	// Format: maas-lxd:///zone/host_system_id/vm_name
+	parts := strings.Split(strings.TrimPrefix(providerID, "maas-lxd:///"), "/")
+	if len(parts) >= 2 {
+		return pointer.StringPtr(parts[1]) // Return host system ID
+	}
+	return nil
+}
+
+// GetLXDVMNameFromProviderID extracts the VM name from LXD provider ID
+func (m *MachineScope) GetLXDVMNameFromProviderID() string {
+	providerID := m.GetProviderID()
+	if !m.IsLXDProviderID() {
+		return ""
+	}
+
+	// Format: maas-lxd:///zone/host_system_id/vm_name
+	parts := strings.Split(strings.TrimPrefix(providerID, "maas-lxd:///"), "/")
+	if len(parts) >= 3 {
+		return parts[2] // Return VM name
+	}
+	return ""
 }
 
 // GetProviderID returns the MaasMachine providerID from the spec.
@@ -184,6 +220,62 @@ func (m *MachineScope) GetProviderID() string {
 func (m *MachineScope) SetProviderID(systemID, availabilityZone string) {
 	providerID := fmt.Sprintf("maas:///%s/%s", availabilityZone, systemID)
 	m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)
+}
+
+// SetLXDProviderID sets the MaasMachine providerID for LXD VM in spec.
+func (m *MachineScope) SetLXDProviderID(vmName, hostSystemID, availabilityZone string) {
+	providerID := fmt.Sprintf("maas-lxd:///%s/%s/%s", availabilityZone, hostSystemID, vmName)
+	m.MaasMachine.Spec.ProviderID = pointer.StringPtr(providerID)
+}
+
+// IsLXDProvisioning returns true if this machine is configured for LXD provisioning
+func (m *MachineScope) IsLXDProvisioning() bool {
+	return m.MaasMachine.Spec.ProvisioningMode == infrav1beta1.ProvisioningModeLXD
+}
+
+// GetLXDConfig returns the LXD configuration if present
+func (m *MachineScope) GetLXDConfig() *infrav1beta1.LXDConfig {
+	return m.MaasMachine.Spec.LXDConfig
+}
+
+// SetLXDStatus sets the LXD machine status
+func (m *MachineScope) SetLXDStatus(hostSystemID, vmName, hostAddress string, resources *infrav1beta1.LXDResourceConfig) {
+	if m.MaasMachine.Status.LXDMachine == nil {
+		m.MaasMachine.Status.LXDMachine = &infrav1beta1.LXDMachineStatus{}
+	}
+
+	lxdStatus := m.MaasMachine.Status.LXDMachine
+	lxdStatus.HostSystemID = pointer.StringPtr(hostSystemID)
+	lxdStatus.VMName = pointer.StringPtr(vmName)
+	lxdStatus.HostAddress = pointer.StringPtr(hostAddress)
+	lxdStatus.ResourceAllocation = resources
+}
+
+// GetLXDStatus returns the LXD machine status
+func (m *MachineScope) GetLXDStatus() *infrav1beta1.LXDMachineStatus {
+	return m.MaasMachine.Status.LXDMachine
+}
+
+// GetLXDHostSystemID returns the LXD host system ID from status
+func (m *MachineScope) GetLXDHostSystemID() string {
+	if m.MaasMachine.Status.LXDMachine != nil && m.MaasMachine.Status.LXDMachine.HostSystemID != nil {
+		return *m.MaasMachine.Status.LXDMachine.HostSystemID
+	}
+	return ""
+}
+
+// GetLXDVMName returns the LXD VM name from status
+func (m *MachineScope) GetLXDVMName() string {
+	if m.MaasMachine.Status.LXDMachine != nil && m.MaasMachine.Status.LXDMachine.VMName != nil {
+		return *m.MaasMachine.Status.LXDMachine.VMName
+	}
+	return ""
+}
+
+// IsLXDProviderID returns true if the provider ID indicates an LXD VM
+func (m *MachineScope) IsLXDProviderID() bool {
+	providerID := m.GetProviderID()
+	return strings.HasPrefix(providerID, "maas-lxd:///")
 }
 
 // SetFailureDomain sets the MaasMachine systemID in spec.
