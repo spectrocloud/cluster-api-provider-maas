@@ -63,6 +63,15 @@ type MaasMachineSpec struct {
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
+
+	// DynamicLXD indicates whether this machine should be created as an LXD VM
+	// +optional
+	DynamicLXD *bool `json:"dynamicLXD,omitempty"`
+
+	// StaticIP is an optional IP address to assign to the LXD VM
+	// Only applicable when DynamicLXD is true
+	// +optional
+	StaticIP *string `json:"staticIP,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine

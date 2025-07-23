@@ -84,3 +84,14 @@ const (
 	// APIServerNotReadyReason api server isn't responding
 	APIServerNotReadyReason = "APIServerNotReady"
 )
+
+const (
+	// LXDReadyCondition documents whether LXD hosts are properly configured
+	LXDReadyCondition clusterv1.ConditionType = "LXDReady"
+
+	// LXDFailedReason documents LXD host setup failure
+	LXDFailedReason = "LXDFailed"
+
+	// LXDSetupPendingReason documents LXD host setup in progress
+	LXDSetupPendingReason = "LXDSetupPending"
+)

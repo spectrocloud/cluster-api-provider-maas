@@ -41,6 +41,10 @@ spec:
           spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
+              dynamicLXD:
+                description: DynamicLXD indicates whether this machine should be created
+                  as an LXD VM
+                type: boolean
               failureDomain:
                 description: |-
                   FailureDomain is the failure domain the machine will be created in.
@@ -63,6 +67,11 @@ spec:
                 type: string
               resourcePool:
                 description: ResourcePool will be the MAAS Machine resourcepool
+                type: string
+              staticIP:
+                description: |-
+                  StaticIP is an optional IP address to assign to the LXD VM
+                  Only applicable when DynamicLXD is true
                 type: string
               systemID:
                 description: SystemID will be the MaaS machine ID

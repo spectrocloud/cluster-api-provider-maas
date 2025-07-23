@@ -19,6 +19,8 @@ package scope
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -33,7 +35,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 // MachineScopeParams defines the input parameters used to create a new Scope.
@@ -289,4 +290,20 @@ func (m *MachineScope) SetNodeProviderID() error {
 	node.Spec.ProviderID = providerID
 
 	return patchHelper.Patch(ctx, node)
+}
+
+// GetDynamicLXD returns whether this machine should be created as an LXD VM
+func (m *MachineScope) GetDynamicLXD() bool {
+	if m.MaasMachine.Spec.DynamicLXD == nil {
+		return false
+	}
+	return *m.MaasMachine.Spec.DynamicLXD
+}
+
+// GetStaticIP returns the static IP to assign to the LXD VM, if specified
+func (m *MachineScope) GetStaticIP() string {
+	if m.MaasMachine.Spec.StaticIP == nil {
+		return ""
+	}
+	return *m.MaasMachine.Spec.StaticIP
 }
