@@ -19,6 +19,7 @@ package scope
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +29,7 @@ import (
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -184,13 +185,95 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, er
 	return machines, nil
 }
 
+// GetControlPlaneMaasMachines returns all MaasMachine objects associated with control plane machines in the cluster
+func (s *ClusterScope) GetControlPlaneMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
+	machines, err := s.GetClusterMaasMachines()
+	if err != nil {
+		return nil, err
+	}
+
+	var cpMachines []*infrav1beta1.MaasMachine
+	for _, machine := range machines {
+		// Check for control plane label
+		if _, ok := machine.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]; ok {
+			cpMachines = append(cpMachines, machine)
+		}
+	}
+
+	return cpMachines, nil
+}
+
+// SetStatus sets the MaasCluster status
+func (s *ClusterScope) SetStatus(status infrav1beta1.MaasClusterStatus) {
+	s.MaasCluster.Status = status
+}
+
+// GetMaasClientIdentity returns the MAAS client identity
+func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
+	// Try to get MAAS credentials from a secret
+	// The secret is expected to be in the same namespace as the MaasCluster
+	// and named "maas-credentials" by default
+	secretName := "maas-credentials"
+
+	// Get the secret
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: s.MaasCluster.Namespace,
+		Name:      secretName,
+	}
+
+	// Try to get the secret
+	err := s.client.Get(context.Background(), key, secret)
+	if err != nil {
+		// If the secret doesn't exist, fall back to environment variables or default values
+		s.Info("Failed to get MAAS credentials secret, using fallback values", "error", err)
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	// Get the credentials from the secret
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	// Validate the credentials
+	if url == "" || token == "" {
+		s.Info("Invalid MAAS credentials in secret, using fallback values")
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	return ClientIdentity{
+		URL:   url,
+		Token: token,
+	}
+}
+
+// getEnvOrDefault returns the value of the environment variable or the default value if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// ClientIdentity contains MAAS client identity information
+type ClientIdentity struct {
+	URL   string
+	Token string
+}
+
 const (
 	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
 	preferredSubnetKey           = "preferredSubnets"
 )
 
 func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
-	maasPreferredSubnet := &v1.ConfigMap{}
+	maasPreferredSubnet := &corev1.ConfigMap{}
 	err := s.client.Get(context.Background(), types.NamespacedName{
 		Namespace: s.Cluster.GetNamespace(),
 		Name:      maasPreferredSubnetConfigmap,
@@ -278,7 +361,7 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, nil
 	}
 
-	err = remoteClient.List(ctx, new(v1.NodeList))
+	err = remoteClient.List(ctx, new(corev1.NodeList))
 
 	return err == nil, nil
 }
