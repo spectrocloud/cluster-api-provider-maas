@@ -26,7 +26,7 @@ endif
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
-SPECTRO_VERSION ?= 4.0.0-dev
+SPECTRO_VERSION ?= 4.0.0-dev-maas-lxd-solution
 IMG_TAG ?= v0.6.0-spectro-${SPECTRO_VERSION}
 CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
@@ -145,7 +145,7 @@ generate: $(CONTROLLER_GEN) $(CONVERSION_GEN)
 	$(MAKE) generate-manifests
 
 generate-go:
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 	$(CONVERSION_GEN) \
 		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
@@ -154,7 +154,7 @@ generate-go:
 		./api/v1beta1
 
 generate-manifests:  ## Generate manifests
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./api/..." output:crd:artifacts:config=config/crd/bases
 
 
 # Build the docker image
