@@ -305,5 +305,5 @@ func (m *MachineScope) GetStaticIP() string {
 	if m.MaasMachine.Spec.StaticIP == nil {
 		return ""
 	}
-	return *m.MaasMachine.Spec.StaticIP
+	return m.MaasMachine.Spec.StaticIP.IP
 }

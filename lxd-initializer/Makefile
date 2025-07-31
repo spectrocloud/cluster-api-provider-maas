@@ -1,32 +1,33 @@
-# Variables
-REGISTRY ?= spectrocloud
+# Image URL to use all building/pushing image targets
+REGISTRY ?= ghcr.io/spectrocloud
+IMG ?= $(REGISTRY)/capmaas-lxd-initializer
 TAG ?= latest
-IMAGE_NAME = lxd-initializer
 
-# Go build flags
-GOOS ?= linux
-GOARCH ?= amd64
-GO_BUILD_FLAGS = -v
-
-# Docker build flags
-DOCKER_BUILD_FLAGS = --platform linux/$(GOARCH)
-
-.PHONY: all build docker-build docker-push clean
-
-all: build docker-build
-
+# Build binary
 build:
-	@echo "Building LXD initializer binary..."
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GO_BUILD_FLAGS) -o lxd-initializer lxd-initializer.go
+	go build -o lxd-initializer lxd-initializer.go
 
-docker-build: build
-	@echo "Building Docker image..."
-	docker build $(DOCKER_BUILD_FLAGS) -t $(REGISTRY)/$(IMAGE_NAME):$(TAG) .
+# Run locally
+run:
+	./lxd-initializer
 
-docker-push: docker-build
-	@echo "Pushing Docker image..."
-	docker push $(REGISTRY)/$(IMAGE_NAME):$(TAG)
+# Build the docker image
+docker-build:
+	docker build -t ${IMG}:${TAG} .
 
-clean:
-	@echo "Cleaning up..."
-	rm -f lxd-initializer 
+# Push the docker image
+docker-push:
+	docker push ${IMG}:${TAG}
+
+# Build and push the docker image
+docker-build-push: docker-build docker-push
+
+# Deploy the DaemonSet
+deploy:
+	sed "s|\$${REGISTRY}|$(REGISTRY)|g; s|\$${TAG}|$(TAG)|g" lxd-initializer-daemonset.yaml | kubectl apply -f -
+
+# Delete the DaemonSet
+undeploy:
+	kubectl delete -f lxd-initializer-daemonset.yaml --ignore-not-found=true
+
+.PHONY: build run docker-build docker-push docker-build-push deploy undeploy 

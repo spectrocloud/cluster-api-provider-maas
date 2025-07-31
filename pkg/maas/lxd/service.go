@@ -46,10 +46,12 @@ func (s *Service) ReconcileLXD() error {
 	// Get the cluster
 	cluster := s.clusterScope.MaasCluster
 
-	// Check if LXD is already ready
-	if conditions.IsTrue(cluster, v1beta1.LXDReadyCondition) {
-		return nil
-	}
+	// // Check if LXD is already ready
+	// if conditions.IsTrue(cluster, v1beta1.LXDReadyCondition) {
+	// 	return nil
+	// }
+	
+	// Even if LXDReady is already true we still verify that each control-plane node remains registered.
 
 	// Set the LXD setup pending condition
 	conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "LXD setup is pending")
@@ -113,14 +115,17 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		StorageBackend:  lxdConfig.StorageBackend,
 		StorageSize:     lxdConfig.StorageSize,
 		NetworkBridge:   lxdConfig.NetworkBridge,
-		Zone:            lxdConfig.Zone,
 		ResourcePool:    lxdConfig.ResourcePool,
+		Zone:            lxdConfig.Zone,
+		TrustPassword:   "capmaas",
 	}
 
 	// Set up LXD on the machine
 	// Note: This now relies on the DaemonSet to initialize LXD
 	// It only checks if the host is registered with MAAS and registers it if not
-	if err := SetupLXDHost(hostConfig); err != nil {
+	// Use our adapter implementation to ensure compatibility with MAAS 3.x
+	// Use the maas-client-go implementation (Zone/Pool struct fix in PR #19)
+	if err := SetupLXDHostWithMaasClient(hostConfig); err != nil {
 		return errors.Wrapf(err, "failed to set up LXD on machine %s", machine.Name)
 	}
 

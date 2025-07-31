@@ -318,6 +318,13 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	clusterScope.Info("API Server is available")
 
 	if clusterScope.IsLXDControlPlaneCluster() {
+
+		// Ensure LXD initializer DaemonSet exists/absent as needed
+		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD initializer DaemonSet")
+			return reconcile.Result{}, err
+		}
+
 		lxdService := lxd.NewService(clusterScope)
 		if err := lxdService.ReconcileLXD(); err != nil {
 			clusterScope.Error(err, "failed to reconcile LXD hosts")

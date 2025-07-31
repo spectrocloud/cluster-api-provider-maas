@@ -42,7 +42,7 @@ spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
               dynamicLXD:
-                description: DynamicLXD indicates whether this machine should be created
+                description: DynamicLXD specifies whether this machine should be created
                   as an LXD VM
                 type: boolean
               failureDomain:
@@ -69,10 +69,27 @@ spec:
                 description: ResourcePool will be the MAAS Machine resourcepool
                 type: string
               staticIP:
-                description: |-
-                  StaticIP is an optional IP address to assign to the LXD VM
-                  Only applicable when DynamicLXD is true
-                type: string
+                description: StaticIP configuration for VMs
+                properties:
+                  cidr:
+                    description: CIDR is the network CIDR
+                    type: string
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether to use static IP
+                    type: boolean
+                  gateway:
+                    description: Gateway is the network gateway
+                    type: string
+                  ip:
+                    description: IP is the static IP address to assign
+                    type: string
+                  nameservers:
+                    description: Nameservers is a list of DNS servers
+                    items:
+                      type: string
+                    type: array
+                type: object
               systemID:
                 description: SystemID will be the MaaS machine ID
                 type: string
@@ -81,6 +98,46 @@ spec:
                 items:
                   type: string
                 type: array
+              vmConfig:
+                description: VMConfig contains additional VM configuration
+                properties:
+                  autoStart:
+                    default: true
+                    description: AutoStart specifies whether the VM should automatically
+                      start
+                    type: boolean
+                  diskSize:
+                    default: 20
+                    description: DiskSize is the size of the VM disk in GB
+                    type: integer
+                  limits:
+                    description: Limits contains resource limits for the VM
+                    properties:
+                      cpuLimit:
+                        description: CPULimit is the CPU limit
+                        type: string
+                      diskIOPS:
+                        description: DiskIOPS is the disk IOPS limit
+                        type: integer
+                      memoryLimit:
+                        description: MemoryLimit is the memory limit
+                        type: string
+                      networkBandwidth:
+                        description: NetworkBandwidth is the network bandwidth limit
+                          in Mbps
+                        type: integer
+                    type: object
+                  network:
+                    description: Network is the network to connect the VM to
+                    type: string
+                  storagePool:
+                    description: StoragePool is the storage pool to use for the VM
+                    type: string
+                type: object
+              vmType:
+                description: VMType specifies the type of VM to create (empty for
+                  bare metal, "lxd" for LXD VM)
+                type: string
             required:
             - image
             - minCPU

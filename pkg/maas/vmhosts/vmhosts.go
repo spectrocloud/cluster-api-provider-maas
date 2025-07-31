@@ -106,13 +106,23 @@ func (v *VMHostsClient) ListVMHosts() ([]VMHost, error) {
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		// Log the first 100 characters of the response for debugging
+		preview := string(body)
+		if len(preview) > 100 {
+			preview = preview[:100] + "..."
+		}
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, preview)
 	}
 
 	// Parse response
 	var hosts []VMHost
 	if err := json.Unmarshal(body, &hosts); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+		// Log the first 100 characters of the response for debugging
+		preview := string(body)
+		if len(preview) > 100 {
+			preview = preview[:100] + "..."
+		}
+		return nil, fmt.Errorf("failed to parse response: %w (response preview: %s)", err, preview)
 	}
 
 	return hosts, nil

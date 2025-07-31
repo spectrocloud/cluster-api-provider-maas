@@ -1,66 +1,133 @@
-# LXD Initializer DaemonSet
+# LXD Initializer for CAPMAAS
 
-This directory contains the code and configuration for the LXD initializer DaemonSet, which is responsible for initializing LXD on each node and registering it with MAAS as a VM host.
+This component initializes LXD on nodes and registers them with MAAS as VM hosts, enabling dynamic creation of LXD VMs for Kubernetes control plane and worker nodes.
 
-## Architecture
+## Relationship with pkg/maas/lxd
 
-The LXD initializer uses a Kubernetes DaemonSet to ensure that LXD is properly initialized on each node. This approach has several advantages:
+The LXD initializer works in conjunction with the `pkg/maas/lxd` package:
 
-1. **No direct access required**: The CAPMaaS controller doesn't need direct access to the LXD socket on each node
-2. **Proper initialization**: LXD is initialized locally on each node by the DaemonSet
-3. **Automatic registration**: Each node is automatically registered with MAAS as a VM host
-4. **Scalability**: Works correctly in a distributed environment
+- **LXD Initializer**: Runs as a DaemonSet on each node to initialize LXD and register with MAAS
+- **pkg/maas/lxd**: A library used by the CAPMAAS controller to deploy the DaemonSet and interact with LXD hosts through the MAAS API
 
-## Components
+This separation allows the controller to manage LXD hosts without needing direct access to the LXD socket on each node.
 
-1. **lxd-initializer.go**: Go program that initializes LXD and registers the node with MAAS
-2. **Dockerfile**: Dockerfile for building the LXD initializer container
-3. **lxd-initializer-daemonset.yaml**: Kubernetes DaemonSet manifest
-4. **Makefile**: Makefile for building and pushing the LXD initializer
-5. **go.mod**: Go module file for the LXD initializer
+## Features
 
-## Building and Deploying
+- Automatic LXD initialization with configurable storage backend and network bridge
+- Auto-detection of LXD socket paths for both standard and snap installations
+- Skip network updates for existing networks to avoid disruption
+- Automatic registration of LXD hosts with MAAS
+- Auto-detection of available MAAS resource pools
+- Support for running as a standalone binary or as a DaemonSet
 
-1. Build the LXD initializer:
+## Usage
+
+### Command-line Flags
+
+The LXD initializer supports the following command-line flags:
+
+```
+--action string              Action to perform: init, register, both, or daemon (default "both")
+--storage-backend string     Storage backend (dir, zfs) (default "zfs")
+--storage-size string        Storage size in GB (default "50")
+--network-bridge string      Network bridge name (default "br0")
+--skip-network-update        Skip updating existing network (default false)
+--node-ip string             Node IP address for registration
+--maas-endpoint string       MAAS API endpoint
+--maas-api-key string        MAAS API key
+--zone string                MAAS zone for VM host (default "default")
+--resource-pool string       MAAS resource pool for VM host (auto-detected if not specified)
+```
+
+### Environment Variables
+
+The LXD initializer also supports the following environment variables:
+
+```
+NODE_NAME                    Node name
+NODE_IP                      Node IP address
+STORAGE_BACKEND              Storage backend (dir, zfs)
+STORAGE_SIZE                 Storage size in GB
+NETWORK_BRIDGE               Network bridge name
+SKIP_NETWORK_UPDATE          Skip updating existing network (true/false)
+MAAS_ENDPOINT                MAAS API endpoint
+MAAS_API_KEY                 MAAS API key
+ZONE                         MAAS zone for VM host
+RESOURCE_POOL                MAAS resource pool for VM host
+```
+
+### Running Locally
+
+To run the LXD initializer locally:
 
 ```bash
+# Build the binary
 make build
+
+# Run with flags
+./lxd-initializer --action=init --storage-backend=zfs --storage-size=50 --network-bridge=br0
+
+# Or run with environment variables
+STORAGE_BACKEND=zfs STORAGE_SIZE=50 NETWORK_BRIDGE=br0 ./lxd-initializer
 ```
 
-2. Build and push the Docker image:
+### Running as a DaemonSet
+
+To deploy the LXD initializer as a DaemonSet:
 
 ```bash
-make docker-push REGISTRY=<your-registry> TAG=<your-tag>
+# Build and push the Docker image
+make docker-build-push
+
+# Deploy the DaemonSet
+make deploy
 ```
 
-3. Update the DaemonSet manifest with your registry and tag:
+## Troubleshooting
+
+### Network Update Issues
+
+If you encounter issues with network updates, you can skip them by setting `--skip-network-update` or `SKIP_NETWORK_UPDATE=true`.
+
+### LXD Socket Not Found
+
+The LXD initializer will try to find the LXD socket at the following paths:
+- `/var/lib/lxd/unix.socket` (Default path)
+- `/var/snap/lxd/common/lxd/unix.socket` (Snap installation path)
+- `/run/lxd.socket` (Alternative path)
+
+If your LXD socket is at a different location, you may need to modify the code.
+
+### MAAS Registration Issues
+
+If you encounter issues with MAAS registration, check the following:
+- Ensure the MAAS API key is valid and has sufficient permissions
+- Verify the MAAS endpoint is accessible from the node
+- Check that the resource pool exists in MAAS (the initializer will auto-detect available pools)
+- Ensure the LXD host is configured to listen on the network
+
+## Building and Development
+
+### Prerequisites
+
+- Go 1.21 or later
+- Docker
+- Make
+
+### Building
 
 ```bash
-sed -i 's/${REGISTRY}/<your-registry>/g' lxd-initializer-daemonset.yaml
-sed -i 's/${TAG}/<your-tag>/g' lxd-initializer-daemonset.yaml
+# Build the binary
+make build
+
+# Build the Docker image
+make docker-build
 ```
 
-4. Apply the DaemonSet manifest:
+### Testing
 
-```bash
-kubectl apply -f lxd-initializer-daemonset.yaml
-```
+To test the LXD initializer:
 
-## Configuration
-
-The LXD initializer supports the following environment variables:
-
-- `NODE_NAME`: Name of the node (required)
-- `STORAGE_BACKEND`: Storage backend to use (default: "zfs")
-- `STORAGE_SIZE`: Storage size in GB (default: "50")
-- `NETWORK_BRIDGE`: Network bridge to use (default: "br0")
-- `MAAS_API_KEY`: MAAS API key for VM host registration
-- `MAAS_ENDPOINT`: MAAS API endpoint for VM host registration
-- `ZONE`: Zone for the VM host (default: "default")
-- `RESOURCE_POOL`: Resource pool for the VM host (default: "default")
-
-## Integration with CAPMaaS
-
-The LXD initializer is designed to work with the CAPMaaS controller. When a new node is added to the cluster, the DaemonSet will automatically initialize LXD on the node and register it with MAAS as a VM host.
-
-The CAPMaaS controller can then use the MAAS API to create and manage VMs on the registered VM hosts, without needing direct access to the LXD socket on each node. 
+1. Build the binary: `make build`
+2. Run with the `--action=init` flag to only initialize LXD: `./lxd-initializer --action=init`
+3. Run with the `--action=register` flag to only register with MAAS: `./lxd-initializer --action=register` 

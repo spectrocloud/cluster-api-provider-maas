@@ -86,6 +86,10 @@ spec:
               lxdConfig:
                 description: LXDConfig contains the configuration for LXD hosts
                 properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether to enable LXD VM support
+                    type: boolean
                   hostOS:
                     description: HostOS specifies the host OS configuration for LXD
                       hosts
@@ -214,6 +218,10 @@ spec:
                   networkBridge:
                     default: br0
                     description: NetworkBridge specifies the network bridge to use
+                    type: string
+                  resourcePool:
+                    description: ResourcePool specifies the MAAS resource pool to
+                      use for LXD VM hosts
                     type: string
                   securityConfig:
                     description: SecurityConfig specifies security settings for LXD
@@ -391,6 +399,11 @@ spec:
                             type: object
                         type: object
                     type: object
+                  skipNetworkUpdate:
+                    default: true
+                    description: SkipNetworkUpdate specifies whether to skip updating
+                      existing networks
+                    type: boolean
                   storageBackend:
                     default: zfs
                     description: StorageBackend specifies the storage backend to use
@@ -400,6 +413,10 @@ spec:
                     default: "50"
                     description: StorageSize specifies the size of the storage pool
                       in GB
+                    type: string
+                  zone:
+                    description: Zone specifies the MAAS availability zone to register
+                      LXD VM hosts in
                     type: string
                 type: object
               lxdControlPlaneCluster:

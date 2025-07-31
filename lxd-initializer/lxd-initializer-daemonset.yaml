@@ -5,6 +5,7 @@ metadata:
   namespace: capmaas-system
   labels:
     app: lxd-initializer
+    cluster.x-k8s.io/provider: infrastructure-maas
 spec:
   selector:
     matchLabels:
@@ -29,17 +30,29 @@ spec:
           mountPath: /var/snap/lxd
         - name: run
           mountPath: /run
+        - name: tmp
+          mountPath: /tmp
+        command:
+        - /lxd-initializer
+        args:
+        - --action=daemon
         env:
         - name: NODE_NAME
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         - name: STORAGE_BACKEND
           value: "zfs"
         - name: STORAGE_SIZE
           value: "50"
         - name: NETWORK_BRIDGE
           value: "br0"
+        - name: SKIP_NETWORK_UPDATE
+          value: "true"
         - name: MAAS_API_KEY
           valueFrom:
             secretKeyRef:
@@ -53,7 +66,7 @@ spec:
         - name: ZONE
           value: "default"
         - name: RESOURCE_POOL
-          value: "vm-generic"
+          value: "" # Auto-detect resource pool
       volumes:
       - name: var-lib-lxd
         hostPath:
@@ -63,4 +76,7 @@ spec:
           path: /var/snap/lxd
       - name: run
         hostPath:
-          path: /run 
+          path: /run
+      - name: tmp
+        hostPath:
+          path: /tmp 

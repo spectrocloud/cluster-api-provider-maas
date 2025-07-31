@@ -33,6 +33,7 @@ type HostConfig struct {
 	NetworkBridge   string
 	Zone            string
 	ResourcePool    string
+	TrustPassword   string
 }
 
 // validateHostConfig validates the host configuration

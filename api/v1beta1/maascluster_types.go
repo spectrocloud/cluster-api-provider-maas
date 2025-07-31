@@ -62,6 +62,19 @@ type MaasClusterSpec struct {
 
 // LXDConfig contains the configuration for LXD hosts
 type LXDConfig struct {
+	// Enabled specifies whether to enable LXD VM support
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ResourcePool specifies the MAAS resource pool to use for LXD VM hosts
+	// +optional
+	ResourcePool string `json:"resourcePool,omitempty"`
+
+	// Zone specifies the MAAS availability zone to register LXD VM hosts in
+	// +optional
+	Zone string `json:"zone,omitempty"`
+
 	// StorageBackend specifies the storage backend to use (zfs, dir, etc.)
 	// +kubebuilder:default=zfs
 	// +optional
@@ -88,6 +101,11 @@ type LXDConfig struct {
 	// SecurityConfig specifies security settings for LXD hosts
 	// +optional
 	SecurityConfig *SecurityConfig `json:"securityConfig,omitempty"`
+
+	// SkipNetworkUpdate specifies whether to skip updating existing networks
+	// +kubebuilder:default=true
+	// +optional
+	SkipNetworkUpdate *bool `json:"skipNetworkUpdate,omitempty"`
 }
 
 // ImageRepositoryConfig specifies the image repository configuration
