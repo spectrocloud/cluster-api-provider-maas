@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -18,9 +19,49 @@ import (
 
 // Common LXD socket paths
 var lxdSocketPaths = []string{
+	"/var/snap/lxd/common/lxd/unix.socket", // Snap path
+}
+
+var lxdSocketPathsLegacy = []string{
 	"/var/lib/lxd/unix.socket",             // Default path
 	"/var/snap/lxd/common/lxd/unix.socket", // Snap installation path
 	"/run/lxd.socket",                      // Alternative path
+}
+
+// auto-detection helpers
+// getDefaultIface returns interface name owning default route
+func getDefaultIface() (string, error) {
+	f, err := os.Open("/proc/net/route")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		fields := strings.Fields(s.Text())
+		if len(fields) > 2 && fields[1] == "00000000" {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("no default route found")
+}
+
+func linkExists(name string) bool {
+	return exec.Command("ip", "link", "show", name).Run() == nil
+}
+
+// isLinuxBridge returns true if the given interface is a Linux bridge
+func isLinuxBridge(name string) bool {
+	_, err := os.Stat("/sys/class/net/" + name + "/bridge")
+	return err == nil
+}
+
+// autoUplink returns the interface owning the default route or a safe fallback
+func autoUplink() string {
+	if u, err := getDefaultIface(); err == nil && u != "" {
+		return u
+	}
+	return "enp2s0f0"
 }
 
 // ResourcePool represents a MAAS resource pool
@@ -78,13 +119,42 @@ func main() {
 		}
 	}
 
+	nicType := os.Getenv("NIC_TYPE")
+	nicParent := os.Getenv("NIC_PARENT")
+
 	networkBridge := *networkBridgeFlag
 	if networkBridge == "" {
+
 		networkBridge = os.Getenv("NETWORK_BRIDGE")
 		if networkBridge == "" {
 			networkBridge = "br0" // Default to br0
 		}
 	}
+
+	// Determine final NIC behaviour
+	switch nicType {
+	case "bridged":
+		if nicParent == "" {
+			nicParent = networkBridge
+		}
+		if !isLinuxBridge(nicParent) {
+			log.Printf("Parent %s is not a bridge – falling back to macvlan", nicParent)
+			nicType, nicParent = "macvlan", autoUplink()
+		}
+	case "macvlan":
+		if nicParent == "" {
+			nicParent = autoUplink()
+		}
+	default: // empty or unknown -> full auto
+		if networkBridge != "" && isLinuxBridge(networkBridge) {
+			nicType, nicParent = "bridged", networkBridge
+		} else if isLinuxBridge("br0") {
+			nicType, nicParent = "bridged", "br0"
+		} else {
+			nicType, nicParent = "macvlan", autoUplink()
+		}
+	}
+	log.Printf("Using NIC type=%s parent=%s", nicType, nicParent)
 
 	skipNetworkUpdate := *skipNetworkUpdateFlag
 	if !skipNetworkUpdate {
@@ -128,7 +198,7 @@ func main() {
 	// Perform actions based on the specified action
 	if actionStr == "init" || actionStr == "both" {
 		// Initialize LXD
-		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword); err != nil {
+		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicType, nicParent); err != nil {
 			log.Fatalf("Failed to initialize LXD: %v", err)
 		}
 	}
@@ -245,7 +315,7 @@ func setTrustPassword(pw string) error {
 }
 
 // initializeLXD initializes LXD with the specified configuration
-func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetworkUpdate bool, trustPassword string) error {
+func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetworkUpdate bool, trustPassword, nicType, nicParent string) error {
 	log.Printf("Initializing LXD with storage backend %s, size %sGB, and network bridge %s",
 		storageBackend, storageSize, networkBridge)
 
@@ -314,88 +384,110 @@ func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetwor
 				},
 			},
 		}
-
-		err = c.CreateStoragePool(storagePoolReq)
-		if err != nil {
+		if err = c.CreateStoragePool(storagePoolReq); err != nil {
 			return fmt.Errorf("failed to create storage pool: %w", err)
 		}
 		log.Printf("Storage pool '%s' created successfully", storagePoolName)
-	}
-
-	// Check if network bridge exists
-	networkExists := false
-	var existingNetworkType string
-
-	for _, network := range networksResponse {
-		if network.Name == networkBridge {
-			networkExists = true
-			existingNetworkType = network.Type
-			log.Printf("Network '%s' already exists with type '%s'", network.Name, network.Type)
-			break
-		}
-	}
-
-	if !networkExists {
-		log.Printf("Creating network '%s'", networkBridge)
-
-		// Create network
-		networkReq := api.NetworksPost{
-			Name: networkBridge,
-			Type: "bridge",
-			NetworkPut: api.NetworkPut{
-				Config: map[string]string{
-					"ipv4.address": "auto",
-					"ipv4.nat":     "true", // Using string instead of boolean
-				},
-			},
-		}
-
-		err = c.CreateNetwork(networkReq)
-		if err != nil {
-			return fmt.Errorf("failed to create network: %w", err)
-		}
-		log.Printf("Network '%s' created successfully", networkBridge)
-	} else if !skipNetworkUpdate {
-		// Only try to update if it's a managed bridge
-		if existingNetworkType == "bridge" {
-			// Update existing network
-			network, etag, err := c.GetNetwork(networkBridge)
-			if err != nil {
-				log.Printf("Warning: Failed to get network details for update: %v", err)
-				log.Println("Skipping network update")
-			} else {
-				// Ensure ipv4.nat is set to "true" as a string
-				networkPut := api.NetworkPut{
-					Config: network.Config,
+	} else {
+		// pool exists, ensure size matches requested
+		pool, etag, err := c.GetStoragePool(storagePoolName)
+		if err == nil {
+			desired := storageSize + "GB"
+			if pool.Config["size"] != desired {
+				log.Printf("Updating storage pool '%s' size from %s to %s", storagePoolName, pool.Config["size"], desired)
+				poolPut := pool.Writable()
+				if poolPut.Config == nil {
+					poolPut.Config = map[string]string{}
 				}
-
-				// Only set if not already set
-				if networkPut.Config == nil {
-					networkPut.Config = make(map[string]string)
-				}
-
-				networkPut.Config["ipv4.nat"] = "true" // Using string instead of boolean
-
-				err = c.UpdateNetwork(networkBridge, networkPut, etag)
-				if err != nil {
-					log.Printf("Warning: Failed to update network: %v", err)
-					log.Println("Continuing without network update")
+				poolPut.Config["size"] = desired
+				if err := c.UpdateStoragePool(storagePoolName, poolPut, etag); err != nil {
+					log.Printf("Warning: failed to update storage pool size: %v", err)
 				} else {
-					log.Printf("Network '%s' updated successfully", networkBridge)
+					log.Printf("Storage pool '%s' size updated", storagePoolName)
 				}
 			}
-		} else {
-			log.Printf("Network '%s' is type '%s', not updating (only bridge networks can be updated)",
-				networkBridge, existingNetworkType)
 		}
-	} else {
-		log.Printf("Network '%s' exists and skip-network-update is set, skipping update", networkBridge)
 	}
 
-	// // Ensure MAAS VM profile exists with disk+nic
-	// if err := ensureMAASProfile(c, networkBridge, storagePoolName); err != nil {
-	// 	log.Printf("Warning: Failed to ensure MAAS profile: %v", err)
-	// }
+	// Network configuration based on nicType
+	if nicType == "bridge" {
+		bridgeName := nicParent
+		// Check if network bridge exists
+		networkExists := false
+		var existingNetworkType string
+
+		for _, network := range networksResponse {
+			if network.Name == bridgeName {
+				networkExists = true
+				existingNetworkType = network.Type
+				log.Printf("Network '%s' already exists with type '%s'", network.Name, network.Type)
+				break
+			}
+		}
+
+		if !networkExists {
+			log.Printf("Creating network '%s'", bridgeName)
+
+			// Create network
+			networkReq := api.NetworksPost{
+				Name: bridgeName,
+				Type: "bridge",
+				NetworkPut: api.NetworkPut{
+					Config: map[string]string{
+						"ipv4.address": "auto",
+						"ipv4.nat":     "true", // Using string instead of boolean
+					},
+				},
+			}
+
+			err = c.CreateNetwork(networkReq)
+			if err != nil {
+				return fmt.Errorf("failed to create network: %w", err)
+			}
+			log.Printf("Network '%s' created successfully", bridgeName)
+		} else if !skipNetworkUpdate {
+			// Only try to update if it's a managed bridge
+			if existingNetworkType == "bridge" {
+				// Update existing network
+				network, etag, err := c.GetNetwork(bridgeName)
+				if err != nil {
+					log.Printf("Warning: Failed to get network details for update: %v", err)
+					log.Println("Skipping network update")
+				} else {
+					// Ensure ipv4.nat is set to "true" as a string
+					networkPut := api.NetworkPut{
+						Config: network.Config,
+					}
+
+					// Only set if not already set
+					if networkPut.Config == nil {
+						networkPut.Config = make(map[string]string)
+					}
+
+					networkPut.Config["ipv4.nat"] = "true" // Using string instead of boolean
+
+					err = c.UpdateNetwork(bridgeName, networkPut, etag)
+					if err != nil {
+						log.Printf("Warning: Failed to update network: %v", err)
+						log.Println("Continuing without network update")
+					} else {
+						log.Printf("Network '%s' updated successfully", bridgeName)
+					}
+				}
+			} else {
+				log.Printf("Network '%s' is type '%s', not updating (only bridge networks can be updated)",
+					bridgeName, existingNetworkType)
+			}
+		} else {
+			log.Printf("Network '%s' exists and skip-network-update is set, skipping update", bridgeName)
+		}
+
+	} // end if nicType == "bridge"
+
+	// Ensure MAAS VM profile exists with disk+nic
+	if err := ensureMAASProfile(c, nicType, nicParent, storagePoolName); err != nil {
+		log.Printf("Warning: Failed to ensure MAAS profile: %v", err)
+	}
 
 	// Configure LXD to listen on the network
 	if err := configureLXDNetwork(trustPassword); err != nil {
@@ -406,43 +498,43 @@ func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetwor
 	return nil
 }
 
-// // configureLXDNetwork configures LXD to listen on the network
-// // ensureMAASProfile makes sure a profile named "maas-kvm" exists with root disk and bridged nic
-// func ensureMAASProfile(c lxdclient.InstanceServer, bridge, pool string) error {
-// 	const profileName = "maas-kvm"
-// 	profiles, err := c.GetProfiles()
-// 	if err != nil {
-// 		return fmt.Errorf("list profiles: %w", err)
-// 	}
-// 	for _, p := range profiles {
-// 		if p.Name == profileName {
-// 			return nil // already present
-// 		}
-// 	}
-// 	profile := api.ProfilesPost{
-// 		Name: profileName,
-// 		ProfilePut: api.ProfilePut{
-// 			Description: "Profile used by MAAS for KVM VMs",
-// 			Devices: map[string]map[string]string{
-// 				"root": {
-// 					"type": "disk",
-// 					"pool": pool,
-// 					"path": "/",
-// 				},
-// 				"eth0": {
-// 					"type":    "nic",
-// 					"nictype": "bridged",
-// 					"parent":  bridge,
-// 					"name":    "eth0",
-// 				},
-// 			},
-// 		},
-// 	}
-// 	if err := c.CreateProfile(profile); err != nil {
-// 		return fmt.Errorf("create profile: %w", err)
-// 	}
-// 	return nil
-// }
+// configureLXDNetwork configures LXD to listen on the network
+// ensureMAASProfile makes sure a profile named "maas-kvm" exists with root disk and bridged nic
+func ensureMAASProfile(c lxdclient.InstanceServer, nicType, nicParent, pool string) error {
+	const profileName = "maas-kvm"
+	profiles, err := c.GetProfiles()
+	if err != nil {
+		return fmt.Errorf("list profiles: %w", err)
+	}
+	for _, p := range profiles {
+		if p.Name == profileName {
+			return nil // already present
+		}
+	}
+	profile := api.ProfilesPost{
+		Name: profileName,
+		ProfilePut: api.ProfilePut{
+			Description: "Profile used by MAAS for KVM VMs",
+			Devices: map[string]map[string]string{
+				"root": {
+					"type": "disk",
+					"pool": pool,
+					"path": "/",
+				},
+				"eth0": {
+					"type":    "nic",
+					"nictype": nicType,
+					"parent":  nicParent,
+					"name":    "eth0",
+				},
+			},
+		},
+	}
+	if err := c.CreateProfile(profile); err != nil {
+		return fmt.Errorf("create profile: %w", err)
+	}
+	return nil
+}
 
 func configureLXDNetwork(trustPassword string) error {
 	log.Println("Configuring LXD to listen on the network")

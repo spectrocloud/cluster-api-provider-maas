@@ -85,8 +85,16 @@ type LXDConfig struct {
 	// +optional
 	StorageSize string `json:"storageSize,omitempty"`
 
-	// NetworkBridge specifies the network bridge to use
-	// +kubebuilder:default=br0
+	// NICType selects the LXD NIC type (bridge or macvlan)
+	// +kubebuilder:validation:Enum=bridge;macvlan
+	// +optional
+	NICType string `json:"nicType,omitempty"`
+
+	// NICParent selects the parent interface or bridge for the NIC
+	// +optional
+	NICParent string `json:"nicParent,omitempty"`
+
+	// NetworkBridge specifies the network bridge to use (legacy, prefer NICParent)
 	// +optional
 	NetworkBridge string `json:"networkBridge,omitempty"`
 

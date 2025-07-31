@@ -95,6 +95,10 @@ spec:
           value: "${SKIP_NETWORK_UPDATE}"
         - name: TRUST_PASSWORD
           value: "${TRUST_PASSWORD}"
+        - name: NIC_TYPE
+          value: "${NIC_TYPE}"
+        - name: NIC_PARENT
+          value: "${NIC_PARENT}"
         volumeMounts:
         - name: var-lib-lxd
           mountPath: /var/lib/lxd

@@ -16,6 +16,7 @@ package lxd
 
 import (
 	"fmt"
+	"net"
 
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -50,7 +51,7 @@ func (s *Service) ReconcileLXD() error {
 	// if conditions.IsTrue(cluster, v1beta1.LXDReadyCondition) {
 	// 	return nil
 	// }
-	
+
 	// Even if LXDReady is already true we still verify that each control-plane node remains registered.
 
 	// Set the LXD setup pending condition
@@ -96,13 +97,23 @@ func (s *Service) ReconcileLXD() error {
 
 // setupLXDOnMachine sets up LXD on a machine
 func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
-	// Get the machine's IP address
-	if len(machine.Status.Addresses) == 0 {
-		return fmt.Errorf("machine %s has no addresses", machine.Name)
+	// Select the first valid IP (preferring ExternalIP, then InternalIP)
+	var nodeIP string
+	for _, addr := range machine.Status.Addresses {
+		if net.ParseIP(addr.Address) == nil {
+			continue // skip hostnames
+		}
+		if addr.Type == clusterv1.MachineExternalIP {
+			nodeIP = addr.Address
+			break
+		}
+		if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
+			nodeIP = addr.Address
+		}
 	}
-
-	// Get the machine's IP address
-	nodeIP := machine.Status.Addresses[0].Address
+	if nodeIP == "" {
+		return fmt.Errorf("machine %s has no valid IP address", machine.Name)
+	}
 
 	// Get the LXD configuration from the cluster
 	lxdConfig := s.clusterScope.GetLXDConfig()

@@ -64,14 +64,13 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		ss = "50"
 	}
 	nb := cfg.NetworkBridge
-	if nb == "" {
-		nb = "br0"
-	}
 	skip := "true"
 	if cfg.SkipNetworkUpdate != nil && !*cfg.SkipNetworkUpdate {
 		skip = "false"
 	}
 
+	nt := cfg.NICType
+	np := cfg.NICParent
 	tp := "capmaas"
 
 	rendered := render(map[string]string{
@@ -80,6 +79,8 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		"${NETWORK_BRIDGE}":      nb,
 		"${SKIP_NETWORK_UPDATE}": skip,
 		"${TRUST_PASSWORD}":      tp,
+		"${NIC_TYPE}":            nt,
+		"${NIC_PARENT}":          np,
 	}, lxdInitTemplate)
 
 	dsYaml := strings.ReplaceAll(rendered, "${DS_NAME}", dsName)
