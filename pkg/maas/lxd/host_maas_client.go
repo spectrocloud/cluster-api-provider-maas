@@ -25,6 +25,36 @@ import (
 	"k8s.io/klog/v2/textlogger"
 )
 
+// HostConfig contains the configuration for setting up an LXD host
+type HostConfig struct {
+	NodeIP          string
+	MaasAPIKey      string
+	MaasAPIEndpoint string
+	StorageBackend  string
+	StorageSize     string
+	NetworkBridge   string
+	Zone            string
+	ResourcePool    string
+	TrustPassword   string
+}
+
+// validateHostConfig validates the host configuration
+func validateHostConfig(config HostConfig) error {
+	if config.NodeIP == "" {
+		return fmt.Errorf("node IP is required")
+	}
+
+	if config.MaasAPIKey == "" {
+		return fmt.Errorf("MAAS API key is required")
+	}
+
+	if config.MaasAPIEndpoint == "" {
+		return fmt.Errorf("MAAS API endpoint is required")
+	}
+
+	return nil
+}
+
 // SetupLXDHostWithMaasClient sets up an LXD host on a node using the official MAAS client
 // This function assumes that LXD initialization is handled by the DaemonSet
 // It only checks if the host is registered with MAAS and registers it if not
