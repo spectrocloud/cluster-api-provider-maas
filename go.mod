@@ -11,7 +11,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.1
 	github.com/pkg/errors v0.9.1
-	github.com/spectrocloud/maas-client-go v0.0.5-beta
+	github.com/spectrocloud/maas-client-go v0.0.0-20241201000000-000000000000
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver v0.31.3
@@ -80,5 +80,7 @@ require (
 
 replace (
 	github.com/prometheus/common v0.32.1 => github.com/prometheus/common v0.26.0
+	// Use the networkInterfaceImpl branch for enhanced network interface support
+	github.com/spectrocloud/maas-client-go => github.com/spectrocloud/maas-client-go v0.0.5-beta.0.20250805215527-459ed506383c
 	sigs.k8s.io/structured-merge-diff/v6 => sigs.k8s.io/structured-merge-diff/v4 v4.4.3
 )

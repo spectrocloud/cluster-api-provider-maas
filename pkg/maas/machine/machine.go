@@ -140,6 +140,17 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
+	// Configure static IP before deployment
+	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+		staticIPConfig := s.scope.GetStaticIPConfig()
+		if staticIPConfig != nil {
+			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to configure static IP")
+			}
+		}
+	}
+
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
 		SetOSSystem("custom").
@@ -188,11 +199,13 @@ func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error)
 
 	s.scope.Info("LXD VM allocated", "system-id", m.SystemID())
 
-	// Set static IP if specified
 	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-		if err := s.configureStaticIPForMachine(m, staticIP); err != nil {
-			s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
-			// Don't fail the entire operation
+		staticIPConfig := s.scope.GetStaticIPConfig()
+		if staticIPConfig != nil {
+			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
+			if err != nil {
+				s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+			}
 		}
 	}
 
@@ -214,15 +227,23 @@ func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error)
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-// configureStaticIPForMachine configures static IP for a machine
-func (s *Service) configureStaticIPForMachine(m maasclient.Machine, staticIP string) error {
-	// Simplified implementation - in real implementation, use proper MAAS API calls
-	s.scope.Info("Configuring static IP", "ip", staticIP, "system-id", m.SystemID())
+// configureStaticIPForMachine removed - use setMachineStaticIP instead for consistency
 
-	// For now, just log the intent - actual implementation would use MAAS API
-	// to configure the interface with static IP
+// setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
+func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
+	ctx := context.TODO()
+
+	// Use the new simplified API to set static IP on boot interface
+	err := s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+	if err != nil {
+		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+	}
+
+	s.scope.Info("Static IP configured", "ip", config.IP, "systemID", systemID)
 	return nil
 }
+
+// Note: determineSubnetID is no longer needed with the simplified SetBootInterfaceStaticIP API
 
 // shouldUseLXDForWorkloadCluster determines if a workload cluster machine should use LXD
 func (s *Service) shouldUseLXDForWorkloadCluster() bool {
@@ -304,11 +325,13 @@ func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1bet
 
 	s.scope.Info("Workload LXD VM allocated", "system-id", m.SystemID(), "host", m.Hostname())
 
-	// Configure static IP if specified
 	if staticIP != "" {
-		if err := s.configureStaticIPForMachine(m, staticIP); err != nil {
-			s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
-			// Don't fail the entire operation
+		staticIPConfig := s.scope.GetStaticIPConfig()
+		if staticIPConfig != nil {
+			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
+			if err != nil {
+				s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+			}
 		}
 	}
 
