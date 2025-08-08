@@ -213,7 +213,9 @@ func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
 	// Try to get MAAS credentials from a secret
 	// The secret is expected to be in the same namespace as the MaasCluster
 	// and named "maas-credentials" by default
-	secretName := "maas-credentials"
+	// Secret containing MAAS endpoint/token created by Palette bootstrapper
+	// Default name switched from "maas-credentials" to "capmaas-manager-bootstrap-credentials"
+	secretName := "capmaas-manager-bootstrap-credentials"
 
 	// Get the secret
 	secret := &corev1.Secret{}
@@ -226,7 +228,7 @@ func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
 	err := s.client.Get(context.Background(), key, secret)
 	if err != nil {
 		// If the secret doesn't exist, fall back to environment variables or default values
-		s.Info("Failed to get MAAS credentials secret, using fallback values", "error", err)
+		s.Info("Failed to get MAAS bootstrap credentials secret, using fallback values", "error", err)
 		return ClientIdentity{
 			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
 			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),

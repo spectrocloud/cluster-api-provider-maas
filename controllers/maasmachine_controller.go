@@ -80,6 +80,11 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Add system-id to logger for better traceability if it's already known
+	if maasMachine.Spec.SystemID != nil && *maasMachine.Spec.SystemID != "" {
+		log = log.WithValues("system-id", *maasMachine.Spec.SystemID)
+	}
+
 	// Fetch the Machine.
 	machine, err := util.GetOwnerMachine(ctx, r.Client, maasMachine.ObjectMeta)
 	if err != nil {
@@ -274,6 +279,11 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		}
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
+			if errors.Is(err, maasmachine.ErrBrokenMachine) {
+				machineScope.Info("Broken machine; backing off and retrying")
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "retrying after broken machine")
+				return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+			}
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
