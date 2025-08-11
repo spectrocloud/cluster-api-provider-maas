@@ -64,17 +64,22 @@ type MaasMachineSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
 
-	// VMType specifies the type of VM to create (empty for bare metal, "lxd" for LXD VM)
+	// LXD contains configuration for creating this machine as an LXD VM on a host
+	// when enabled. When nil or disabled, this machine is created on bare metal.
 	// +optional
-	VMType string `json:"vmType,omitempty"`
-
-	// DynamicLXD specifies whether this machine should be created as an LXD VM
-	// +optional
-	DynamicLXD *bool `json:"dynamicLXD,omitempty"`
+	LXD *MachineLXDConfig `json:"lxd,omitempty"`
 
 	// StaticIP configuration for VMs
 	// +optional
 	StaticIP *StaticIPConfig `json:"staticIP,omitempty"`
+}
+
+// MachineLXDConfig defines LXD VM creation options for a machine
+type MachineLXDConfig struct {
+	// Enabled specifies whether this machine should be created as an LXD VM
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
 
 	// VMConfig contains additional VM configuration
 	// +optional

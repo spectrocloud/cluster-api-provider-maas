@@ -378,12 +378,15 @@ func (s *ClusterScope) IsCustomEndpoint() bool {
 	return false
 }
 
-// IsLXDControlPlaneCluster returns true if LXD control plane cluster is enabled
+// IsLXDControlPlaneCluster returns true if LXD host registration is enabled for the infrastructure cluster.
+// Prefer the explicit flag on LXDConfig.
 func (s *ClusterScope) IsLXDControlPlaneCluster() bool {
-	if s.MaasCluster.Spec.LXDControlPlaneCluster == nil {
-		return false
+	// New preferred switch
+	if s.MaasCluster.Spec.LXDConfig != nil && s.MaasCluster.Spec.LXDConfig.Enabled != nil {
+		return *s.MaasCluster.Spec.LXDConfig.Enabled
 	}
-	return *s.MaasCluster.Spec.LXDControlPlaneCluster
+
+	return false
 }
 
 // GetLXDConfig returns the LXD configuration
