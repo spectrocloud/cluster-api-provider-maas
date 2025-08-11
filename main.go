@@ -78,11 +78,13 @@ func main() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
-	if watchNamespace != "" {
+	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
+
+	if watchNamespace == "" {
+		setupLog.Info("No namespace specified, watching all namespaces")
+	} else {
 		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
 	}
-
-	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -93,6 +95,9 @@ func main() {
 		LeaderElectionID: "controller-leader-election-capmaas",
 		Cache: cache.Options{
 			SyncPeriod: &syncPeriod,
+			DefaultNamespaces: map[string]cache.Config{
+				watchNamespace: {},
+			},
 		},
 		HealthProbeBindAddress: healthAddr,
 		WebhookServer: webhookserver.NewServer(webhookserver.Options{
