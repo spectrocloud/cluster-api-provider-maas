@@ -292,12 +292,12 @@ func (m *MachineScope) SetNodeProviderID() error {
 	return patchHelper.Patch(ctx, node)
 }
 
-// GetDynamicLXD returns whether this machine should be created as an LXD VM
+// GetDynamicLXD returns whether this machine should be created as an LXD VM (driven by higher-level policy).
 func (m *MachineScope) GetDynamicLXD() bool {
-	if m.MaasMachine.Spec.DynamicLXD == nil {
-		return false
+	if m.MaasMachine.Spec.LXD != nil && m.MaasMachine.Spec.LXD.Enabled != nil {
+		return *m.MaasMachine.Spec.LXD.Enabled
 	}
-	return *m.MaasMachine.Spec.DynamicLXD
+	return false
 }
 
 // GetStaticIP returns the static IP to assign to the machine, if enabled and specified

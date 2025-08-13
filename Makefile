@@ -24,20 +24,10 @@ ifeq ($(FIPS_ENABLE),yes)
 endif
 
 # Image URL to use all building/pushing image targets
-#IMAGE_NAME := cluster-api-provider-maas-controller
-#REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
-#SPECTRO_VERSION ?= 4.0.0-dev-maas-lxd-solution
-#IMG_TAG ?= v0.6.0-spectro-${SPECTRO_VERSION}
-#CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
-
-
-
-
 PROJECT ?= "spectro-images/dev"
 IMG_TAG ?= "4.0.0-dev-palette-maas-lxd-solution"
 IMAGE_NAME := "cluster-api-provider-maas-controller"
 DRI_IMG ?= "us-east1-docker.pkg.dev/${PROJECT}/${USER}/cluster-api/${IMAGE_NAME}:${IMG_TAG}"
-
 
 
 

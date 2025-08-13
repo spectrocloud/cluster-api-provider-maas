@@ -3,6 +3,8 @@ package machine
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
@@ -14,6 +16,12 @@ import (
 )
 
 // Service manages the MaaS machine
+var (
+	ErrBrokenMachine = errors.New("broken machine encountered")
+	reHostID         = regexp.MustCompile(`host (\d+)`)
+	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
+)
+
 type Service struct {
 	scope      *scope.MachineScope
 	maasClient maasclient.ClientSetInterface
@@ -24,6 +32,31 @@ func NewService(machineScope *scope.MachineScope) *Service {
 	return &Service{
 		scope:      machineScope,
 		maasClient: scope.NewMaasClient(machineScope.ClusterScope),
+	}
+}
+
+// logVMHostDiagnostics attempts to extract the VM host (pod) id from a MAAS error message
+// and, if found, fetches its details and prints status information to the controller log.
+func logVMHostDiagnostics(s *Service, err error) {
+	// First, check for machine id in the error and force-release it if found
+	if m := reMachineID.FindStringSubmatch(err.Error()); len(m) == 2 {
+		sys := m[1]
+		s.scope.Info("Releasing broken machine", "system-id", sys)
+		ctx := context.TODO()
+		_, _ = s.maasClient.Machines().Machine(sys).Releaser().WithForce().Release(ctx)
+	}
+
+	matches := reHostID.FindStringSubmatch(err.Error())
+	if len(matches) != 2 {
+		return // no host id in message
+	}
+	podID := matches[1]
+	s.scope.Info("Broken VM host detected", "pod-id", podID)
+	ctx := context.TODO()
+	if vmHost, e := s.maasClient.VMHosts().VMHost(podID).Get(ctx); e == nil {
+		s.scope.Info("VM host status", "pod-id", podID, "name", vmHost.Name(), "status", vmHost.Type(), "availCores", vmHost.AvailableCores(), "availMem", vmHost.AvailableMemory())
+	} else {
+		s.scope.Error(e, "failed to fetch VM host details", "pod-id", podID)
 	}
 }
 
@@ -63,10 +96,11 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	mm := s.scope.MaasMachine
 
-	// Check if we should create an LXD VM (Stage 1 or explicit flag)
-	if s.scope.GetDynamicLXD() {
-		s.scope.Info("Using LXD VM creation path", "machine", mm.Name)
-		return s.createLXDVM(userDataB64)
+	// Decide if we should create a VM via MAAS (LXD) based on user input or node-pool policy.
+	// Machine-level enablement (preferred) or node-pool policy (fallback)
+	if s.scope.GetDynamicLXD() || s.shouldUseLXDForWorkloadCluster() {
+		s.scope.Info("Using LXD VM creation path (unified)", "machine", mm.Name)
+		return s.createVMViaMAAS(userDataB64)
 	}
 
 	// Standard MAAS machine allocation path
@@ -101,8 +135,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			allocator.WithTags(mm.Spec.Tags)
 		}
 
+		s.scope.Info("Requesting MAAS allocation")
 		m, err = allocator.Allocate(ctx)
 		if err != nil {
+			if strings.Contains(err.Error(), "Invalid transition: Broken") {
+				logVMHostDiagnostics(s, err)
+				s.scope.Info("Broken machine encountered; will retry")
+				return nil, ErrBrokenMachine
+			}
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
 		}
 
@@ -151,6 +191,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 	}
 
+
+	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
 		SetOSSystem("custom").
@@ -162,42 +204,80 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-// createLXDVM creates a new LXD VM and registers it with MAAS
-// This method uses MAAS API for cross-cluster communication
-func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
+// createVMViaMAAS performs a unified VM creation flow using the MAAS API.
+// It consolidates previous createLXDVM* variants. VM placement is derived from
+// MaasMachine spec first, then (if applicable) workload node-pool mappings.
+func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, error) {
+	ctx := context.TODO()
 	mm := s.scope.MaasMachine
-	machineName := s.scope.Machine.Name
 
-	// Generate a unique VM name
-	vmName := fmt.Sprintf("lxd-vm-%s", machineName)
-	s.scope.Info("Creating LXD VM via MAAS API", "name", vmName)
-
-	// For workload clusters, we need to find LXD hosts and create VMs on them
-	if s.scope.ClusterScope.IsWorkloadCluster() {
-		return s.createLXDVMForWorkloadCluster(userDataB64)
+	// Determine placement inputs
+	var zone string
+	if mm.Spec.FailureDomain != nil && *mm.Spec.FailureDomain != "" {
+		zone = *mm.Spec.FailureDomain
+	} else if s.scope.ClusterScope.IsWorkloadCluster() {
+		// Try workload pool-based mapping when FailureDomain not set
+		poolConfig := s.scope.ClusterScope.GetNodePoolConfig(s.scope.Machine)
+		if poolConfig != nil {
+			zone = s.getAvailabilityZoneForWorkloadMachine(poolConfig)
+		}
 	}
 
-	// For infrastructure clusters, use the existing approach
-	// This is a simplified implementation that needs to be enhanced
-	s.scope.Info("Creating LXD VM on infrastructure cluster", "name", vmName)
+	var resourcePool string
+	if mm.Spec.ResourcePool != nil && *mm.Spec.ResourcePool != "" {
+		resourcePool = *mm.Spec.ResourcePool
+	} else if s.scope.ClusterScope.IsWorkloadCluster() {
+		poolConfig := s.scope.ClusterScope.GetNodePoolConfig(s.scope.Machine)
+		if poolConfig != nil {
+			resourcePool = s.getResourcePoolForWorkloadMachine(poolConfig)
+		}
+	}
 
-	// Use MAAS API to allocate a machine (which will be a VM on LXD host)
+	// Prefer explicit per-machine static IP; fall back to pool-level assignment if present
+	staticIP := s.scope.GetStaticIP()
+	if staticIP == "" {
+		staticIP = s.scope.ClusterScope.GetStaticIPForMachine(s.scope.Machine)
+	}
+
+	// Name to set in MAAS for easier tracing
+	machineName := s.scope.Machine.Name
+	vmName := fmt.Sprintf("vm-%s-%s", s.scope.Cluster.Name, machineName)
+	if mm.Annotations == nil {
+		mm.Annotations = map[string]string{}
+	}
+	mm.Annotations["maas.spectrocloud.com/vm-name"] = vmName
+	_ = s.scope.PatchObject()
+
+	s.scope.Info("Requesting MAAS allocation for VM", "vm-name", vmName, "zone", zone, "pool", resourcePool)
+
 	allocator := s.maasClient.
 		Machines().
 		Allocator().
 		WithCPUCount(*mm.Spec.MinCPU).
 		WithMemory(*mm.Spec.MinMemoryInMB)
 
-	// Add tags to identify this as an LXD VM
-	allocator = allocator.WithTags([]string{"lxd-vm", vmName})
-
-	// Allocate the machine (MAAS will handle VM creation on LXD host)
-	m, err := allocator.Allocate(context.TODO())
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to allocate LXD VM via MAAS API")
+	if zone != "" {
+		allocator = allocator.WithZone(zone)
+	}
+	if resourcePool != "" {
+		allocator = allocator.WithResourcePool(resourcePool)
+	}
+	if len(mm.Spec.Tags) > 0 {
+		allocator = allocator.WithTags(mm.Spec.Tags)
 	}
 
-	s.scope.Info("LXD VM allocated", "system-id", m.SystemID())
+	m, err := allocator.Allocate(ctx)
+	if err != nil {
+		logVMHostDiagnostics(s, err)
+		return nil, errors.Wrapf(err, "failed to allocate VM via MAAS API")
+	}
+
+	// Set hostname before deployment
+	if _, err := m.Modifier().SetHostname(vmName).Update(ctx); err != nil {
+		return nil, errors.Wrap(err, "failed to set hostname before deploy")
+	}
+
+	s.scope.Info("Allocated VM", "system-id", m.SystemID())
 
 	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
 		staticIPConfig := s.scope.GetStaticIPConfig()
@@ -213,12 +293,12 @@ func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error)
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
 		SetOSSystem("custom").
-		SetDistroSeries(mm.Spec.Image).Deploy(context.TODO())
+		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to deploy LXD VM")
+		return nil, errors.Wrapf(err, "failed to deploy VM")
 	}
 
-	// Set provider ID and system ID
+	// Record providerID and patch
 	s.scope.SetProviderID(deployingM.SystemID(), deployingM.Zone().Name())
 	if err := s.scope.PatchObject(); err != nil {
 		return nil, errors.Wrapf(err, "failed to patch machine with provider ID")
@@ -227,7 +307,13 @@ func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error)
 	return fromSDKTypeToMachine(deployingM), nil
 }
 
-// configureStaticIPForMachine removed - use setMachineStaticIP instead for consistency
+// createLXDVM creates a new LXD VM and registers it with MAAS
+// This method uses MAAS API for cross-cluster communication
+// createLXDVM is deprecated; unified creation flow is handled in DeployMachine.
+// Keeping a stub for backward compatibility and to minimize churn.
+func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
+	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
+}
 
 // setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
 func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
@@ -246,29 +332,21 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 // Note: determineSubnetID is no longer needed with the simplified SetBootInterfaceStaticIP API
 
 // shouldUseLXDForWorkloadCluster determines if a workload cluster machine should use LXD
+// based on user input provided via the MaasMachine annotations (copied from MaasMachineTemplate).
+// It does not enforce infra LXD host registration.
 func (s *Service) shouldUseLXDForWorkloadCluster() bool {
-	// Check if this is a workload cluster
 	if !s.scope.ClusterScope.IsWorkloadCluster() {
 		return false
 	}
-
-	// Check if the infrastructure cluster has LXD enabled
-	infraCluster, err := s.scope.ClusterScope.GetInfrastructureCluster()
-	if err != nil {
-		s.scope.Error(err, "failed to get infrastructure cluster")
+	anns := s.scope.MaasMachine.GetAnnotations()
+	if anns == nil {
 		return false
 	}
-
-	if infraCluster.Spec.LXDControlPlaneCluster == nil || !*infraCluster.Spec.LXDControlPlaneCluster {
-		s.scope.Info("Infrastructure cluster does not have LXD enabled")
-		return false
-	}
-
-	// Check node pool configuration
-	return s.scope.ClusterScope.ShouldUseLXDForMachine(s.scope.Machine)
+	return strings.EqualFold(anns["maas.spectrocloud.com/lxd-enabled"], "true")
 }
 
 // createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
+// createLXDVMForWorkloadCluster is deprecated; unified creation flow is handled in DeployMachine.
 func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
 	mm := s.scope.MaasMachine
 	machineName := s.scope.Machine.Name
@@ -354,6 +432,7 @@ func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1bet
 }
 
 // getAvailabilityZoneForWorkloadMachine determines the availability zone for a workload machine
+// getAvailabilityZoneForWorkloadMachine is deprecated in favor of shared placement resolver.
 func (s *Service) getAvailabilityZoneForWorkloadMachine(poolConfig *infrav1beta1.NodePoolConfig) string {
 	// Use pool configuration if available
 	if len(poolConfig.AvailabilityZones) > 0 {
@@ -377,6 +456,7 @@ func (s *Service) getAvailabilityZoneForWorkloadMachine(poolConfig *infrav1beta1
 }
 
 // getResourcePoolForWorkloadMachine determines the resource pool for a workload machine
+// getResourcePoolForWorkloadMachine is deprecated in favor of shared placement resolver.
 func (s *Service) getResourcePoolForWorkloadMachine(poolConfig *infrav1beta1.NodePoolConfig) string {
 	// Use pool configuration if available
 	if poolConfig.ResourcePool != nil {

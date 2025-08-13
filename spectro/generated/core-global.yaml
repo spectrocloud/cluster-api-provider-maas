@@ -1401,10 +1401,6 @@ spec:
           spec:
             description: MaasMachineSpec defines the desired state of MaasMachine
             properties:
-              dynamicLXD:
-                description: DynamicLXD specifies whether this machine should be created
-                  as an LXD VM
-                type: boolean
               failureDomain:
                 description: |-
                   FailureDomain is the failure domain the machine will be created in.
@@ -1414,6 +1410,54 @@ spec:
                 description: Image will be the MaaS image id
                 minLength: 1
                 type: string
+              lxd:
+                description: |-
+                  LXD contains configuration for creating this machine as an LXD VM on a host
+                  when enabled. When nil or disabled, this machine is created on bare metal.
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether this machine should be
+                      created as an LXD VM
+                    type: boolean
+                  vmConfig:
+                    description: VMConfig contains additional VM configuration
+                    properties:
+                      autoStart:
+                        default: true
+                        description: AutoStart specifies whether the VM should automatically
+                          start
+                        type: boolean
+                      diskSize:
+                        default: 20
+                        description: DiskSize is the size of the VM disk in GB
+                        type: integer
+                      limits:
+                        description: Limits contains resource limits for the VM
+                        properties:
+                          cpuLimit:
+                            description: CPULimit is the CPU limit
+                            type: string
+                          diskIOPS:
+                            description: DiskIOPS is the disk IOPS limit
+                            type: integer
+                          memoryLimit:
+                            description: MemoryLimit is the memory limit
+                            type: string
+                          networkBandwidth:
+                            description: NetworkBandwidth is the network bandwidth
+                              limit in Mbps
+                            type: integer
+                        type: object
+                      network:
+                        description: Network is the network to connect the VM to
+                        type: string
+                      storagePool:
+                        description: StoragePool is the storage pool to use for the
+                          VM
+                        type: string
+                    type: object
+                type: object
               minCPU:
                 description: MinCPU minimum number of CPUs
                 minimum: 0
@@ -1458,46 +1502,6 @@ spec:
                 items:
                   type: string
                 type: array
-              vmConfig:
-                description: VMConfig contains additional VM configuration
-                properties:
-                  autoStart:
-                    default: true
-                    description: AutoStart specifies whether the VM should automatically
-                      start
-                    type: boolean
-                  diskSize:
-                    default: 20
-                    description: DiskSize is the size of the VM disk in GB
-                    type: integer
-                  limits:
-                    description: Limits contains resource limits for the VM
-                    properties:
-                      cpuLimit:
-                        description: CPULimit is the CPU limit
-                        type: string
-                      diskIOPS:
-                        description: DiskIOPS is the disk IOPS limit
-                        type: integer
-                      memoryLimit:
-                        description: MemoryLimit is the memory limit
-                        type: string
-                      networkBandwidth:
-                        description: NetworkBandwidth is the network bandwidth limit
-                          in Mbps
-                        type: integer
-                    type: object
-                  network:
-                    description: Network is the network to connect the VM to
-                    type: string
-                  storagePool:
-                    description: StoragePool is the storage pool to use for the VM
-                    type: string
-                type: object
-              vmType:
-                description: VMType specifies the type of VM to create (empty for
-                  bare metal, "lxd" for LXD VM)
-                type: string
             required:
             - image
             - minCPU
@@ -1677,10 +1681,6 @@ spec:
                     description: Spec is the specification of the desired behavior
                       of the machine.
                     properties:
-                      dynamicLXD:
-                        description: DynamicLXD specifies whether this machine should
-                          be created as an LXD VM
-                        type: boolean
                       failureDomain:
                         description: |-
                           FailureDomain is the failure domain the machine will be created in.
@@ -1690,6 +1690,57 @@ spec:
                         description: Image will be the MaaS image id
                         minLength: 1
                         type: string
+                      lxd:
+                        description: |-
+                          LXD contains configuration for creating this machine as an LXD VM on a host
+                          when enabled. When nil or disabled, this machine is created on bare metal.
+                        properties:
+                          enabled:
+                            default: false
+                            description: Enabled specifies whether this machine should
+                              be created as an LXD VM
+                            type: boolean
+                          vmConfig:
+                            description: VMConfig contains additional VM configuration
+                            properties:
+                              autoStart:
+                                default: true
+                                description: AutoStart specifies whether the VM should
+                                  automatically start
+                                type: boolean
+                              diskSize:
+                                default: 20
+                                description: DiskSize is the size of the VM disk in
+                                  GB
+                                type: integer
+                              limits:
+                                description: Limits contains resource limits for the
+                                  VM
+                                properties:
+                                  cpuLimit:
+                                    description: CPULimit is the CPU limit
+                                    type: string
+                                  diskIOPS:
+                                    description: DiskIOPS is the disk IOPS limit
+                                    type: integer
+                                  memoryLimit:
+                                    description: MemoryLimit is the memory limit
+                                    type: string
+                                  networkBandwidth:
+                                    description: NetworkBandwidth is the network bandwidth
+                                      limit in Mbps
+                                    type: integer
+                                type: object
+                              network:
+                                description: Network is the network to connect the
+                                  VM to
+                                type: string
+                              storagePool:
+                                description: StoragePool is the storage pool to use
+                                  for the VM
+                                type: string
+                            type: object
+                        type: object
                       minCPU:
                         description: MinCPU minimum number of CPUs
                         minimum: 0
@@ -1735,48 +1786,6 @@ spec:
                         items:
                           type: string
                         type: array
-                      vmConfig:
-                        description: VMConfig contains additional VM configuration
-                        properties:
-                          autoStart:
-                            default: true
-                            description: AutoStart specifies whether the VM should
-                              automatically start
-                            type: boolean
-                          diskSize:
-                            default: 20
-                            description: DiskSize is the size of the VM disk in GB
-                            type: integer
-                          limits:
-                            description: Limits contains resource limits for the VM
-                            properties:
-                              cpuLimit:
-                                description: CPULimit is the CPU limit
-                                type: string
-                              diskIOPS:
-                                description: DiskIOPS is the disk IOPS limit
-                                type: integer
-                              memoryLimit:
-                                description: MemoryLimit is the memory limit
-                                type: string
-                              networkBandwidth:
-                                description: NetworkBandwidth is the network bandwidth
-                                  limit in Mbps
-                                type: integer
-                            type: object
-                          network:
-                            description: Network is the network to connect the VM
-                              to
-                            type: string
-                          storagePool:
-                            description: StoragePool is the storage pool to use for
-                              the VM
-                            type: string
-                        type: object
-                      vmType:
-                        description: VMType specifies the type of VM to create (empty
-                          for bare metal, "lxd" for LXD VM)
-                        type: string
                     required:
                     - image
                     - minCPU
