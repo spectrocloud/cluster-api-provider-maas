@@ -1483,7 +1483,6 @@ spec:
                     type: string
                   ip:
                     description: IP is the static IP address to assign
-                    minLength: 1
                     type: string
                   nameservers:
                     description: Nameservers is a list of DNS servers
@@ -1764,7 +1763,6 @@ spec:
                             type: string
                           ip:
                             description: IP is the static IP address to assign
-                            minLength: 1
                             type: string
                           nameservers:
                             description: Nameservers is a list of DNS servers

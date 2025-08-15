@@ -89,7 +89,6 @@ type MachineLXDConfig struct {
 // StaticIPConfig defines the static IP configuration for a VM
 type StaticIPConfig struct {
 	// IP is the static IP address to assign
-	// +kubebuilder:validation:MinLength=1
 	// +optional
 	IP string `json:"ip"`
 
