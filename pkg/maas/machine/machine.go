@@ -160,6 +160,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Allocated machine", "system-id", m.SystemID())
 
+	// Create boot interface bridge if needed
+	if s.scope.ClusterScope.IsLXDControlPlaneCluster() {
+		if err := s.createBootInterfaceBridge(ctx, m.SystemID()); err != nil {
+			s.scope.Error(err, "failed to create boot interface bridge", "system-id", m.SystemID())
+			// Continue despite bridge creation failure as it's not critical for basic functionality
+		}
+	}
+
 	defer func() {
 		if rerr != nil {
 			s.scope.Info("Attempting to release machine which failed to deploy")
@@ -190,7 +198,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			}
 		}
 	}
-
 
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
@@ -329,7 +336,43 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 	return nil
 }
 
-// Note: determineSubnetID is no longer needed with the simplified SetBootInterfaceStaticIP API
+// createBootInterfaceBridge creates a bridge on the boot interface using maas-client-go
+// First checks if the boot interface type is "physical" before attempting to create a bridge
+func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string) error {
+	s.scope.Info("Checking boot interface type", "systemID", systemID)
+
+	// First, check if the boot interface is physical using GetBootInterfaceType
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		s.scope.Error(err, "Failed to get machine details")
+	}
+	interfaceType := machine.GetBootInterfaceType()
+	s.scope.Info("Boot interface type", "systemID", systemID, "interfaceType", interfaceType)
+
+	// Only create bridge if the boot interface is physical
+	if interfaceType != "physical" {
+		s.scope.Info("Boot interface is not physical, skipping bridge creation",
+			"systemID", systemID, "interfaceType", interfaceType)
+		return nil
+	}
+
+	s.scope.Info("Creating bridge for physical boot interface", "systemID", systemID, "interfaceType", interfaceType)
+
+	// Now create the bridge since we know it's physical
+	_, err = s.maasClient.NetworkInterfaces().CreateBootInterfaceBridge(ctx, systemID, "br0")
+	if err != nil {
+		// Handle expected errors gracefully (e.g., bridge already exists)
+		if strings.Contains(err.Error(), "already bridged") ||
+			strings.Contains(err.Error(), "already exists") {
+			s.scope.V(1).Info("Boot interface bridge creation skipped", "systemID", systemID, "reason", err.Error())
+			return nil
+		}
+		return fmt.Errorf("failed to create boot interface bridge for machine %s: %w", systemID, err)
+	}
+
+	s.scope.Info("Boot interface bridge created successfully", "systemID", systemID, "bridgeName", "br0")
+	return nil
+}
 
 // shouldUseLXDForWorkloadCluster determines if a workload cluster machine should use LXD
 // based on user input provided via the MaasMachine annotations (copied from MaasMachineTemplate).

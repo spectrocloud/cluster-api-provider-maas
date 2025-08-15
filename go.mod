@@ -81,6 +81,6 @@ require (
 replace (
 	github.com/prometheus/common v0.32.1 => github.com/prometheus/common v0.26.0
 	// Use the networkInterfaceImpl branch for enhanced network interface support
-	github.com/spectrocloud/maas-client-go => github.com/spectrocloud/maas-client-go v0.0.5-beta.0.20250805215527-459ed506383c
+	github.com/spectrocloud/maas-client-go => github.com/spectrocloud/maas-client-go v0.0.5-beta.0.20250813210434-fa8c04b0dc26
 	sigs.k8s.io/structured-merge-diff/v6 => sigs.k8s.io/structured-merge-diff/v4 v4.4.3
 )

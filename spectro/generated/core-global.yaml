@@ -1478,21 +1478,21 @@ spec:
                   cidr:
                     description: CIDR is the network CIDR
                     type: string
-                  enabled:
-                    default: false
-                    description: Enabled specifies whether to use static IP
-                    type: boolean
                   gateway:
                     description: Gateway is the network gateway
                     type: string
                   ip:
                     description: IP is the static IP address to assign
+                    minLength: 1
+                    pattern: ^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$
                     type: string
                   nameservers:
                     description: Nameservers is a list of DNS servers
                     items:
                       type: string
                     type: array
+                required:
+                - ip
                 type: object
               systemID:
                 description: SystemID will be the MaaS machine ID
@@ -1762,21 +1762,21 @@ spec:
                           cidr:
                             description: CIDR is the network CIDR
                             type: string
-                          enabled:
-                            default: false
-                            description: Enabled specifies whether to use static IP
-                            type: boolean
                           gateway:
                             description: Gateway is the network gateway
                             type: string
                           ip:
                             description: IP is the static IP address to assign
+                            minLength: 1
+                            pattern: ^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$
                             type: string
                           nameservers:
                             description: Nameservers is a list of DNS servers
                             items:
                               type: string
                             type: array
+                        required:
+                        - ip
                         type: object
                       systemID:
                         description: SystemID will be the MaaS machine ID

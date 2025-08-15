@@ -300,46 +300,21 @@ func (m *MachineScope) GetDynamicLXD() bool {
 	return false
 }
 
-// GetStaticIP returns the static IP to assign to the machine, if enabled and specified
+// GetStaticIP returns the static IP to assign to the machine, if configured
 func (m *MachineScope) GetStaticIP() string {
 	if m.MaasMachine.Spec.StaticIP == nil {
 		m.Info("StaticIP config is nil")
 		return ""
 	}
 
-	if m.MaasMachine.Spec.StaticIP.Enabled == nil {
-		m.Info("StaticIP.Enabled is nil")
-		return ""
-	}
-
-	if !*m.MaasMachine.Spec.StaticIP.Enabled {
-		m.Info("StaticIP is disabled", "enabled", *m.MaasMachine.Spec.StaticIP.Enabled)
-		return ""
-	}
-
-	if m.MaasMachine.Spec.StaticIP.IP == "" {
-		m.Info("StaticIP.IP is empty")
-		return ""
-	}
-
-	m.Info("StaticIP config found", "ip", m.MaasMachine.Spec.StaticIP.IP, "enabled", *m.MaasMachine.Spec.StaticIP.Enabled)
+	m.Info("StaticIP config found", "ip", m.MaasMachine.Spec.StaticIP.IP)
 	return m.MaasMachine.Spec.StaticIP.IP
 }
 
-// GetStaticIPConfig returns the full static IP configuration if enabled
+// GetStaticIPConfig returns the full static IP configuration if configured
 func (m *MachineScope) GetStaticIPConfig() *infrav1beta1.StaticIPConfig {
 	if m.MaasMachine.Spec.StaticIP == nil {
 		m.Info("StaticIPConfig: StaticIP config is nil")
-		return nil
-	}
-
-	if m.MaasMachine.Spec.StaticIP.Enabled == nil {
-		m.Info("StaticIPConfig: StaticIP.Enabled is nil")
-		return nil
-	}
-
-	if !*m.MaasMachine.Spec.StaticIP.Enabled {
-		m.Info("StaticIPConfig: StaticIP is disabled", "enabled", *m.MaasMachine.Spec.StaticIP.Enabled)
 		return nil
 	}
 

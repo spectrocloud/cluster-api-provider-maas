@@ -88,14 +88,10 @@ type MachineLXDConfig struct {
 
 // StaticIPConfig defines the static IP configuration for a VM
 type StaticIPConfig struct {
-	// Enabled specifies whether to use static IP
-	// +kubebuilder:default=false
-	// +optional
-	Enabled *bool `json:"enabled,omitempty"`
-
 	// IP is the static IP address to assign
-	// +optional
-	IP string `json:"ip,omitempty"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+	IP string `json:"ip"`
 
 	// CIDR is the network CIDR
 	// +optional
