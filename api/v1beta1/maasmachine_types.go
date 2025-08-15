@@ -90,7 +90,7 @@ type MachineLXDConfig struct {
 type StaticIPConfig struct {
 	// IP is the static IP address to assign
 	// +kubebuilder:validation:MinLength=1
-	// +kubebuilder:validation:Pattern=`^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$`
+	// +optional
 	IP string `json:"ip"`
 
 	// CIDR is the network CIDR
