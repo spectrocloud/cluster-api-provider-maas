@@ -26,3 +26,8 @@ bin
 maas-credentials.env
 
 _build
+
+# LXD test directory
+lxd-test-tmp/
+utils/maas/lxd-test/.netrc
+.netrc
