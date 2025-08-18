@@ -20,8 +20,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -41,6 +42,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
 	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
@@ -76,6 +78,11 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Add system-id to logger for better traceability if it's already known
+	if maasMachine.Spec.SystemID != nil && *maasMachine.Spec.SystemID != "" {
+		log = log.WithValues("system-id", *maasMachine.Spec.SystemID)
 	}
 
 	// Fetch the Machine.
@@ -272,6 +279,11 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		}
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
+			if errors.Is(err, maasmachine.ErrBrokenMachine) {
+				machineScope.Info("Broken machine; backing off and retrying")
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "retrying after broken machine")
+				return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+			}
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err

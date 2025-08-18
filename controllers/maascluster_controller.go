@@ -19,9 +19,10 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"net"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -43,6 +44,7 @@ import (
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -314,6 +316,24 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
+
+	if clusterScope.IsLXDControlPlaneCluster() {
+
+		// Ensure LXD initializer DaemonSet exists/absent as needed
+		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD initializer DaemonSet")
+			return reconcile.Result{}, err
+		}
+
+		lxdService := lxd.NewService(clusterScope)
+		if err := lxdService.ReconcileLXD(); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD hosts")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			return reconcile.Result{}, err
+		}
+		conditions.MarkTrue(maasCluster, infrav1beta1.LXDReadyCondition)
+		clusterScope.Info("LXD hosts are available")
+	}
 
 	return ctrl.Result{}, nil
 }

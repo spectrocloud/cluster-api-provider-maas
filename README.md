@@ -1,118 +1,74 @@
-# Cluster-API-Provider-MAAS
-Cluster API Provider for Canonical Metal-As-A-Service [maas.io](https://maas.io/)
+# Cluster API Provider MAAS
 
-You're welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
+This is a Cluster API infrastructure provider for MAAS.
 
+## Getting Started
 
-# Getting Started
+### Prerequisites
 
-## Public Images
-Spectro Cloud public images
+- Kubernetes v1.29.0+
+- MAAS 3.0+
+- Cluster API v1.5.0+
 
-| Kubernetes Version | URL                                                                        |
-|--------------------|----------------------------------------------------------------------------|
-| 1.25.6             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1256-0.tar.gz       |
-| 1.26.1             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1261-0.tar.gz       |
+## Development
 
+### Building the provider
 
-
-## Custom Image Generation
-Refer [image-generation/](image-generation/README.md)
-
-## Hello world
-
-- Create kind cluster
 ```bash
-kind create cluster --name=maas-cluster
+make docker-build
 ```
 
-- Install clusterctl v1beta1
-https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
+### Deploying the provider
 
-- Setup clusterctl configuration `~/.cluster-api/clusterctl.yaml`
-```
-# MAAS access endpoint and key
-MAAS_API_KEY: <maas-api-key>
-MAAS_ENDPOINT: http://<maas-endpoint>/MAAS
-MAAS_DNS_DOMAIN: maas.domain
-
-# Cluster configuration
-KUBERNETES_VERSION: v1.26.4
-CONTROL_PLANE_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
-CONTROL_PLANE_MACHINE_MINCPU: 4
-CONTROL_PLANE_MACHINE_MINMEMORY: 8192
-WORKER_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
-WORKER_MACHINE_MINCPU: 4
-WORKER_MACHINE_MINMEMORY: 8192
-
-# Selecting machine based on resourcepool (optional) and machine tag (optional)
-CONTROL_PLANE_MACHINE_RESOURCEPOOL: resorcepool-controller
-CONTROL_PLANE_MACHINE_TAG: hello-world
-WORKER_MACHINE_RESOURCEPOOL: resourcepool-worker
-WORKER_MACHINE_TAG: hello-world
-```
-- Initialize infrastructure
 ```bash
-clusterctl init --infrastructure maas:v0.5.0
-```
-- Generate and create cluster
-```
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
+make deploy
 ```
 
-## Developer Guide
-- Create kind cluster
-```shell
-kind create cluster --name=maas-cluster
+### Testing the provider
+
+```bash
+make test
 ```
 
-- Install clusterctl v1 depending on the version you are working with
+## LXD Integration
 
-- Makefile set IMG=<your docker repo>
-- Run 
-```shell
-make docker-build && make docker-push
-```
-    
-- Generate dev manifests
-```shell
-make dev-manifests
-```
+This provider supports dynamic LXD VM creation for workload clusters. This involves two main stages:
 
-- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.5.0 depending on version you are working with
+1. **Control Plane Cluster Creation Flow**: Dynamically convert SpectroCloud-deployed infrastructure Control Plane (CP) nodes into LXD-capable KVM hosts.
+2. **Workload Cluster Creation Flow**: Dynamically provision LXD VMs with static IPs for workload cluster control plane nodes.
 
-```text
-.
-├── clusterctl.yaml
-├── overrides
-│   ├── infrastructure-maas
-│       └── v0.5.0
-│           ├── cluster-template.yaml
-│           ├── infrastructure-components.yaml
-│           └── metadata.yaml
-└── version.yaml
+### Testing LXD Integration
 
+We've created test utilities to validate the LXD integration:
+
+1. **LXD Initialization Test**: Tests LXD initialization using the official LXD Go client.
+2. **VM Host Registration Test**: Tests VM host registration with MAAS using direct API calls.
+3. **MAAS API Test**: Tests MAAS API integration for VM host management and VM creation.
+
+To build and transfer these test utilities to a target node:
+
+```bash
+cd lxd-test-tmp
+./build-and-transfer.sh --host <target-host> [--key <path/to/key.pem>] [--user <username>]
 ```
 
-- Run
-```shell
-clusterctl init --infrastructure maas:v0.5.0
+Then on the target node:
+
+```bash
+# Test LXD initialization
+sudo ./lxd-test-linux --storage-backend=zfs --storage-size=50 --network-bridge=br0
+
+# Test VM host registration
+./vmhost-test-linux --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
+
+# Test MAAS API integration
+./maas-test-linux --test-vm-host --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
 ```
 
+## Architecture
 
-## Install CRDs
-### v1beta1 v0.5.0 release
-- Generate cluster using
-```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.5.0 | kubectl apply -f -
-```
-or
-```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 > my_cluster.yaml
-kubectl apply -f my_cluster.yaml
-```
-or
-```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
-kubectl apply -f my_cluster.yaml
-```
+The provider uses the MAAS API to manage machines and LXD VMs. It does not use direct LXD socket connections or CLI commands, ensuring it works correctly even when the controller is running on a different host than the LXD host.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.

@@ -67,6 +67,1152 @@ spec:
                 items:
                   type: string
                 type: array
+              lxdConfig:
+                description: LXDConfig contains the configuration for LXD hosts
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether to enable LXD VM support
+                    type: boolean
+                  hostOS:
+                    description: HostOS specifies the host OS configuration for LXD
+                      hosts
+                    properties:
+                      autoUpdate:
+                        default: false
+                        description: AutoUpdate specifies whether to enable automatic
+                          OS updates
+                        type: boolean
+                      maintenanceWindow:
+                        description: MaintenanceWindow specifies the maintenance window
+                          for updates
+                        properties:
+                          days:
+                            description: Days specifies the days of the week (1=Monday,
+                              7=Sunday)
+                            items:
+                              format: int32
+                              type: integer
+                            maxItems: 7
+                            minItems: 1
+                            type: array
+                          duration:
+                            default: 120
+                            description: Duration specifies the duration in minutes
+                            format: int32
+                            maximum: 480
+                            minimum: 30
+                            type: integer
+                          startTime:
+                            description: StartTime specifies the start time (HH:MM
+                              format)
+                            type: string
+                        required:
+                        - startTime
+                        type: object
+                      rollingUpdate:
+                        description: RollingUpdate specifies rolling update configuration
+                        properties:
+                          maxSurge:
+                            default: 1
+                            description: MaxSurge specifies the maximum number of
+                              extra nodes
+                            format: int32
+                            type: integer
+                          maxUnavailable:
+                            default: 1
+                            description: MaxUnavailable specifies the maximum number
+                              of unavailable nodes
+                            format: int32
+                            type: integer
+                          minReadySeconds:
+                            default: 300
+                            description: MinReadySeconds specifies the minimum ready
+                              seconds
+                            format: int32
+                            type: integer
+                        type: object
+                      updateSchedule:
+                        description: UpdateSchedule specifies the schedule for OS
+                          updates (cron format)
+                        type: string
+                    type: object
+                  imageRepository:
+                    description: ImageRepository specifies the remote server configuration
+                      for images
+                    properties:
+                      certificates:
+                        description: Certificates specifies SSL certificates for the
+                          repository
+                        properties:
+                          caCertKey:
+                            default: ca.crt
+                            description: CACertKey specifies the key in the secret
+                              for CA certificate
+                            type: string
+                          clientCertKey:
+                            default: client.crt
+                            description: ClientCertKey specifies the key in the secret
+                              for client certificate
+                            type: string
+                          clientKeyKey:
+                            default: client.key
+                            description: ClientKeyKey specifies the key in the secret
+                              for client key
+                            type: string
+                          secretName:
+                            description: SecretName specifies the Kubernetes secret
+                              containing certificates
+                            type: string
+                        required:
+                        - secretName
+                        type: object
+                      credentials:
+                        description: Credentials specifies the credentials for the
+                          image repository
+                        properties:
+                          passwordKey:
+                            default: password
+                            description: PasswordKey specifies the key in the secret
+                              for password
+                            type: string
+                          secretName:
+                            description: SecretName specifies the Kubernetes secret
+                              containing credentials
+                            type: string
+                          usernameKey:
+                            default: username
+                            description: UsernameKey specifies the key in the secret
+                              for username
+                            type: string
+                        required:
+                        - secretName
+                        type: object
+                      protocol:
+                        default: https
+                        description: Protocol specifies the protocol to use (https,
+                          http)
+                        type: string
+                      url:
+                        description: URL specifies the remote server URL for images
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  networkBridge:
+                    description: NetworkBridge specifies the network bridge to use
+                      (legacy, prefer NICParent)
+                    type: string
+                  nicParent:
+                    description: NICParent selects the parent interface or bridge
+                      for the NIC
+                    type: string
+                  nicType:
+                    description: NICType selects the LXD NIC type (bridge or macvlan)
+                    enum:
+                    - bridge
+                    - macvlan
+                    type: string
+                  resourcePool:
+                    description: ResourcePool specifies the MAAS resource pool to
+                      use for LXD VM hosts
+                    type: string
+                  securityConfig:
+                    description: SecurityConfig specifies security settings for LXD
+                      hosts
+                    properties:
+                      multiTenancy:
+                        description: MultiTenancy specifies multi-tenancy settings
+                        properties:
+                          enableIsolation:
+                            default: false
+                            description: EnableIsolation specifies whether to enable
+                              tenant isolation
+                            type: boolean
+                          resourceSharing:
+                            description: ResourceSharing specifies resource sharing
+                              policies
+                            properties:
+                              cpuSharing:
+                                default: equal
+                                description: CPUSharing specifies CPU sharing policy
+                                enum:
+                                - equal
+                                - proportional
+                                - weighted
+                                type: string
+                              memorySharing:
+                                default: equal
+                                description: MemorySharing specifies memory sharing
+                                  policy
+                                enum:
+                                - equal
+                                - proportional
+                                - weighted
+                                type: string
+                              storageSharing:
+                                default: equal
+                                description: StorageSharing specifies storage sharing
+                                  policy
+                                enum:
+                                - equal
+                                - proportional
+                                - weighted
+                                type: string
+                            type: object
+                          tenantLabels:
+                            description: TenantLabels specifies labels for tenant
+                              identification
+                            items:
+                              type: string
+                            type: array
+                        type: object
+                      networkIsolation:
+                        description: NetworkIsolation specifies network isolation
+                          settings
+                        properties:
+                          defaultVLAN:
+                            description: DefaultVLAN specifies the default VLAN ID
+                            format: int32
+                            type: integer
+                          enableVLAN:
+                            default: false
+                            description: EnableVLAN specifies whether to enable VLAN
+                              isolation
+                            type: boolean
+                          networkPolicies:
+                            description: NetworkPolicies specifies network policies
+                              for VMs
+                            items:
+                              description: NetworkPolicy specifies a network policy
+                              properties:
+                                name:
+                                  description: Name specifies the policy name
+                                  type: string
+                                rules:
+                                  description: Rules specifies the network rules
+                                  items:
+                                    description: NetworkRule specifies a network rule
+                                    properties:
+                                      destination:
+                                        description: Destination specifies the destination
+                                          address or range
+                                        type: string
+                                      port:
+                                        description: Port specifies the port or port
+                                          range
+                                        type: string
+                                      protocol:
+                                        description: Protocol specifies the protocol
+                                          (tcp, udp, icmp)
+                                        enum:
+                                        - tcp
+                                        - udp
+                                        - icmp
+                                        type: string
+                                      source:
+                                        description: Source specifies the source address
+                                          or range
+                                        type: string
+                                    type: object
+                                  type: array
+                                type:
+                                  description: Type specifies the policy type (allow,
+                                    deny, isolate)
+                                  enum:
+                                  - allow
+                                  - deny
+                                  - isolate
+                                  type: string
+                              required:
+                              - name
+                              - type
+                              type: object
+                            type: array
+                        type: object
+                      resourceIsolation:
+                        description: ResourceIsolation specifies resource isolation
+                          settings
+                        properties:
+                          cpuQuota:
+                            description: CPUQuota specifies CPU quota settings
+                            properties:
+                              burstLimit:
+                                description: BurstLimit specifies the CPU burst limit
+                                format: int32
+                                type: integer
+                              defaultLimit:
+                                default: 4
+                                description: DefaultLimit specifies the default CPU
+                                  limit per VM
+                                format: int32
+                                type: integer
+                              maxLimit:
+                                default: 16
+                                description: MaxLimit specifies the maximum CPU limit
+                                  per VM
+                                format: int32
+                                type: integer
+                            type: object
+                          memoryQuota:
+                            description: MemoryQuota specifies memory quota settings
+                            properties:
+                              defaultLimit:
+                                default: 8192
+                                description: DefaultLimit specifies the default memory
+                                  limit per VM (in MB)
+                                format: int32
+                                type: integer
+                              maxLimit:
+                                default: 32768
+                                description: MaxLimit specifies the maximum memory
+                                  limit per VM (in MB)
+                                format: int32
+                                type: integer
+                              swapLimit:
+                                description: SwapLimit specifies the swap limit (in
+                                  MB)
+                                format: int32
+                                type: integer
+                            type: object
+                          storageQuota:
+                            description: StorageQuota specifies storage quota settings
+                            properties:
+                              defaultLimit:
+                                default: 50
+                                description: DefaultLimit specifies the default storage
+                                  limit per VM (in GB)
+                                format: int32
+                                type: integer
+                              maxLimit:
+                                default: 500
+                                description: MaxLimit specifies the maximum storage
+                                  limit per VM (in GB)
+                                format: int32
+                                type: integer
+                            type: object
+                        type: object
+                    type: object
+                  skipNetworkUpdate:
+                    default: true
+                    description: SkipNetworkUpdate specifies whether to skip updating
+                      existing networks
+                    type: boolean
+                  storageBackend:
+                    default: zfs
+                    description: StorageBackend specifies the storage backend to use
+                      (zfs, dir, etc.)
+                    type: string
+                  storageSize:
+                    default: "50"
+                    description: StorageSize specifies the size of the storage pool
+                      in GB
+                    type: string
+                  zone:
+                    description: Zone specifies the MAAS availability zone to register
+                      LXD VM hosts in
+                    type: string
+                type: object
+              lxdControlPlaneCluster:
+                description: LXDControlPlaneCluster indicates whether to configure
+                  infrastructure CP nodes as LXD hosts
+                type: boolean
+              workloadClusterConfig:
+                description: WorkloadClusterConfig contains configuration specific
+                  to workload clusters
+                properties:
+                  azMapping:
+                    additionalProperties:
+                      type: string
+                    description: AZMapping maps workload cluster AZs to infrastructure
+                      cluster AZs
+                    type: object
+                  controlPlanePool:
+                    description: ControlPlanePool defines the configuration for control
+                      plane node pool
+                    properties:
+                      availabilityZones:
+                        description: AvailabilityZones specifies which AZs to deploy
+                          nodes in
+                        items:
+                          type: string
+                        type: array
+                      name:
+                        description: Name is the name of the node pool
+                        minLength: 1
+                        type: string
+                      osConfig:
+                        description: OSConfig specifies the OS configuration for VMs
+                          in this pool
+                        properties:
+                          architecture:
+                            default: amd64
+                            description: Architecture specifies the architecture (amd64,
+                              arm64)
+                            type: string
+                          bootConfig:
+                            description: BootConfig specifies boot configuration
+                            properties:
+                              bootOrder:
+                                description: BootOrder specifies the boot order
+                                items:
+                                  type: string
+                                type: array
+                              bootTimeout:
+                                default: 300
+                                description: BootTimeout specifies the boot timeout
+                                  in seconds
+                                format: int32
+                                type: integer
+                              secureBoot:
+                                default: false
+                                description: SecureBoot specifies whether to enable
+                                  secure boot
+                                type: boolean
+                              uefi:
+                                default: true
+                                description: UEFI specifies whether to use UEFI boot
+                                type: boolean
+                            type: object
+                          image:
+                            description: Image specifies the OS image to use
+                            type: string
+                          imageRepository:
+                            description: ImageRepository specifies the image repository
+                              to use
+                            type: string
+                          initrd:
+                            description: Initrd specifies the initrd to use
+                            type: string
+                          kernel:
+                            description: Kernel specifies the kernel to use
+                            type: string
+                          securityConfig:
+                            description: SecurityConfig specifies security configuration
+                            properties:
+                              appArmor:
+                                description: AppArmor specifies AppArmor configuration
+                                properties:
+                                  enabled:
+                                    default: true
+                                    description: Enabled specifies whether to enable
+                                      AppArmor
+                                    type: boolean
+                                  profile:
+                                    description: Profile specifies the AppArmor profile
+                                    type: string
+                                type: object
+                              encryption:
+                                description: Encryption specifies encryption configuration
+                                properties:
+                                  diskEncryption:
+                                    default: false
+                                    description: DiskEncryption specifies whether
+                                      to enable disk encryption
+                                    type: boolean
+                                  encryptionType:
+                                    description: EncryptionType specifies the encryption
+                                      type (luks, bitlocker)
+                                    enum:
+                                    - luks
+                                    - bitlocker
+                                    type: string
+                                  keyManagement:
+                                    description: KeyManagement specifies key management
+                                      configuration
+                                    properties:
+                                      externalConfig:
+                                        description: ExternalConfig specifies external
+                                          key management configuration
+                                        properties:
+                                          certificates:
+                                            description: Certificates specifies SSL
+                                              certificates for external key management
+                                            properties:
+                                              caCertKey:
+                                                default: ca.crt
+                                                description: CACertKey specifies the
+                                                  key in the secret for CA certificate
+                                                type: string
+                                              clientCertKey:
+                                                default: client.crt
+                                                description: ClientCertKey specifies
+                                                  the key in the secret for client
+                                                  certificate
+                                                type: string
+                                              clientKeyKey:
+                                                default: client.key
+                                                description: ClientKeyKey specifies
+                                                  the key in the secret for client
+                                                  key
+                                                type: string
+                                              secretName:
+                                                description: SecretName specifies
+                                                  the Kubernetes secret containing
+                                                  certificates
+                                                type: string
+                                            required:
+                                            - secretName
+                                            type: object
+                                          credentials:
+                                            description: Credentials specifies the
+                                              credentials for external key management
+                                            properties:
+                                              passwordKey:
+                                                default: password
+                                                description: PasswordKey specifies
+                                                  the key in the secret for password
+                                                type: string
+                                              secretName:
+                                                description: SecretName specifies
+                                                  the Kubernetes secret containing
+                                                  credentials
+                                                type: string
+                                              usernameKey:
+                                                default: username
+                                                description: UsernameKey specifies
+                                                  the key in the secret for username
+                                                type: string
+                                            required:
+                                            - secretName
+                                            type: object
+                                          endpoint:
+                                            description: Endpoint specifies the external
+                                              key management endpoint
+                                            type: string
+                                        required:
+                                        - endpoint
+                                        type: object
+                                      secretName:
+                                        description: SecretName specifies the Kubernetes
+                                          secret containing keys
+                                        type: string
+                                      type:
+                                        default: local
+                                        description: Type specifies the key management
+                                          type (local, external)
+                                        enum:
+                                        - local
+                                        - external
+                                        type: string
+                                    type: object
+                                type: object
+                              firewall:
+                                description: Firewall specifies firewall configuration
+                                properties:
+                                  defaultPolicy:
+                                    default: drop
+                                    description: DefaultPolicy specifies the default
+                                      policy (accept, drop, reject)
+                                    enum:
+                                    - accept
+                                    - drop
+                                    - reject
+                                    type: string
+                                  enabled:
+                                    default: true
+                                    description: Enabled specifies whether to enable
+                                      firewall
+                                    type: boolean
+                                  rules:
+                                    description: Rules specifies firewall rules
+                                    items:
+                                      description: FirewallRule specifies a firewall
+                                        rule
+                                      properties:
+                                        action:
+                                          description: Action specifies the action
+                                            (accept, drop, reject)
+                                          enum:
+                                          - accept
+                                          - drop
+                                          - reject
+                                          type: string
+                                        destination:
+                                          description: Destination specifies the destination
+                                            address or range
+                                          type: string
+                                        name:
+                                          description: Name specifies the rule name
+                                          type: string
+                                        port:
+                                          description: Port specifies the port or
+                                            port range
+                                          type: string
+                                        protocol:
+                                          description: Protocol specifies the protocol
+                                            (tcp, udp, icmp)
+                                          type: string
+                                        source:
+                                          description: Source specifies the source
+                                            address or range
+                                          type: string
+                                      required:
+                                      - action
+                                      - name
+                                      type: object
+                                    type: array
+                                type: object
+                              selinux:
+                                description: SELinux specifies SELinux configuration
+                                properties:
+                                  mode:
+                                    default: enforcing
+                                    description: Mode specifies the SELinux mode (enforcing,
+                                      permissive, disabled)
+                                    enum:
+                                    - enforcing
+                                    - permissive
+                                    - disabled
+                                    type: string
+                                  type:
+                                    description: Type specifies the SELinux type
+                                    type: string
+                                type: object
+                            type: object
+                          version:
+                            description: Version specifies the OS version
+                            type: string
+                        required:
+                        - image
+                        type: object
+                      resourcePool:
+                        description: ResourcePool specifies the resource pool to use
+                        type: string
+                      scalingConfig:
+                        description: ScalingConfig specifies scaling configuration
+                          for this pool
+                        properties:
+                          maxReplicas:
+                            default: 10
+                            description: MaxReplicas specifies the maximum number
+                              of replicas
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          minReplicas:
+                            default: 1
+                            description: MinReplicas specifies the minimum number
+                              of replicas
+                            format: int32
+                            minimum: 1
+                            type: integer
+                          scaleDownDelay:
+                            default: 300
+                            description: ScaleDownDelay specifies the scale down delay
+                              in seconds
+                            format: int32
+                            type: integer
+                          scaleUpDelay:
+                            default: 60
+                            description: ScaleUpDelay specifies the scale up delay
+                              in seconds
+                            format: int32
+                            type: integer
+                          targetCPUUtilization:
+                            default: 70
+                            description: TargetCPUUtilization specifies the target
+                              CPU utilization percentage
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                          targetMemoryUtilization:
+                            default: 80
+                            description: TargetMemoryUtilization specifies the target
+                              memory utilization percentage
+                            format: int32
+                            maximum: 100
+                            minimum: 1
+                            type: integer
+                        type: object
+                      staticIPs:
+                        description: StaticIPs is a list of static IPs to assign to
+                          nodes in this pool
+                        items:
+                          type: string
+                        type: array
+                      updateConfig:
+                        description: UpdateConfig specifies update configuration for
+                          this pool
+                        properties:
+                          autoUpdate:
+                            default: false
+                            description: AutoUpdate specifies whether to enable automatic
+                              updates
+                            type: boolean
+                          maintenanceWindow:
+                            description: MaintenanceWindow specifies the maintenance
+                              window for updates
+                            properties:
+                              days:
+                                description: Days specifies the days of the week (1=Monday,
+                                  7=Sunday)
+                                items:
+                                  format: int32
+                                  type: integer
+                                maxItems: 7
+                                minItems: 1
+                                type: array
+                              duration:
+                                default: 120
+                                description: Duration specifies the duration in minutes
+                                format: int32
+                                maximum: 480
+                                minimum: 30
+                                type: integer
+                              startTime:
+                                description: StartTime specifies the start time (HH:MM
+                                  format)
+                                type: string
+                            required:
+                            - startTime
+                            type: object
+                          maxSurge:
+                            default: 1
+                            description: MaxSurge specifies the maximum number of
+                              extra nodes
+                            format: int32
+                            type: integer
+                          maxUnavailable:
+                            default: 1
+                            description: MaxUnavailable specifies the maximum number
+                              of unavailable nodes
+                            format: int32
+                            type: integer
+                          minReadySeconds:
+                            default: 300
+                            description: MinReadySeconds specifies the minimum ready
+                              seconds
+                            format: int32
+                            type: integer
+                          progressDeadlineSeconds:
+                            default: 600
+                            description: ProgressDeadlineSeconds specifies the progress
+                              deadline in seconds
+                            format: int32
+                            type: integer
+                          strategy:
+                            default: rolling
+                            description: Strategy specifies the update strategy (rolling,
+                              recreate)
+                            enum:
+                            - rolling
+                            - recreate
+                            type: string
+                          updateSchedule:
+                            description: UpdateSchedule specifies the update schedule
+                              (cron format)
+                            type: string
+                        type: object
+                      useLXD:
+                        description: UseLXD indicates whether this node pool should
+                          use LXD VMs
+                        type: boolean
+                    required:
+                    - name
+                    type: object
+                  resourcePoolMapping:
+                    additionalProperties:
+                      type: string
+                    description: ResourcePoolMapping maps workload cluster resource
+                      pools to infrastructure cluster resource pools
+                    type: object
+                  workerPools:
+                    description: WorkerPools defines the configuration for worker
+                      node pools
+                    items:
+                      description: NodePoolConfig defines configuration for a node
+                        pool
+                      properties:
+                        availabilityZones:
+                          description: AvailabilityZones specifies which AZs to deploy
+                            nodes in
+                          items:
+                            type: string
+                          type: array
+                        name:
+                          description: Name is the name of the node pool
+                          minLength: 1
+                          type: string
+                        osConfig:
+                          description: OSConfig specifies the OS configuration for
+                            VMs in this pool
+                          properties:
+                            architecture:
+                              default: amd64
+                              description: Architecture specifies the architecture
+                                (amd64, arm64)
+                              type: string
+                            bootConfig:
+                              description: BootConfig specifies boot configuration
+                              properties:
+                                bootOrder:
+                                  description: BootOrder specifies the boot order
+                                  items:
+                                    type: string
+                                  type: array
+                                bootTimeout:
+                                  default: 300
+                                  description: BootTimeout specifies the boot timeout
+                                    in seconds
+                                  format: int32
+                                  type: integer
+                                secureBoot:
+                                  default: false
+                                  description: SecureBoot specifies whether to enable
+                                    secure boot
+                                  type: boolean
+                                uefi:
+                                  default: true
+                                  description: UEFI specifies whether to use UEFI
+                                    boot
+                                  type: boolean
+                              type: object
+                            image:
+                              description: Image specifies the OS image to use
+                              type: string
+                            imageRepository:
+                              description: ImageRepository specifies the image repository
+                                to use
+                              type: string
+                            initrd:
+                              description: Initrd specifies the initrd to use
+                              type: string
+                            kernel:
+                              description: Kernel specifies the kernel to use
+                              type: string
+                            securityConfig:
+                              description: SecurityConfig specifies security configuration
+                              properties:
+                                appArmor:
+                                  description: AppArmor specifies AppArmor configuration
+                                  properties:
+                                    enabled:
+                                      default: true
+                                      description: Enabled specifies whether to enable
+                                        AppArmor
+                                      type: boolean
+                                    profile:
+                                      description: Profile specifies the AppArmor
+                                        profile
+                                      type: string
+                                  type: object
+                                encryption:
+                                  description: Encryption specifies encryption configuration
+                                  properties:
+                                    diskEncryption:
+                                      default: false
+                                      description: DiskEncryption specifies whether
+                                        to enable disk encryption
+                                      type: boolean
+                                    encryptionType:
+                                      description: EncryptionType specifies the encryption
+                                        type (luks, bitlocker)
+                                      enum:
+                                      - luks
+                                      - bitlocker
+                                      type: string
+                                    keyManagement:
+                                      description: KeyManagement specifies key management
+                                        configuration
+                                      properties:
+                                        externalConfig:
+                                          description: ExternalConfig specifies external
+                                            key management configuration
+                                          properties:
+                                            certificates:
+                                              description: Certificates specifies
+                                                SSL certificates for external key
+                                                management
+                                              properties:
+                                                caCertKey:
+                                                  default: ca.crt
+                                                  description: CACertKey specifies
+                                                    the key in the secret for CA certificate
+                                                  type: string
+                                                clientCertKey:
+                                                  default: client.crt
+                                                  description: ClientCertKey specifies
+                                                    the key in the secret for client
+                                                    certificate
+                                                  type: string
+                                                clientKeyKey:
+                                                  default: client.key
+                                                  description: ClientKeyKey specifies
+                                                    the key in the secret for client
+                                                    key
+                                                  type: string
+                                                secretName:
+                                                  description: SecretName specifies
+                                                    the Kubernetes secret containing
+                                                    certificates
+                                                  type: string
+                                              required:
+                                              - secretName
+                                              type: object
+                                            credentials:
+                                              description: Credentials specifies the
+                                                credentials for external key management
+                                              properties:
+                                                passwordKey:
+                                                  default: password
+                                                  description: PasswordKey specifies
+                                                    the key in the secret for password
+                                                  type: string
+                                                secretName:
+                                                  description: SecretName specifies
+                                                    the Kubernetes secret containing
+                                                    credentials
+                                                  type: string
+                                                usernameKey:
+                                                  default: username
+                                                  description: UsernameKey specifies
+                                                    the key in the secret for username
+                                                  type: string
+                                              required:
+                                              - secretName
+                                              type: object
+                                            endpoint:
+                                              description: Endpoint specifies the
+                                                external key management endpoint
+                                              type: string
+                                          required:
+                                          - endpoint
+                                          type: object
+                                        secretName:
+                                          description: SecretName specifies the Kubernetes
+                                            secret containing keys
+                                          type: string
+                                        type:
+                                          default: local
+                                          description: Type specifies the key management
+                                            type (local, external)
+                                          enum:
+                                          - local
+                                          - external
+                                          type: string
+                                      type: object
+                                  type: object
+                                firewall:
+                                  description: Firewall specifies firewall configuration
+                                  properties:
+                                    defaultPolicy:
+                                      default: drop
+                                      description: DefaultPolicy specifies the default
+                                        policy (accept, drop, reject)
+                                      enum:
+                                      - accept
+                                      - drop
+                                      - reject
+                                      type: string
+                                    enabled:
+                                      default: true
+                                      description: Enabled specifies whether to enable
+                                        firewall
+                                      type: boolean
+                                    rules:
+                                      description: Rules specifies firewall rules
+                                      items:
+                                        description: FirewallRule specifies a firewall
+                                          rule
+                                        properties:
+                                          action:
+                                            description: Action specifies the action
+                                              (accept, drop, reject)
+                                            enum:
+                                            - accept
+                                            - drop
+                                            - reject
+                                            type: string
+                                          destination:
+                                            description: Destination specifies the
+                                              destination address or range
+                                            type: string
+                                          name:
+                                            description: Name specifies the rule name
+                                            type: string
+                                          port:
+                                            description: Port specifies the port or
+                                              port range
+                                            type: string
+                                          protocol:
+                                            description: Protocol specifies the protocol
+                                              (tcp, udp, icmp)
+                                            type: string
+                                          source:
+                                            description: Source specifies the source
+                                              address or range
+                                            type: string
+                                        required:
+                                        - action
+                                        - name
+                                        type: object
+                                      type: array
+                                  type: object
+                                selinux:
+                                  description: SELinux specifies SELinux configuration
+                                  properties:
+                                    mode:
+                                      default: enforcing
+                                      description: Mode specifies the SELinux mode
+                                        (enforcing, permissive, disabled)
+                                      enum:
+                                      - enforcing
+                                      - permissive
+                                      - disabled
+                                      type: string
+                                    type:
+                                      description: Type specifies the SELinux type
+                                      type: string
+                                  type: object
+                              type: object
+                            version:
+                              description: Version specifies the OS version
+                              type: string
+                          required:
+                          - image
+                          type: object
+                        resourcePool:
+                          description: ResourcePool specifies the resource pool to
+                            use
+                          type: string
+                        scalingConfig:
+                          description: ScalingConfig specifies scaling configuration
+                            for this pool
+                          properties:
+                            maxReplicas:
+                              default: 10
+                              description: MaxReplicas specifies the maximum number
+                                of replicas
+                              format: int32
+                              minimum: 1
+                              type: integer
+                            minReplicas:
+                              default: 1
+                              description: MinReplicas specifies the minimum number
+                                of replicas
+                              format: int32
+                              minimum: 1
+                              type: integer
+                            scaleDownDelay:
+                              default: 300
+                              description: ScaleDownDelay specifies the scale down
+                                delay in seconds
+                              format: int32
+                              type: integer
+                            scaleUpDelay:
+                              default: 60
+                              description: ScaleUpDelay specifies the scale up delay
+                                in seconds
+                              format: int32
+                              type: integer
+                            targetCPUUtilization:
+                              default: 70
+                              description: TargetCPUUtilization specifies the target
+                                CPU utilization percentage
+                              format: int32
+                              maximum: 100
+                              minimum: 1
+                              type: integer
+                            targetMemoryUtilization:
+                              default: 80
+                              description: TargetMemoryUtilization specifies the target
+                                memory utilization percentage
+                              format: int32
+                              maximum: 100
+                              minimum: 1
+                              type: integer
+                          type: object
+                        staticIPs:
+                          description: StaticIPs is a list of static IPs to assign
+                            to nodes in this pool
+                          items:
+                            type: string
+                          type: array
+                        updateConfig:
+                          description: UpdateConfig specifies update configuration
+                            for this pool
+                          properties:
+                            autoUpdate:
+                              default: false
+                              description: AutoUpdate specifies whether to enable
+                                automatic updates
+                              type: boolean
+                            maintenanceWindow:
+                              description: MaintenanceWindow specifies the maintenance
+                                window for updates
+                              properties:
+                                days:
+                                  description: Days specifies the days of the week
+                                    (1=Monday, 7=Sunday)
+                                  items:
+                                    format: int32
+                                    type: integer
+                                  maxItems: 7
+                                  minItems: 1
+                                  type: array
+                                duration:
+                                  default: 120
+                                  description: Duration specifies the duration in
+                                    minutes
+                                  format: int32
+                                  maximum: 480
+                                  minimum: 30
+                                  type: integer
+                                startTime:
+                                  description: StartTime specifies the start time
+                                    (HH:MM format)
+                                  type: string
+                              required:
+                              - startTime
+                              type: object
+                            maxSurge:
+                              default: 1
+                              description: MaxSurge specifies the maximum number of
+                                extra nodes
+                              format: int32
+                              type: integer
+                            maxUnavailable:
+                              default: 1
+                              description: MaxUnavailable specifies the maximum number
+                                of unavailable nodes
+                              format: int32
+                              type: integer
+                            minReadySeconds:
+                              default: 300
+                              description: MinReadySeconds specifies the minimum ready
+                                seconds
+                              format: int32
+                              type: integer
+                            progressDeadlineSeconds:
+                              default: 600
+                              description: ProgressDeadlineSeconds specifies the progress
+                                deadline in seconds
+                              format: int32
+                              type: integer
+                            strategy:
+                              default: rolling
+                              description: Strategy specifies the update strategy
+                                (rolling, recreate)
+                              enum:
+                              - rolling
+                              - recreate
+                              type: string
+                            updateSchedule:
+                              description: UpdateSchedule specifies the update schedule
+                                (cron format)
+                              type: string
+                          type: object
+                        useLXD:
+                          description: UseLXD indicates whether this node pool should
+                            use LXD VMs
+                          type: boolean
+                      required:
+                      - name
+                      type: object
+                    type: array
+                type: object
             required:
             - dnsDomain
             type: object

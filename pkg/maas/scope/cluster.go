@@ -19,12 +19,17 @@ package scope
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -35,9 +40,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -183,13 +185,97 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, er
 	return machines, nil
 }
 
+// GetControlPlaneMaasMachines returns all MaasMachine objects associated with control plane machines in the cluster
+func (s *ClusterScope) GetControlPlaneMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
+	machines, err := s.GetClusterMaasMachines()
+	if err != nil {
+		return nil, err
+	}
+
+	var cpMachines []*infrav1beta1.MaasMachine
+	for _, machine := range machines {
+		// Check for control plane label
+		if _, ok := machine.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]; ok {
+			cpMachines = append(cpMachines, machine)
+		}
+	}
+
+	return cpMachines, nil
+}
+
+// SetStatus sets the MaasCluster status
+func (s *ClusterScope) SetStatus(status infrav1beta1.MaasClusterStatus) {
+	s.MaasCluster.Status = status
+}
+
+// GetMaasClientIdentity returns the MAAS client identity
+func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
+	// Try to get MAAS credentials from a secret
+	// The secret is expected to be in the same namespace as the MaasCluster
+	// and named "maas-credentials" by default
+	// Secret containing MAAS endpoint/token created by Palette bootstrapper
+	// Default name switched from "maas-credentials" to "capmaas-manager-bootstrap-credentials"
+	secretName := "capmaas-manager-bootstrap-credentials"
+
+	// Get the secret
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: s.MaasCluster.Namespace,
+		Name:      secretName,
+	}
+
+	// Try to get the secret
+	err := s.client.Get(context.Background(), key, secret)
+	if err != nil {
+		// If the secret doesn't exist, fall back to environment variables or default values
+		s.Info("Failed to get MAAS bootstrap credentials secret, using fallback values", "error", err)
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	// Get the credentials from the secret
+	url := string(secret.Data["url"])
+	token := string(secret.Data["token"])
+
+	// Validate the credentials
+	if url == "" || token == "" {
+		s.Info("Invalid MAAS credentials in secret, using fallback values")
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	return ClientIdentity{
+		URL:   url,
+		Token: token,
+	}
+}
+
+// getEnvOrDefault returns the value of the environment variable or the default value if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// ClientIdentity contains MAAS client identity information
+type ClientIdentity struct {
+	URL   string
+	Token string
+}
+
 const (
 	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
 	preferredSubnetKey           = "preferredSubnets"
 )
 
 func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
-	maasPreferredSubnet := &v1.ConfigMap{}
+	maasPreferredSubnet := &corev1.ConfigMap{}
 	err := s.client.Get(context.Background(), types.NamespacedName{
 		Namespace: s.Cluster.GetNamespace(),
 		Name:      maasPreferredSubnetConfigmap,
@@ -277,11 +363,12 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, nil
 	}
 
-	err = remoteClient.List(ctx, new(v1.NodeList))
+	err = remoteClient.List(ctx, new(corev1.NodeList))
 
 	return err == nil, nil
 }
 
+// IsCustomEndpoint returns true if the cluster has a custom endpoint
 func (s *ClusterScope) IsCustomEndpoint() bool {
 	if infrautil.IsCustomEndpointPresent(s.MaasCluster.GetAnnotations()) {
 		s.GetDNSName()
@@ -289,4 +376,129 @@ func (s *ClusterScope) IsCustomEndpoint() bool {
 		return true
 	}
 	return false
+}
+
+// IsLXDControlPlaneCluster returns true if LXD host registration is enabled for the infrastructure cluster.
+// Prefer the explicit flag on LXDConfig.
+func (s *ClusterScope) IsLXDControlPlaneCluster() bool {
+	// New preferred switch
+	if s.MaasCluster.Spec.LXDConfig != nil && s.MaasCluster.Spec.LXDConfig.Enabled != nil {
+		return *s.MaasCluster.Spec.LXDConfig.Enabled
+	}
+
+	return false
+}
+
+// GetLXDConfig returns the LXD configuration
+func (s *ClusterScope) GetLXDConfig() *infrav1beta1.LXDConfig {
+	return s.MaasCluster.Spec.LXDConfig
+}
+
+// IsWorkloadCluster returns true if this is a workload cluster
+func (s *ClusterScope) IsWorkloadCluster() bool {
+	return s.MaasCluster.Spec.WorkloadClusterConfig != nil
+}
+
+// GetWorkloadClusterConfig returns the workload cluster configuration
+func (s *ClusterScope) GetWorkloadClusterConfig() *infrav1beta1.WorkloadClusterConfig {
+	return s.MaasCluster.Spec.WorkloadClusterConfig
+}
+
+// GetNodePoolConfig returns the node pool configuration for a given machine
+func (s *ClusterScope) GetNodePoolConfig(machine *clusterv1.Machine) *infrav1beta1.NodePoolConfig {
+	if !s.IsWorkloadCluster() {
+		return nil
+	}
+
+	config := s.GetWorkloadClusterConfig()
+	if config == nil {
+		return nil
+	}
+
+	// Check if it's a control plane machine
+	if util.IsControlPlaneMachine(machine) {
+		return config.ControlPlanePool
+	}
+
+	// Check worker pools
+	for _, pool := range config.WorkerPools {
+		// This is a simplified check - in real implementation, you'd match based on
+		// machine labels, annotations, or other criteria
+		if pool.Name == machine.Labels["node-pool"] {
+			return &pool
+		}
+	}
+
+	return nil
+}
+
+// ShouldUseLXDForMachine determines if a machine should use LXD based on node pool configuration
+func (s *ClusterScope) ShouldUseLXDForMachine(machine *clusterv1.Machine) bool {
+	// Check machine-specific dynamicLXD flag first
+	if machine.Spec.InfrastructureRef.Kind == "MaasMachine" {
+		// This would require fetching the MaasMachine to check its spec
+		// For now, we'll rely on the node pool configuration
+	}
+
+	// Check node pool configuration
+	poolConfig := s.GetNodePoolConfig(machine)
+	if poolConfig != nil && poolConfig.UseLXD != nil {
+		return *poolConfig.UseLXD
+	}
+
+	// Default to false for backward compatibility
+	return false
+}
+
+// GetStaticIPForMachine returns the static IP for a machine based on node pool configuration
+func (s *ClusterScope) GetStaticIPForMachine(machine *clusterv1.Machine) string {
+	poolConfig := s.GetNodePoolConfig(machine)
+	if poolConfig == nil || len(poolConfig.StaticIPs) == 0 {
+		return ""
+	}
+
+	// Simple round-robin assignment - in real implementation, you'd want more sophisticated logic
+	maasMachines, err := s.GetClusterMaasMachines()
+	if err != nil {
+		s.Error(err, "failed to get cluster machines for static IP assignment")
+		return ""
+	}
+	index := len(maasMachines) % len(poolConfig.StaticIPs)
+	return poolConfig.StaticIPs[index]
+}
+
+// GetMappedAvailabilityZone maps workload cluster AZ to infrastructure cluster AZ
+func (s *ClusterScope) GetMappedAvailabilityZone(workloadAZ string) string {
+	if !s.IsWorkloadCluster() {
+		return workloadAZ
+	}
+
+	config := s.GetWorkloadClusterConfig()
+	if config == nil || config.AZMapping == nil {
+		return workloadAZ
+	}
+
+	if mappedAZ, exists := config.AZMapping[workloadAZ]; exists {
+		return mappedAZ
+	}
+
+	return workloadAZ
+}
+
+// GetMappedResourcePool maps workload cluster resource pool to infrastructure cluster resource pool
+func (s *ClusterScope) GetMappedResourcePool(workloadPool string) string {
+	if !s.IsWorkloadCluster() {
+		return workloadPool
+	}
+
+	config := s.GetWorkloadClusterConfig()
+	if config == nil || config.ResourcePoolMapping == nil {
+		return workloadPool
+	}
+
+	if mappedPool, exists := config.ResourcePoolMapping[workloadPool]; exists {
+		return mappedPool
+	}
+
+	return workloadPool
 }
