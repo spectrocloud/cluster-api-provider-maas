@@ -50,11 +50,6 @@ type MaasClusterSpec struct {
 	// +optional
 	LXDConfig *LXDConfig `json:"lxdConfig,omitempty"`
 
-	// InfrastructureClusterRef references the infrastructure cluster that provides LXD hosts
-	// This is used for workload clusters to identify their parent infrastructure cluster
-	// +optional
-	InfrastructureClusterRef *InfrastructureClusterRef `json:"infrastructureClusterRef,omitempty"`
-
 	// WorkloadClusterConfig contains configuration specific to workload clusters
 	// +optional
 	WorkloadClusterConfig *WorkloadClusterConfig `json:"workloadClusterConfig,omitempty"`
@@ -397,17 +392,6 @@ type ResourceSharingConfig struct {
 	// +kubebuilder:default=equal
 	// +optional
 	StorageSharing string `json:"storageSharing,omitempty"`
-}
-
-// InfrastructureClusterRef references an infrastructure cluster
-type InfrastructureClusterRef struct {
-	// Name is the name of the infrastructure cluster
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
-
-	// Namespace is the namespace of the infrastructure cluster
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
 }
 
 // WorkloadClusterConfig contains configuration for workload clusters

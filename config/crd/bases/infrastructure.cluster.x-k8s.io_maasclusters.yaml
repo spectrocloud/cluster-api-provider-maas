@@ -67,22 +67,6 @@ spec:
                 items:
                   type: string
                 type: array
-              infrastructureClusterRef:
-                description: |-
-                  InfrastructureClusterRef references the infrastructure cluster that provides LXD hosts
-                  This is used for workload clusters to identify their parent infrastructure cluster
-                properties:
-                  name:
-                    description: Name is the name of the infrastructure cluster
-                    minLength: 1
-                    type: string
-                  namespace:
-                    description: Namespace is the namespace of the infrastructure
-                      cluster
-                    type: string
-                required:
-                - name
-                type: object
               lxdConfig:
                 description: LXDConfig contains the configuration for LXD hosts
                 properties:

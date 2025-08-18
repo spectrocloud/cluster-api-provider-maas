@@ -396,46 +396,12 @@ func (s *ClusterScope) GetLXDConfig() *infrav1beta1.LXDConfig {
 
 // IsWorkloadCluster returns true if this is a workload cluster
 func (s *ClusterScope) IsWorkloadCluster() bool {
-	return s.MaasCluster.Spec.InfrastructureClusterRef != nil
-}
-
-// GetInfrastructureClusterRef returns the infrastructure cluster reference
-func (s *ClusterScope) GetInfrastructureClusterRef() *infrav1beta1.InfrastructureClusterRef {
-	return s.MaasCluster.Spec.InfrastructureClusterRef
+	return s.MaasCluster.Spec.WorkloadClusterConfig != nil
 }
 
 // GetWorkloadClusterConfig returns the workload cluster configuration
 func (s *ClusterScope) GetWorkloadClusterConfig() *infrav1beta1.WorkloadClusterConfig {
 	return s.MaasCluster.Spec.WorkloadClusterConfig
-}
-
-// GetInfrastructureCluster retrieves the infrastructure cluster
-func (s *ClusterScope) GetInfrastructureCluster() (*infrav1beta1.MaasCluster, error) {
-	if !s.IsWorkloadCluster() {
-		return nil, errors.New("not a workload cluster")
-	}
-
-	ref := s.GetInfrastructureClusterRef()
-	if ref == nil {
-		return nil, errors.New("infrastructure cluster reference is nil")
-	}
-
-	namespace := ref.Namespace
-	if namespace == "" {
-		namespace = s.MaasCluster.Namespace
-	}
-
-	infraCluster := &infrav1beta1.MaasCluster{}
-	key := client.ObjectKey{
-		Namespace: namespace,
-		Name:      ref.Name,
-	}
-
-	if err := s.client.Get(context.TODO(), key, infraCluster); err != nil {
-		return nil, errors.Wrapf(err, "failed to get infrastructure cluster %s/%s", namespace, ref.Name)
-	}
-
-	return infraCluster, nil
 }
 
 // GetNodePoolConfig returns the node pool configuration for a given machine

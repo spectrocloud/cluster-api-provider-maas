@@ -229,7 +229,7 @@ func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, er
 
 	// Name to set in MAAS for easier tracing
 	machineName := s.scope.Machine.Name
-	vmName := fmt.Sprintf("vm-%s-%s", s.scope.Cluster.Name, machineName)
+	vmName := fmt.Sprintf("vm-%s", machineName)
 	if mm.Annotations == nil {
 		mm.Annotations = map[string]string{}
 	}
