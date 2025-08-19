@@ -2,6 +2,8 @@ package machine
 
 import (
 	"context"
+	"regexp"
+
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
@@ -12,6 +14,12 @@ import (
 )
 
 // Service manages the MaaS machine
+var (
+	ErrBrokenMachine = errors.New("broken machine encountered")
+	reHostID         = regexp.MustCompile(`host (\d+)`)
+	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
+)
+
 type Service struct {
 	scope      *scope.MachineScope
 	maasClient maasclient.ClientSetInterface
@@ -22,6 +30,31 @@ func NewService(machineScope *scope.MachineScope) *Service {
 	return &Service{
 		scope:      machineScope,
 		maasClient: scope.NewMaasClient(machineScope.ClusterScope),
+	}
+}
+
+// logVMHostDiagnostics attempts to extract the VM host (pod) id from a MAAS error message
+// and, if found, fetches its details and prints status information to the controller log.
+func logVMHostDiagnostics(s *Service, err error) {
+	// First, check for machine id in the error and force-release it if found
+	if m := reMachineID.FindStringSubmatch(err.Error()); len(m) == 2 {
+		sys := m[1]
+		s.scope.Info("Releasing broken machine", "system-id", sys)
+		ctx := context.TODO()
+		_, _ = s.maasClient.Machines().Machine(sys).Releaser().WithForce().Release(ctx)
+	}
+
+	matches := reHostID.FindStringSubmatch(err.Error())
+	if len(matches) != 2 {
+		return // no host id in message
+	}
+	podID := matches[1]
+	s.scope.Info("Broken VM host detected", "pod-id", podID)
+	ctx := context.TODO()
+	if vmHost, e := s.maasClient.VMHosts().VMHost(podID).Get(ctx); e == nil {
+		s.scope.Info("VM host status", "pod-id", podID, "name", vmHost.Name(), "status", vmHost.Type(), "availCores", vmHost.AvailableCores(), "availMem", vmHost.AvailableMemory())
+	} else {
+		s.scope.Error(e, "failed to fetch VM host details", "pod-id", podID)
 	}
 }
 

@@ -25,7 +25,7 @@ endif
 
 # Image URL to use all building/pushing image targets
 PROJECT ?= "spectro-images/dev"
-IMG_TAG ?= "4.0.0-dev-palette-maas-lxd-solution"
+IMG_TAG ?= "4.0.0-dev"
 IMAGE_NAME := "cluster-api-provider-maas-controller"
 DRI_IMG ?= "us-east1-docker.pkg.dev/${PROJECT}/${USER}/cluster-api/${IMAGE_NAME}:${IMG_TAG}"
 
@@ -218,15 +218,13 @@ INIT_IMAGE_NAME ?= "lxd-initializer"
 INIT_IMG_TAG    ?= $(IMG_TAG)          # reuse the same tag as controller
 INIT_DRI_IMG    ?= us-east1-docker.pkg.dev/$(PROJECT)/$(USER)/cluster-api/$(INIT_IMAGE_NAME):$(INIT_IMG_TAG)
 
-# Build initializer image
-.PHONY: docker-build-init
-docker-build-init:
+.PHONY: lxd-initializer-docker-build
+lxd-initializer-docker-build: ## Build LXD initializer image
 	docker buildx build --load --platform linux/$(ARCH) \
 	    -f lxd-initializer/Dockerfile \
 	    ${BUILD_ARGS} \
 	    lxd-initializer -t $(INIT_DRI_IMG)
 
-# Push initializer image
-.PHONY: docker-push-init
-docker-push-init:
+.PHONY: lxd-initializer-docker-push
+lxd-initializer-docker-push: ## Push LXD initializer image
 	docker push $(INIT_DRI_IMG)
