@@ -40,7 +40,7 @@ func NewService(clusterScope *scope.ClusterScope) *Service {
 // ReconcileLXD reconciles LXD setup for a cluster
 func (s *Service) ReconcileLXD() error {
 	// Check if this is a control plane cluster that should use LXD
-	if !s.clusterScope.IsLXDControlPlaneCluster() {
+	if !s.clusterScope.IsLXDHostEnabled() {
 		return nil
 	}
 

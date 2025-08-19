@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -674,7 +674,10 @@ func getResourcePoolsViaHTTP(maasEndpoint, maasAPIKey string) ([]ResourcePool, e
 
 	// Check the response
 	if resp.StatusCode != http.StatusOK {
-		body, _ := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read error response body: %w", err)
+		}
 		return nil, fmt.Errorf("MAAS API returned non-OK status: %d - %s", resp.StatusCode, string(body))
 	}
 

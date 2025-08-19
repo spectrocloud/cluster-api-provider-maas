@@ -49,7 +49,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 
 	// If feature is off or cluster is being deleted, we're done after cleanup
-	if !clusterScope.IsLXDControlPlaneCluster() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !clusterScope.IsLXDHostEnabled() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
@@ -65,9 +65,9 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 	nb := cfg.NetworkBridge
 	skip := "true"
-	if cfg.SkipNetworkUpdate != nil && !*cfg.SkipNetworkUpdate {
-		skip = "false"
-	}
+	//if cfg.SkipNetworkUpdate != nil && !*cfg.SkipNetworkUpdate {
+	//	skip = "false"
+	//}
 
 	nt := cfg.NICType
 	np := cfg.NICParent
