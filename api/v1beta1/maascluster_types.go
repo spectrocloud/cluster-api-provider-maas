@@ -42,15 +42,11 @@ type MaasClusterSpec struct {
 	// +optional
 	FailureDomains []string `json:"failureDomains,omitempty"`
 
-	// LXDControlPlaneCluster indicates whether to configure infrastructure CP nodes as LXD hosts
-	// +optional
-	LXDControlPlaneCluster *bool `json:"lxdControlPlaneCluster,omitempty"`
-
 	// LXDConfig contains the configuration for LXD hosts
 	// +optional
 	LXDConfig *LXDConfig `json:"lxdConfig,omitempty"`
 
-	// WorkloadClusterConfig contains configuration specific to workload clusters
+  // WorkloadClusterConfig contains configuration specific to workload clusters
 	// +optional
 	WorkloadClusterConfig *WorkloadClusterConfig `json:"workloadClusterConfig,omitempty"`
 }
@@ -92,18 +88,6 @@ type LXDConfig struct {
 	// NetworkBridge specifies the network bridge to use (legacy, prefer NICParent)
 	// +optional
 	NetworkBridge string `json:"networkBridge,omitempty"`
-
-	// ImageRepository specifies the remote server configuration for images
-	// +optional
-	ImageRepository *ImageRepositoryConfig `json:"imageRepository,omitempty"`
-
-	// HostOS specifies the host OS configuration for LXD hosts
-	// +optional
-	HostOS *HostOSConfig `json:"hostOS,omitempty"`
-
-	// SecurityConfig specifies security settings for LXD hosts
-	// +optional
-	SecurityConfig *SecurityConfig `json:"securityConfig,omitempty"`
 
 	// SkipNetworkUpdate specifies whether to skip updating existing networks
 	// +kubebuilder:default=true
