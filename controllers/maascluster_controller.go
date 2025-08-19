@@ -317,7 +317,7 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
 
-	if clusterScope.IsLXDControlPlaneCluster() {
+	if clusterScope.IsLXDHostEnabled() {
 
 		// Ensure LXD initializer DaemonSet exists/absent as needed
 		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {

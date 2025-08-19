@@ -49,7 +49,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 
 	// If feature is off or cluster is being deleted, we're done after cleanup
-	if !clusterScope.IsLXDControlPlaneCluster() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !clusterScope.IsLXDHostEnabled() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
