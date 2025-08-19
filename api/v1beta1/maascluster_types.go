@@ -41,6 +41,54 @@ type MaasClusterSpec struct {
 	// but useful for MaaS since we can limit the domains to these
 	// +optional
 	FailureDomains []string `json:"failureDomains,omitempty"`
+
+	// LXDConfig contains the configuration for LXD hosts
+	// +optional
+	LXDConfig *LXDConfig `json:"lxdConfig,omitempty"`
+}
+
+// LXDConfig contains the configuration for LXD hosts
+type LXDConfig struct {
+	// Enabled specifies whether to enable LXD VM support
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ResourcePool specifies the MAAS resource pool to use for LXD VM hosts
+	// +optional
+	ResourcePool string `json:"resourcePool,omitempty"`
+
+	// Zone specifies the MAAS availability zone to register LXD VM hosts in
+	// +optional
+	Zone string `json:"zone,omitempty"`
+
+	// StorageBackend specifies the storage backend to use (zfs, dir, etc.)
+	// +kubebuilder:default=zfs
+	// +optional
+	StorageBackend string `json:"storageBackend,omitempty"`
+
+	// StorageSize specifies the size of the storage pool in GB
+	// +kubebuilder:default="50"
+	// +optional
+	StorageSize string `json:"storageSize,omitempty"`
+
+	// NICType selects the LXD NIC type (bridge or macvlan)
+	// +kubebuilder:validation:Enum=bridge;macvlan
+	// +optional
+	NICType string `json:"nicType,omitempty"`
+
+	// NICParent selects the parent interface or bridge for the NIC
+	// +optional
+	NICParent string `json:"nicParent,omitempty"`
+
+	// NetworkBridge specifies the network bridge to use (legacy, prefer NICParent)
+	// +optional
+	NetworkBridge string `json:"networkBridge,omitempty"`
+
+	// SkipNetworkUpdate specifies whether to skip updating existing networks
+	// +kubebuilder:default=true
+	// +optional
+	SkipNetworkUpdate *bool `json:"skipNetworkUpdate,omitempty"`
 }
 
 // MaasClusterStatus defines the observed state of MaasCluster

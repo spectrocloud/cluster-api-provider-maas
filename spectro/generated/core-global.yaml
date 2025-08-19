@@ -84,6 +84,51 @@ spec:
                 items:
                   type: string
                 type: array
+              lxdConfig:
+                description: LXDConfig contains the configuration for LXD hosts
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether to enable LXD VM support
+                    type: boolean
+                  networkBridge:
+                    description: NetworkBridge specifies the network bridge to use
+                      (legacy, prefer NICParent)
+                    type: string
+                  nicParent:
+                    description: NICParent selects the parent interface or bridge
+                      for the NIC
+                    type: string
+                  nicType:
+                    description: NICType selects the LXD NIC type (bridge or macvlan)
+                    enum:
+                    - bridge
+                    - macvlan
+                    type: string
+                  resourcePool:
+                    description: ResourcePool specifies the MAAS resource pool to
+                      use for LXD VM hosts
+                    type: string
+                  skipNetworkUpdate:
+                    default: true
+                    description: SkipNetworkUpdate specifies whether to skip updating
+                      existing networks
+                    type: boolean
+                  storageBackend:
+                    default: zfs
+                    description: StorageBackend specifies the storage backend to use
+                      (zfs, dir, etc.)
+                    type: string
+                  storageSize:
+                    default: "50"
+                    description: StorageSize specifies the size of the storage pool
+                      in GB
+                    type: string
+                  zone:
+                    description: Zone specifies the MAAS availability zone to register
+                      LXD VM hosts in
+                    type: string
+                type: object
             required:
             - dnsDomain
             type: object
