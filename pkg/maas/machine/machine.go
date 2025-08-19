@@ -161,7 +161,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	s.scope.Info("Allocated machine", "system-id", m.SystemID())
 
 	// Create boot interface bridge if needed
-	if s.scope.ClusterScope.IsLXDControlPlaneCluster() {
+	if s.scope.ClusterScope.IsLXDHostEnabled() {
 		if err := s.createBootInterfaceBridge(ctx, m.SystemID()); err != nil {
 			s.scope.Error(err, "failed to create boot interface bridge", "system-id", m.SystemID())
 			// Continue despite bridge creation failure as it's not critical for basic functionality
