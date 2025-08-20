@@ -113,7 +113,7 @@ type StaticIPConfig struct {
 // VMConfig contains additional VM configuration
 type VMConfig struct {
 	// DiskSize is the size of the VM disk in GB
-	// +kubebuilder:default=20
+	// +kubebuilder:default=60
 	// +optional
 	DiskSize *int `json:"diskSize,omitempty"`
 

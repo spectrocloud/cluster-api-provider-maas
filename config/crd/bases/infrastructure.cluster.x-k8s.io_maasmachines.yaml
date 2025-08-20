@@ -69,7 +69,7 @@ spec:
                           start
                         type: boolean
                       diskSize:
-                        default: 20
+                        default: 60
                         description: DiskSize is the size of the VM disk in GB
                         type: integer
                       network:
