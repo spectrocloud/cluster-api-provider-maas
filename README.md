@@ -65,21 +65,6 @@ sudo ./lxd-test-linux --storage-backend=zfs --storage-size=50 --network-bridge=b
 ./maas-test-linux --test-vm-host --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
 ```
 
-## Architecture
-
-The provider uses the MAAS API to manage machines and LXD VMs. It does not use direct LXD socket connections or CLI commands, ensuring it works correctly even when the controller is running on a different host than the LXD host.
-
-## Install CRDs
-### v1beta1 v0.5.0 release
-- Generate cluster using
-```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.5.0 | kubectl apply -f -
-```
-or
-```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 > my_cluster.yaml
-kubectl apply -f my_cluster.yaml
-```
 or
 ```shell
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml

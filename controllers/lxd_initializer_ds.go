@@ -65,9 +65,9 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 	nb := cfg.NetworkBridge
 	skip := "true"
-	//if cfg.SkipNetworkUpdate != nil && !*cfg.SkipNetworkUpdate {
-	//	skip = "false"
-	//}
+	if cfg.SkipNetworkUpdate != nil && !*cfg.SkipNetworkUpdate {
+		skip = "false"
+	}
 
 	nt := cfg.NICType
 	np := cfg.NICParent

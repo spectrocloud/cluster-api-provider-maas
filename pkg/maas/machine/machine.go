@@ -199,6 +199,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 	}
 
+
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).

@@ -124,29 +124,6 @@ type VMConfig struct {
 	// +kubebuilder:default=true
 	// +optional
 	AutoStart *bool `json:"autoStart,omitempty"`
-
-	// Limits contains resource limits for the VM
-	// +optional
-	Limits *VMResourceLimits `json:"limits,omitempty"`
-}
-
-// VMResourceLimits contains resource limits for a VM
-type VMResourceLimits struct {
-	// CPULimit is the CPU limit
-	// +optional
-	CPULimit *string `json:"cpuLimit,omitempty"`
-
-	// MemoryLimit is the memory limit
-	// +optional
-	MemoryLimit *string `json:"memoryLimit,omitempty"`
-
-	// DiskIOPS is the disk IOPS limit
-	// +optional
-	DiskIOPS *int `json:"diskIOPS,omitempty"`
-
-	// NetworkBandwidth is the network bandwidth limit in Mbps
-	// +optional
-	NetworkBandwidth *int `json:"networkBandwidth,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
