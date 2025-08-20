@@ -286,7 +286,6 @@ func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, er
 func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
 	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
 }
-
 // configureStaticIPForMachine configures static IP for a machine
 func (s *Service) configureStaticIPForMachine(m maasclient.Machine, staticIP string) error {
 	// Simplified implementation - in real implementation, use proper MAAS API calls
