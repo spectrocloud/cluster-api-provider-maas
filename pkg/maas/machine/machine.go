@@ -96,9 +96,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	mm := s.scope.MaasMachine
 
-	// Decide if we should create a VM via MAAS (LXD) based on user input or node-pool policy.
-	// Machine-level enablement (preferred) or node-pool policy (fallback)
-	if s.scope.GetDynamicLXD() || s.shouldUseLXDForWorkloadCluster() {
+	// Decide if we should create a VM via MAAS (LXD) based on machine-level enablement only.
+	if s.scope.GetDynamicLXD() {
 		s.scope.Info("Using LXD VM creation path (unified)", "machine", mm.Name)
 		return s.createVMViaMAAS(userDataB64)
 	}
@@ -199,33 +198,21 @@ func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, er
 	ctx := context.TODO()
 	mm := s.scope.MaasMachine
 
-	// Determine placement inputs
+	// Determine placement inputs using only machine-level fields
 	var zone string
 	if mm.Spec.FailureDomain != nil && *mm.Spec.FailureDomain != "" {
 		zone = *mm.Spec.FailureDomain
-	} else if s.scope.ClusterScope.IsWorkloadCluster() {
-		// Try workload pool-based mapping when FailureDomain not set
-		poolConfig := s.scope.ClusterScope.GetNodePoolConfig(s.scope.Machine)
-		if poolConfig != nil {
-			zone = s.getAvailabilityZoneForWorkloadMachine(poolConfig)
-		}
+	} else if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
+		zone = *s.scope.Machine.Spec.FailureDomain
 	}
 
 	var resourcePool string
 	if mm.Spec.ResourcePool != nil && *mm.Spec.ResourcePool != "" {
 		resourcePool = *mm.Spec.ResourcePool
-	} else if s.scope.ClusterScope.IsWorkloadCluster() {
-		poolConfig := s.scope.ClusterScope.GetNodePoolConfig(s.scope.Machine)
-		if poolConfig != nil {
-			resourcePool = s.getResourcePoolForWorkloadMachine(poolConfig)
-		}
 	}
 
-	// Prefer explicit per-machine static IP; fall back to pool-level assignment if present
+	// Prefer explicit per-machine static IP only
 	staticIP := s.scope.GetStaticIP()
-	if staticIP == "" {
-		staticIP = s.scope.ClusterScope.GetStaticIPForMachine(s.scope.Machine)
-	}
 
 	// Name to set in MAAS for easier tracing
 	machineName := s.scope.Machine.Name
@@ -310,65 +297,10 @@ func (s *Service) configureStaticIPForMachine(m maasclient.Machine, staticIP str
 	return nil
 }
 
-// shouldUseLXDForWorkloadCluster determines if a workload cluster machine should use LXD
-// based on user input provided via the MaasMachine annotations (copied from MaasMachineTemplate).
-// It does not enforce infra LXD host registration.
-func (s *Service) shouldUseLXDForWorkloadCluster() bool {
-	if !s.scope.ClusterScope.IsWorkloadCluster() {
-		return false
-	}
-	anns := s.scope.MaasMachine.GetAnnotations()
-	if anns == nil {
-		return false
-	}
-	return strings.EqualFold(anns["maas.spectrocloud.com/lxd-enabled"], "true")
-}
-
 // createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
 // createLXDVMForWorkloadCluster is deprecated; unified creation flow is handled in DeployMachine.
 func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
 	return nil, errors.New("createLXDVMForWorkloadCluster is deprecated; use DeployMachine unified flow")
-}
-
-// getAvailabilityZoneForWorkloadMachine determines the availability zone for a workload machine
-// getAvailabilityZoneForWorkloadMachine is deprecated in favor of shared placement resolver.
-func (s *Service) getAvailabilityZoneForWorkloadMachine(poolConfig *infrav1beta1.NodePoolConfig) string {
-	// Use pool configuration if available
-	if len(poolConfig.AvailabilityZones) > 0 {
-		// Simple round-robin assignment across configured AZs
-		maasMachines, err := s.scope.ClusterScope.GetClusterMaasMachines()
-		if err != nil {
-			s.scope.Error(err, "failed to get cluster machines for AZ assignment")
-			return poolConfig.AvailabilityZones[0]
-		}
-		index := len(maasMachines) % len(poolConfig.AvailabilityZones)
-		return poolConfig.AvailabilityZones[index]
-	}
-
-	// Use machine's failure domain if available
-	if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
-		return s.scope.ClusterScope.GetMappedAvailabilityZone(*s.scope.Machine.Spec.FailureDomain)
-	}
-
-	// Default to first available AZ
-	return "default"
-}
-
-// getResourcePoolForWorkloadMachine determines the resource pool for a workload machine
-// getResourcePoolForWorkloadMachine is deprecated in favor of shared placement resolver.
-func (s *Service) getResourcePoolForWorkloadMachine(poolConfig *infrav1beta1.NodePoolConfig) string {
-	// Use pool configuration if available
-	if poolConfig.ResourcePool != nil {
-		return s.scope.ClusterScope.GetMappedResourcePool(*poolConfig.ResourcePool)
-	}
-
-	// Use machine's resource pool if available
-	if s.scope.MaasMachine.Spec.ResourcePool != nil {
-		return s.scope.ClusterScope.GetMappedResourcePool(*s.scope.MaasMachine.Spec.ResourcePool)
-	}
-
-	// Default resource pool
-	return "default"
 }
 
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {

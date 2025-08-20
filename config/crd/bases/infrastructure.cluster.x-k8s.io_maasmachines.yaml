@@ -72,23 +72,6 @@ spec:
                         default: 20
                         description: DiskSize is the size of the VM disk in GB
                         type: integer
-                      limits:
-                        description: Limits contains resource limits for the VM
-                        properties:
-                          cpuLimit:
-                            description: CPULimit is the CPU limit
-                            type: string
-                          diskIOPS:
-                            description: DiskIOPS is the disk IOPS limit
-                            type: integer
-                          memoryLimit:
-                            description: MemoryLimit is the memory limit
-                            type: string
-                          networkBandwidth:
-                            description: NetworkBandwidth is the network bandwidth
-                              limit in Mbps
-                            type: integer
-                        type: object
                       network:
                         description: Network is the network to connect the VM to
                         type: string
