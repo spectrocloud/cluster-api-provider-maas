@@ -301,7 +301,6 @@ func (s *Service) configureStaticIPForMachine(m maasclient.Machine, staticIP str
 func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
 	return nil, errors.New("createLXDVMForWorkloadCluster is deprecated; use DeployMachine unified flow")
 }
-
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
