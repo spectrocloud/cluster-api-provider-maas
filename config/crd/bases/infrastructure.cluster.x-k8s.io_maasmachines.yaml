@@ -88,7 +88,7 @@ spec:
                 type: integer
               minDiskSize:
                 default: 60
-                description: MinMemoryInMB minimum memory in GB
+                description: MinDiskSizeInGB minimum disk size in GB
                 minimum: 0
                 type: integer
               minMemory:
