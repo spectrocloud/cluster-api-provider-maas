@@ -203,17 +203,6 @@ func main() {
 		}
 	}
 
-	// if actionStr == "register" || actionStr == "both" {
-	// 	// Register with MAAS if API key and endpoint are provided
-	// 	if maasAPIKey != "" && maasEndpoint != "" {
-	// 		if err := registerWithMAAS(nodeIP, maasAPIKey, maasEndpoint, zone, resourcePool); err != nil {
-	// 			log.Fatalf("Failed to register with MAAS: %v", err)
-	// 		}
-	// 	} else {
-	// 		log.Println("Skipping MAAS registration: MAAS_API_KEY or MAAS_ENDPOINT not provided")
-	// 	}
-	// }
-
 	// If running as a standalone binary, exit after completing the actions
 	if actionStr == "once" {
 		log.Println("Actions completed successfully")

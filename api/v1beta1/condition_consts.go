@@ -34,6 +34,10 @@ const (
 	// script to be ready before starting to create the container that provides the MachineMachine infrastructure.
 	WaitingForBootstrapDataReason = "WaitingForBootstrapData"
 
+	// WaitingForStaticIPReason (Severity=Info) documents a MachineMachine waiting for the static IP
+	// to be populated by an external controller before proceeding with machine deployment.
+	WaitingForStaticIPReason = "WaitingForStaticIP"
+
 	// MachineDeployingReason
 	MachineDeployingReason = "MachineDeploying"
 

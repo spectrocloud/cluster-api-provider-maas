@@ -255,6 +255,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
+	// If static IP is configured, make sure the IP field is populated by external controller.
+	if staticIPConfig := machineScope.GetStaticIPConfig(); staticIPConfig != nil && machineScope.GetStaticIP() == "" {
+		machineScope.Info("Static IP is configured but IP field is empty, waiting for external controller to populate it")
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForStaticIPReason, clusterv1.ConditionSeverityInfo, "")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	machineSvc := maasmachine.NewService(machineScope)
 
 	// Find existing instance
