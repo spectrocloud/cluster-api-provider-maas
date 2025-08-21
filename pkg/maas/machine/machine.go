@@ -103,7 +103,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	// Machine-level enablement (preferred) or node-pool policy (fallback)
 	if s.scope.GetDynamicLXD() {
 		s.scope.Info("Using LXD VM creation path (unified)", "machine", mm.Name)
-		return s.createVMViaMAAS(userDataB64)
+		return s.createVMViaMAAS(ctx, userDataB64)
 	}
 
 	// Standard MAAS machine allocation path
