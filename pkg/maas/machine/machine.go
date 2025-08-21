@@ -341,8 +341,8 @@ func (s *Service) PrepareLXDVM() (*infrav1beta1.Machine, error) {
 		mm.Annotations["maas.spectrocloud.com/vm-name"] = vmName
 		_ = s.scope.PatchObject()
 	}
-	cpu := 1
-	mem := 1024
+
+	var cpu, mem, diskSizeGB int
 	if mm.Spec.MinCPU != nil && *mm.Spec.MinCPU > 0 {
 		cpu = *mm.Spec.MinCPU
 	}
@@ -350,8 +350,11 @@ func (s *Service) PrepareLXDVM() (*infrav1beta1.Machine, error) {
 		mem = *mm.Spec.MinMemoryInMB
 	}
 
+	if mm.Spec.MinStorageInGB != nil && *mm.Spec.MinStorageInGB > 0 {
+		mem = *mm.Spec.MinMemoryInMB
+	}
+
 	// Enforce minimum 60GB storage
-	diskSizeGB := 60
 	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.DiskSize != nil && *mm.Spec.LXD.VMConfig.DiskSize > diskSizeGB {
 		diskSizeGB = *mm.Spec.LXD.VMConfig.DiskSize
 	}

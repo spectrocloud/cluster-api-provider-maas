@@ -50,11 +50,18 @@ type MaasMachineSpec struct {
 
 	// MinCPU minimum number of CPUs
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=4
 	MinCPU *int `json:"minCPU"`
 
 	// MinMemoryInMB minimum memory in MB
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=8192
 	MinMemoryInMB *int `json:"minMemory"`
+
+	// MinMemoryInMB minimum memory in GB
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=60
+	MinStorageInGB *int `json:"minStorage"`
 
 	// Tags for placement
 	// +optional
