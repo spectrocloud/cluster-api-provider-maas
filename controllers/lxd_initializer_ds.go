@@ -61,7 +61,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 	ss := cfg.StorageSize
 	if ss == "" {
-		ss = "50"
+		ss = "60"
 	}
 	nb := cfg.NetworkBridge
 	skip := "true"

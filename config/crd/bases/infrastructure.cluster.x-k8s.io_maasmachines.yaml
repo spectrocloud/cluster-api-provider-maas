@@ -74,7 +74,7 @@ spec:
                           start
                         type: boolean
                       diskSize:
-                        default: 20
+                        default: 60
                         description: DiskSize is the size of the VM disk in GB
                         type: integer
                       network:
@@ -87,11 +87,18 @@ spec:
                     type: object
                 type: object
               minCPU:
+                default: 4
                 description: MinCPU minimum number of CPUs
                 minimum: 0
                 type: integer
               minMemory:
+                default: 8192
                 description: MinMemoryInMB minimum memory in MB
+                minimum: 0
+                type: integer
+              minStorage:
+                default: 60
+                description: MinMemoryInMB minimum memory in GB
                 minimum: 0
                 type: integer
               providerID:
@@ -130,6 +137,7 @@ spec:
             - image
             - minCPU
             - minMemory
+            - minStorage
             type: object
           status:
             description: MaasMachineStatus defines the observed state of MaasMachine
