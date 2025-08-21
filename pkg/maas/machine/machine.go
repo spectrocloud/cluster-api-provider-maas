@@ -12,12 +12,15 @@ import (
 	"k8s.io/klog/v2/textlogger"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
 )
 
 // Service manages the MaaS machine
 var (
 	ErrBrokenMachine = errors.New("broken machine encountered")
+	ErrVMComposing   = errors.New("vm composing/commissioning")
 	reHostID         = regexp.MustCompile(`host (\d+)`)
 	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
 )
@@ -100,7 +103,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	// Machine-level enablement (preferred) or node-pool policy (fallback)
 	if s.scope.GetDynamicLXD() {
 		s.scope.Info("Using LXD VM creation path (unified)", "machine", mm.Name)
-		return s.createVMViaMAAS(userDataB64)
+		return s.createVMViaMAAS(ctx, userDataB64)
 	}
 
 	// Standard MAAS machine allocation path
@@ -199,7 +202,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 	}
 
-
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
@@ -215,9 +217,101 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 // createVMViaMAAS performs a unified VM creation flow using the MAAS API.
 // It consolidates previous createLXDVM* variants. VM placement is derived from
 // MaasMachine spec first, then (if applicable) workload node-pool mappings.
-func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, error) {
-	ctx := context.TODO()
+func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*infrav1beta1.Machine, error) {
+
 	mm := s.scope.MaasMachine
+
+	// If a VM was already composed earlier (providerID/system-id present), reuse it and only deploy
+	if id := s.scope.GetInstanceID(); id != nil && *id != "" {
+		m, err := s.maasClient.Machines().Machine(*id).Get(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get existing VM by system-id")
+		}
+		// Best-effort: set hostname and static IP before deploy
+		machineName := s.scope.Machine.Name
+		vmName := fmt.Sprintf("vm-%s", machineName)
+		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
+		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+			if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
+				s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+			}
+		}
+		deployingM, err := m.Deployer().
+			SetUserData(userDataB64).
+			SetOSSystem("custom").
+			SetDistroSeries(mm.Spec.Image).Deploy(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to deploy existing VM")
+		}
+		// Determine fallback zone
+		fallbackZone := ""
+		if deployingM.Zone() != nil {
+			fallbackZone = deployingM.Zone().Name()
+		}
+		if fallbackZone == "" {
+			if mm.Spec.FailureDomain != nil && *mm.Spec.FailureDomain != "" {
+				fallbackZone = *mm.Spec.FailureDomain
+			} else if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
+				fallbackZone = *s.scope.Machine.Spec.FailureDomain
+			}
+		}
+		s.scope.SetSystemID(deployingM.SystemID())
+		s.scope.SetProviderID(deployingM.SystemID(), fallbackZone)
+		if fallbackZone != "" {
+			s.scope.SetFailureDomain(fallbackZone)
+		}
+		_ = s.scope.PatchObject()
+		res := fromSDKTypeToMachine(deployingM)
+		if res.AvailabilityZone == "" {
+			res.AvailabilityZone = fallbackZone
+		}
+		return res, nil
+	}
+
+	// No composed VM yet; wait for PrepareLXDVM/commissioning to complete
+	if _, err := s.PrepareLXDVM(ctx); err != nil {
+		return nil, errors.Wrap(err, "compose failed prior to deploy")
+	}
+	conditions.MarkFalse(s.scope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "VM composed; commissioning")
+	_ = s.scope.PatchObject()
+	return nil, ErrVMComposing
+}
+
+// createLXDVM creates a new LXD VM and registers it with MAAS
+// This method uses MAAS API for cross-cluster communication
+// createLXDVM is deprecated; unified creation flow is handled in DeployMachine.
+// Keeping a stub for backward compatibility and to minimize churn.
+func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
+	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
+}
+
+// createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
+// createLXDVMForWorkloadCluster is deprecated; unified creation flow is handled in DeployMachine.
+func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
+	return nil, errors.New("createLXDVMForWorkloadCluster is deprecated; use DeployMachine unified flow")
+}
+
+// PrepareLXDVM composes an LXD VM and sets providerID; it does not deploy/boot the VM.
+func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, error) {
+
+	mm := s.scope.MaasMachine
+
+	// If already composed (system-id or providerID present), reuse
+	if mm.Spec.SystemID != nil && *mm.Spec.SystemID != "" {
+		m, err := s.maasClient.Machines().Machine(*mm.Spec.SystemID).Get(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get existing VM by system-id (pre-bootstrap)")
+		}
+		return fromSDKTypeToMachine(m), nil
+	}
+
+	if id := s.scope.GetInstanceID(); id != nil && *id != "" {
+		m, err := s.maasClient.Machines().Machine(*id).Get(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get existing VM by system-id (pre-bootstrap)")
+		}
+		return fromSDKTypeToMachine(m), nil
+	}
 
 	// Determine placement inputs using only machine-level fields
 	var zone string
@@ -232,80 +326,133 @@ func (s *Service) createVMViaMAAS(userDataB64 string) (*infrav1beta1.Machine, er
 		resourcePool = *mm.Spec.ResourcePool
 	}
 
-	// Prefer explicit per-machine static IP only
-	staticIP := s.scope.GetStaticIP()
-
-	// Name to set in MAAS for easier tracing
-	machineName := s.scope.Machine.Name
-	vmName := fmt.Sprintf("vm-%s", machineName)
-	if mm.Annotations == nil {
-		mm.Annotations = map[string]string{}
-	}
-	mm.Annotations["maas.spectrocloud.com/vm-name"] = vmName
-	_ = s.scope.PatchObject()
-
-	s.scope.Info("Requesting MAAS allocation for VM", "vm-name", vmName, "zone", zone, "pool", resourcePool)
-
-	allocator := s.maasClient.
-		Machines().
-		Allocator().
-		WithCPUCount(*mm.Spec.MinCPU).
-		WithMemory(*mm.Spec.MinMemoryInMB)
-
-	if zone != "" {
-		allocator = allocator.WithZone(zone)
-	}
-	if resourcePool != "" {
-		allocator = allocator.WithResourcePool(resourcePool)
-	}
-	if len(mm.Spec.Tags) > 0 {
-		allocator = allocator.WithTags(mm.Spec.Tags)
+	// VM name and minimal resources
+	vmName := mm.Annotations["maas.spectrocloud.com/vm-name"]
+	if vmName == "" {
+		uid := string(s.scope.Machine.UID)
+		short := uid
+		if len(uid) >= 5 {
+			short = uid[:5]
+		}
+		vmName = fmt.Sprintf("vm-%s-%s", s.scope.Machine.Name, short)
+		if mm.Annotations == nil {
+			mm.Annotations = map[string]string{}
+		}
+		mm.Annotations["maas.spectrocloud.com/vm-name"] = vmName
+		_ = s.scope.PatchObject()
 	}
 
-	m, err := allocator.Allocate(ctx)
+	var cpu, mem, diskSizeGB int
+	if mm.Spec.MinCPU != nil && *mm.Spec.MinCPU > 0 {
+		cpu = *mm.Spec.MinCPU
+	}
+	if mm.Spec.MinMemoryInMB != nil && *mm.Spec.MinMemoryInMB > 0 {
+		mem = *mm.Spec.MinMemoryInMB
+	}
+
+	if mm.Spec.MinStorageInGB != nil && *mm.Spec.MinStorageInGB > 0 {
+		mem = *mm.Spec.MinMemoryInMB
+	}
+
+	// Enforce minimum 60GB storage
+	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.DiskSize != nil && *mm.Spec.LXD.VMConfig.DiskSize > diskSizeGB {
+		diskSizeGB = *mm.Spec.LXD.VMConfig.DiskSize
+	}
+
+	params := maasclient.ParamsBuilder().
+		Set("hostname", vmName).
+		Set("cores", fmt.Sprintf("%d", cpu)).
+		Set("memory", fmt.Sprintf("%d", mem)).
+		Set("storage", fmt.Sprintf("%d", diskSizeGB))
+
+	// Select an LXD VM host based on zone and resource pool
+	hosts, err := s.maasClient.VMHosts().List(ctx, nil)
 	if err != nil {
-		logVMHostDiagnostics(s, err)
-		return nil, errors.Wrapf(err, "failed to allocate VM via MAAS API")
+		return nil, errors.Wrap(err, "failed to list LXD VM hosts")
+	}
+	selectedHost, err := lxd.SelectLXDHostWithMaasClient(hosts, zone, resourcePool)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to select LXD VM host")
 	}
 
-	// Set hostname before deployment
-	if _, err := m.Modifier().SetHostname(vmName).Update(ctx); err != nil {
-		return nil, errors.Wrap(err, "failed to set hostname before deploy")
-	}
-
-	s.scope.Info("Allocated VM", "system-id", m.SystemID())
-
-	// Configure static IP if specified (best-effort; do not fail creation on error)
-	if staticIP != "" {
-		if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
-			s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+	// Create the VM on the selected host
+	m, err := selectedHost.Composer().Compose(ctx, params)
+	if err != nil {
+		// If hostname already exists, reuse that VM
+		errStr := err.Error()
+		if strings.Contains(strings.ToLower(errStr), "hostname") && strings.Contains(strings.ToLower(errStr), "already exists") {
+			// First try global machines list
+			if all, aerr := s.maasClient.Machines().List(ctx, nil); aerr == nil {
+				for _, cand := range all {
+					cid := cand.SystemID()
+					if cid == "" {
+						continue
+					}
+					cDet, cg := s.maasClient.Machines().Machine(cid).Get(ctx)
+					if cg == nil && strings.EqualFold(cDet.Hostname(), vmName) {
+						s.scope.SetSystemID(cDet.SystemID())
+						s.scope.SetProviderID(cDet.SystemID(), zone)
+						if zone != "" {
+							s.scope.SetFailureDomain(zone)
+						}
+						_ = s.scope.PatchObject()
+						s.scope.Info("Reusing existing VM by hostname (pre-bootstrap)", "system-id", cDet.SystemID())
+						res := fromSDKTypeToMachine(cDet)
+						if res.AvailabilityZone == "" {
+							res.AvailabilityZone = zone
+						}
+						return res, nil
+					}
+				}
+			}
+			// Then try host-local list
+			if list, lerr := selectedHost.Machines().List(ctx); lerr == nil {
+				for _, ex := range list {
+					exID := ex.SystemID()
+					if exID == "" {
+						continue
+					}
+					// fetch details to get hostname
+					exDet, gerr := s.maasClient.Machines().Machine(exID).Get(ctx)
+					if gerr != nil {
+						continue
+					}
+					if strings.EqualFold(exDet.Hostname(), vmName) {
+						s.scope.SetSystemID(exDet.SystemID())
+						s.scope.SetProviderID(exDet.SystemID(), zone)
+						if zone != "" {
+							s.scope.SetFailureDomain(zone)
+						}
+						_ = s.scope.PatchObject()
+						s.scope.Info("Reusing existing VM by hostname (pre-bootstrap)", "system-id", exDet.SystemID())
+						res := fromSDKTypeToMachine(exDet)
+						if res.AvailabilityZone == "" {
+							res.AvailabilityZone = zone
+						}
+						return res, nil
+					}
+				}
+			}
+			return nil, errors.Wrap(err, "failed to compose VM on LXD host")
 		}
 	}
 
-	// Deploy the VM with user data
-	deployingM, err := m.Deployer().
-		SetUserData(userDataB64).
-		SetOSSystem("custom").
-		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to deploy VM")
+	// Set IDs early so system-id/providerID are recorded
+	if m.SystemID() != "" {
+		s.scope.SetSystemID(m.SystemID())
+		s.scope.SetProviderID(m.SystemID(), zone)
+		if zone != "" {
+			s.scope.SetFailureDomain(zone)
+		}
+		_ = s.scope.PatchObject()
 	}
+	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
 
-	// Record providerID and patch
-	s.scope.SetProviderID(deployingM.SystemID(), deployingM.Zone().Name())
-	if err := s.scope.PatchObject(); err != nil {
-		return nil, errors.Wrapf(err, "failed to patch machine with provider ID")
+	res := fromSDKTypeToMachine(m)
+	if res.AvailabilityZone == "" {
+		res.AvailabilityZone = zone
 	}
-
-	return fromSDKTypeToMachine(deployingM), nil
-}
-
-// createLXDVM creates a new LXD VM and registers it with MAAS
-// This method uses MAAS API for cross-cluster communication
-// createLXDVM is deprecated; unified creation flow is handled in DeployMachine.
-// Keeping a stub for backward compatibility and to minimize churn.
-func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
-	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
+	return res, nil
 }
 
 // setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
@@ -358,12 +505,6 @@ func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string
 
 	s.scope.Info("Boot interface bridge created successfully", "systemID", systemID, "bridgeName", "br0")
 	return nil
-}
-
-// createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
-// createLXDVMForWorkloadCluster is deprecated; unified creation flow is handled in DeployMachine.
-func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
-	return nil, errors.New("createLXDVMForWorkloadCluster is deprecated; use DeployMachine unified flow")
 }
 
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {

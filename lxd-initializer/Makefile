@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-REGISTRY ?= ghcr.io/spectrocloud
+REGISTRY ?= us-east1-docker.pkg.dev/spectro-public/release/cluster-api-provider-maas
 IMG ?= $(REGISTRY)/capmaas-lxd-initializer
 TAG ?= latest
 

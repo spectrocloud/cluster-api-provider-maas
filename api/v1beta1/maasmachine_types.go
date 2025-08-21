@@ -50,11 +50,18 @@ type MaasMachineSpec struct {
 
 	// MinCPU minimum number of CPUs
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=4
 	MinCPU *int `json:"minCPU"`
 
 	// MinMemoryInMB minimum memory in MB
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=8192
 	MinMemoryInMB *int `json:"minMemory"`
+
+	// MinMemoryInMB minimum memory in GB
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=60
+	MinStorageInGB *int `json:"minStorage"`
 
 	// Tags for placement
 	// +optional
@@ -88,6 +95,7 @@ type MachineLXDConfig struct {
 
 // StaticIPConfig defines the static IP configuration for a VM
 type StaticIPConfig struct {
+
 	// IP is the static IP address to assign
 	// +optional
 	IP string `json:"ip"`
@@ -108,7 +116,7 @@ type StaticIPConfig struct {
 // VMConfig contains additional VM configuration
 type VMConfig struct {
 	// DiskSize is the size of the VM disk in GB
-	// +kubebuilder:default=20
+	// +kubebuilder:default=60
 	// +optional
 	DiskSize *int `json:"diskSize,omitempty"`
 

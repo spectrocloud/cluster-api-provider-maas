@@ -273,6 +273,11 @@ func (in *MaasMachineSpec) DeepCopyInto(out *MaasMachineSpec) {
 		*out = new(int)
 		**out = **in
 	}
+	if in.MinStorageInGB != nil {
+		in, out := &in.MinStorageInGB, &out.MinStorageInGB
+		*out = new(int)
+		**out = **in
+	}
 	if in.Tags != nil {
 		in, out := &in.Tags, &out.Tags
 		*out = make([]string, len(*in))
