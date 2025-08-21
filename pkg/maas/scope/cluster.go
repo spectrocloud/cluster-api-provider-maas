@@ -236,8 +236,8 @@ func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
 	}
 
 	// Get the credentials from the secret
-	url := string(secret.Data["url"])
-	token := string(secret.Data["token"])
+	url := string(secret.Data["MAAS_ENDPOINT"])
+	token := string(secret.Data["MAAS_API_KEY"])
 
 	// Validate the credentials
 	if url == "" || token == "" {

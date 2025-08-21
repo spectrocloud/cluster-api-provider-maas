@@ -99,10 +99,11 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	mm := s.scope.MaasMachine
 
-	// Decide if we should create a VM via MAAS (LXD) based on machine-level enablement only.
+	// Decide if we should create a VM via MAAS (LXD) based on user input or node-pool policy.
+	// Machine-level enablement (preferred) or node-pool policy (fallback)
 	if s.scope.GetDynamicLXD() {
 		s.scope.Info("Using LXD VM creation path (unified)", "machine", mm.Name)
-		return s.createVMViaMAAS(ctx, userDataB64)
+		return s.createVMViaMAAS(userDataB64)
 	}
 
 	// Standard MAAS machine allocation path
@@ -162,6 +163,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Allocated machine", "system-id", m.SystemID())
 
+	// Create boot interface bridge if needed
+	if s.scope.ClusterScope.IsLXDHostEnabled() {
+		if err := s.createBootInterfaceBridge(ctx, m.SystemID()); err != nil {
+			s.scope.Error(err, "failed to create boot interface bridge", "system-id", m.SystemID())
+			// Continue despite bridge creation failure as it's not critical for basic functionality
+		}
+	}
+
 	defer func() {
 		if rerr != nil {
 			s.scope.Info("Attempting to release machine which failed to deploy")
@@ -181,6 +190,17 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	}
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
+
+	// Configure static IP before deployment
+	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+		staticIPConfig := s.scope.GetStaticIPConfig()
+		if staticIPConfig != nil {
+			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to configure static IP")
+			}
+		}
+	}
 
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
@@ -212,7 +232,9 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
 		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-			_ = s.configureStaticIPForMachine(m, staticIP)
+			if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
+				s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+			}
 		}
 		deployingM, err := m.Deployer().
 			SetUserData(userDataB64).
@@ -261,16 +283,6 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 // Keeping a stub for backward compatibility and to minimize churn.
 func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
 	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
-}
-
-// configureStaticIPForMachine configures static IP for a machine
-func (s *Service) configureStaticIPForMachine(m maasclient.Machine, staticIP string) error {
-	// Simplified implementation - in real implementation, use proper MAAS API calls
-	s.scope.Info("Configuring static IP", "ip", staticIP, "system-id", m.SystemID())
-
-	// For now, just log the intent - actual implementation would use MAAS API
-	// to configure the interface with static IP
-	return nil
 }
 
 // createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
@@ -337,10 +349,6 @@ func (s *Service) PrepareLXDVM() (*infrav1beta1.Machine, error) {
 	if mm.Spec.MinMemoryInMB != nil && *mm.Spec.MinMemoryInMB > 0 {
 		mem = *mm.Spec.MinMemoryInMB
 	}
-	// // Clamp memory to MAAS 10GiB per-VM compose cap
-	// if mem > 10240 {
-	// 	mem = 10240
-	// }
 
 	// Enforce minimum 60GB storage
 	diskSizeGB := 60
@@ -442,6 +450,58 @@ func (s *Service) PrepareLXDVM() (*infrav1beta1.Machine, error) {
 		res.AvailabilityZone = zone
 	}
 	return res, nil
+}
+
+// setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
+func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
+	ctx := context.TODO()
+
+	// Use the new simplified API to set static IP on boot interface
+	err := s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+	if err != nil {
+		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+	}
+
+	s.scope.Info("Static IP configured", "ip", config.IP, "systemID", systemID)
+	return nil
+}
+
+// createBootInterfaceBridge creates a bridge on the boot interface using maas-client-go
+// First checks if the boot interface type is "physical" before attempting to create a bridge
+func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string) error {
+	s.scope.Info("Checking boot interface type", "systemID", systemID)
+
+	// First, check if the boot interface is physical using GetBootInterfaceType
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		s.scope.Error(err, "Failed to get machine details")
+	}
+	interfaceType := machine.GetBootInterfaceType()
+	s.scope.Info("Boot interface type", "systemID", systemID, "interfaceType", interfaceType)
+
+	// Only create bridge if the boot interface is physical
+	if interfaceType != "physical" {
+		s.scope.Info("Boot interface is not physical, skipping bridge creation",
+			"systemID", systemID, "interfaceType", interfaceType)
+		return nil
+	}
+
+	s.scope.Info("Creating bridge for physical boot interface", "systemID", systemID, "interfaceType", interfaceType)
+
+	// Now create the bridge since we know it's physical
+	_, err = s.maasClient.NetworkInterfaces().CreateBootInterfaceBridge(ctx, systemID, "br0")
+	if err != nil {
+		// Handle expected errors gracefully (e.g., bridge already exists)
+		if strings.Contains(err.Error(), "already bridged") ||
+			strings.Contains(err.Error(), "already exists") {
+			s.scope.V(1).Info("Boot interface bridge creation skipped", "systemID", systemID, "reason", err.Error())
+			return nil
+		}
+		return fmt.Errorf("failed to create boot interface bridge for machine %s: %w", systemID, err)
+	}
+
+	s.scope.Info("Boot interface bridge created successfully", "systemID", systemID, "bridgeName", "br0")
+	return nil
 }
 
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
