@@ -350,8 +350,8 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		mem = *mm.Spec.MinMemoryInMB
 	}
 
-	if mm.Spec.MinStorageInGB != nil && *mm.Spec.MinStorageInGB > 0 {
-		mem = *mm.Spec.MinMemoryInMB
+	if mm.Spec.MinDiskSizeInGB != nil && *mm.Spec.MinDiskSizeInGB > 0 {
+		mem = *mm.Spec.MinDiskSizeInGB
 	}
 
 	// Enforce minimum 60GB storage

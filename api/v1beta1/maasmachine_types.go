@@ -61,7 +61,7 @@ type MaasMachineSpec struct {
 	// MinMemoryInMB minimum memory in GB
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:default=60
-	MinStorageInGB *int `json:"minStorage"`
+	MinDiskSizeInGB *int `json:"minDiskSizeInGB"`
 
 	// Tags for placement
 	// +optional
