@@ -113,10 +113,6 @@ spec:
                           cidr:
                             description: CIDR is the network CIDR
                             type: string
-                          enabled:
-                            default: false
-                            description: Enabled specifies whether to use static IP
-                            type: boolean
                           gateway:
                             description: Gateway is the network gateway
                             type: string
