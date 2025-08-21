@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
@@ -18,6 +19,9 @@ import (
 
 //go:embed templates/lxd_initializer_ds.yaml
 var lxdInitTemplate string
+
+//go:embed templates/lxd_initializer_rbac.yaml
+var lxdInitRBACTemplate string
 
 func render(replacements map[string]string, tmpl string) string {
 	for k, v := range replacements {
@@ -51,6 +55,11 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	// If feature is off or cluster is being deleted, we're done after cleanup
 	if !clusterScope.IsLXDHostEnabled() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
 		return nil
+	}
+
+	// Ensure RBAC resources are created
+	if err := r.ensureLXDInitializerRBAC(ctx, dsNamespace); err != nil {
+		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
 
 	// pull LXD config
@@ -106,4 +115,41 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 
 	_, err := controllerutil.CreateOrPatch(ctx, r.Client, ds, func() error { return nil })
 	return err
+}
+
+// ensureLXDInitializerRBAC creates the RBAC resources for lxd-initializer
+func (r *MaasClusterReconciler) ensureLXDInitializerRBAC(ctx context.Context, namespace string) error {
+	// Parse RBAC template into separate resources
+	rbacYaml := strings.ReplaceAll(lxdInitRBACTemplate, "namespace: default", fmt.Sprintf("namespace: %s", namespace))
+
+	// Split the YAML into separate documents
+	docs := strings.Split(rbacYaml, "---")
+
+	for _, doc := range docs {
+		doc = strings.TrimSpace(doc)
+		if doc == "" {
+			continue
+		}
+
+		// Parse as unstructured object to handle different resource types
+		obj := &unstructured.Unstructured{}
+		if err := yaml.Unmarshal([]byte(doc), obj); err != nil {
+			return fmt.Errorf("failed to unmarshal RBAC resource: %v", err)
+		}
+
+		// Set namespace for namespaced resources
+		if obj.GetKind() == "ServiceAccount" {
+			obj.SetNamespace(namespace)
+		}
+
+		// Create or update the resource
+		_, err := controllerutil.CreateOrPatch(ctx, r.Client, obj, func() error {
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create/patch %s %s: %v", obj.GetKind(), obj.GetName(), err)
+		}
+	}
+
+	return nil
 }

@@ -15,20 +15,29 @@ limitations under the License.
 package lxd
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	corev1 "k8s.io/api/core/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Service provides LXD operations for a cluster
 type Service struct {
 	clusterScope *scope.ClusterScope
 }
+
+const (
+	// LXD Host initialization label
+	LXDHostInitializedLabel = "lxdhost.cluster.com/initialized"
+)
 
 // NewService creates a new LXD service
 func NewService(clusterScope *scope.ClusterScope) *Service {
@@ -131,6 +140,16 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		TrustPassword:   "capmaas",
 	}
 
+	// Check if LXD initialization is complete on the node before attempting MAAS registration
+	lxdReady, err := s.isNodeLXDInitialized(machine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check LXD initialization status for machine %s", machine.Name)
+	}
+
+	if !lxdReady {
+		return fmt.Errorf("LXD initialization not yet complete on node for machine %s - waiting for lxd-initializer to finish", machine.Name)
+	}
+
 	// Set up LXD on the machine
 	// Note: This now relies on the DaemonSet to initialize LXD
 	// It only checks if the host is registered with MAAS and registers it if not
@@ -141,4 +160,35 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 	}
 
 	return nil
+}
+
+// isNodeLXDInitialized checks if a node has the LXD initialization label
+// The lxd-initializer DaemonSet runs on target cluster nodes and labels them when LXD init completes
+func (s *Service) isNodeLXDInitialized(machine *v1beta1.MaasMachine) (bool, error) {
+	// Get the node name from the machine hostname (same logic as SetNodeProviderID)
+	nodeName := strings.ToLower(*machine.Status.Hostname)
+	if machine.Status.Hostname == nil || *machine.Status.Hostname == "" {
+		return false, fmt.Errorf("machine %s has no hostname set", machine.Name)
+	}
+
+	// Get the workload cluster client to check node labels in target cluster
+	ctx := context.Background()
+	remoteClient, err := s.clusterScope.GetWorkloadClusterClient(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get workload cluster client: %w", err)
+	}
+
+	// Get the node from target cluster
+	node := &corev1.Node{}
+	if err := remoteClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
+		return false, fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	// Check if the node has the LXD initialization label set by lxd-initializer
+	if node.Labels == nil {
+		return false, nil
+	}
+
+	value, exists := node.Labels[LXDHostInitializedLabel]
+	return exists && value == "true", nil
 }
