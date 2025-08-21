@@ -269,7 +269,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 	}
 
 	// No composed VM yet; wait for PrepareLXDVM/commissioning to complete
-	if _, err := s.PrepareLXDVM(); err != nil {
+	if _, err := s.PrepareLXDVM(ctx); err != nil {
 		return nil, errors.Wrap(err, "compose failed prior to deploy")
 	}
 	conditions.MarkFalse(s.scope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "VM composed; commissioning")
@@ -292,8 +292,8 @@ func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1bet
 }
 
 // PrepareLXDVM composes an LXD VM and sets providerID; it does not deploy/boot the VM.
-func (s *Service) PrepareLXDVM() (*infrav1beta1.Machine, error) {
-	ctx := context.TODO()
+func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, error) {
+
 	mm := s.scope.MaasMachine
 
 	// If already composed (system-id or providerID present), reuse
