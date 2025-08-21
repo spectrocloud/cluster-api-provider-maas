@@ -284,6 +284,10 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "retrying after broken machine")
 				return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
 			}
+			if errors.Is(err, maasmachine.ErrVMComposing) {
+				// VM just composed and is commissioning; requeue shortly
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
