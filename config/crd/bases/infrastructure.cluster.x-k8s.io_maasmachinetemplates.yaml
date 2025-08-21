@@ -97,7 +97,7 @@ spec:
                         description: MinCPU minimum number of CPUs
                         minimum: 0
                         type: integer
-                      minDiskSizeInGB:
+                      minDiskSize:
                         default: 60
                         description: MinMemoryInMB minimum memory in GB
                         minimum: 0
@@ -143,7 +143,7 @@ spec:
                     required:
                     - image
                     - minCPU
-                    - minDiskSizeInGB
+                    - minDiskSize
                     - minMemory
                     type: object
                 required:
