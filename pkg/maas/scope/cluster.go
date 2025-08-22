@@ -393,3 +393,8 @@ func (s *ClusterScope) IsLXDHostEnabled() bool {
 func (s *ClusterScope) GetLXDConfig() *infrav1beta1.LXDConfig {
 	return s.MaasCluster.Spec.LXDConfig
 }
+
+// GetWorkloadClusterClient returns a client for the workload cluster
+func (s *ClusterScope) GetWorkloadClusterClient(ctx context.Context) (client.Client, error) {
+	return s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+}
