@@ -272,6 +272,8 @@ type ClientIdentity struct {
 const (
 	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
 	preferredSubnetKey           = "preferredSubnets"
+
+	readinessLabel = "cluster-api-maas/api-server-ready"
 )
 
 func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
@@ -392,4 +394,47 @@ func (s *ClusterScope) IsLXDHostEnabled() bool {
 // GetLXDConfig returns the LXD configuration
 func (s *ClusterScope) GetLXDConfig() *infrav1beta1.LXDConfig {
 	return s.MaasCluster.Spec.LXDConfig
+}
+
+// EnsureClusterReadinessLabel sets the readiness label on the target cluster when API server is available
+func (s *ClusterScope) EnsureClusterReadinessLabel() error {
+	ctx := context.TODO()
+
+	// Get remote client for target cluster
+	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	if err != nil {
+		// Remote cluster not accessible yet
+		s.V(2).Info("Cannot get remote client to set readiness label")
+		return nil // Not an error, just not ready yet
+	}
+
+	// Check if label is already set
+	namespace := &corev1.Namespace{}
+	namespaceName := types.NamespacedName{Name: "kube-system"}
+
+	if err := remoteClient.Get(ctx, namespaceName, namespace); err != nil {
+		if apierrors.IsNotFound(err) {
+			s.V(2).Info("kube-system namespace not found in target cluster")
+			return nil
+		}
+		return err
+	}
+
+	if labelValue, exists := namespace.Labels[readinessLabel]; exists && labelValue == "true" {
+		s.V(2).Info("API server readiness label already set on kube-system namespace")
+		return nil
+	}
+
+	// Set the readiness label immediately since API server is available
+	if namespace.Labels == nil {
+		namespace.Labels = make(map[string]string)
+	}
+	namespace.Labels[readinessLabel] = "true"
+
+	if err := remoteClient.Update(ctx, namespace); err != nil {
+		return fmt.Errorf("failed to set API server readiness label on kube-system namespace: %w", err)
+	}
+
+	s.Info("Successfully set API server readiness label", "label", readinessLabel)
+	return nil
 }
