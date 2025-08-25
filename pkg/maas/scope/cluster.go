@@ -272,8 +272,6 @@ type ClientIdentity struct {
 const (
 	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
 	preferredSubnetKey           = "preferredSubnets"
-
-	readinessLabel = "cluster-api-maas/api-server-ready"
 )
 
 func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
@@ -420,7 +418,7 @@ func (s *ClusterScope) EnsureClusterReadinessLabel() error {
 		return err
 	}
 
-	if labelValue, exists := namespace.Labels[readinessLabel]; exists && labelValue == "true" {
+	if labelValue, exists := namespace.Labels[infrautil.APIServerReadinessLabel]; exists && labelValue == "true" {
 		s.V(2).Info("API server readiness label already set on kube-system namespace")
 		return nil
 	}
@@ -429,12 +427,12 @@ func (s *ClusterScope) EnsureClusterReadinessLabel() error {
 	if namespace.Labels == nil {
 		namespace.Labels = make(map[string]string)
 	}
-	namespace.Labels[readinessLabel] = "true"
+	namespace.Labels[infrautil.APIServerReadinessLabel] = "true"
 
 	if err := remoteClient.Update(ctx, namespace); err != nil {
 		return fmt.Errorf("failed to set API server readiness label on kube-system namespace: %w", err)
 	}
 
-	s.Info("Successfully set API server readiness label", "label", readinessLabel)
+	s.Info("Successfully set API server readiness label", "label", infrautil.APIServerReadinessLabel)
 	return nil
 }
