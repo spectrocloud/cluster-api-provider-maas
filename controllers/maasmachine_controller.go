@@ -203,16 +203,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	// MAAS 400 errors requiring VM host removal.
 	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 		api := clusterScope.GetMaasClientIdentity()
-		nodeIP := ""
-		for _, addr := range m.Addresses {
-			if addr.Type == clusterv1.MachineExternalIP {
-				nodeIP = addr.Address
-				break
-			}
-			if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
-				nodeIP = addr.Address
-			}
-		}
+		nodeIP := getNodeIP(m.Addresses)
 		if nodeIP != "" {
 			if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
 				machineScope.Error(uerr, "best-effort unregister of LXD VM host before release failed", "nodeIP", nodeIP)
@@ -224,19 +215,10 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
 		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
-		if strings.Contains(err.Error(), "must be removed first") || strings.Contains(err.Error(), "VM hosts") {
+		if isVMHostRemovalRequiredError(err) {
 			api := clusterScope.GetMaasClientIdentity()
 			// choose ExternalIP first, then InternalIP
-			nodeIP := ""
-			for _, addr := range m.Addresses {
-				if addr.Type == clusterv1.MachineExternalIP {
-					nodeIP = addr.Address
-					break
-				}
-				if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
-					nodeIP = addr.Address
-				}
-			}
+			nodeIP := getNodeIP(m.Addresses)
 			if nodeIP != "" {
 				if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
 					machineScope.Error(uerr, "failed to unregister LXD VM host prior to release")
@@ -592,4 +574,36 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 	}
 
 	return result
+}
+
+// isVMHostRemovalRequiredError returns true if the MAAS error indicates the
+// machine cannot be released until VM hosts are removed. Uses specific patterns
+// and requires HTTP 400 in the message to reduce false positives.
+func isVMHostRemovalRequiredError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "status: 400") {
+		return false
+	}
+	if strings.Contains(msg, "must be removed first") || strings.Contains(msg, "VM hosts") {
+		return true
+	}
+	return false
+}
+
+// getNodeIP selects the best node IP from the machine addresses, preferring
+// ExternalIP and falling back to InternalIP.
+func getNodeIP(addresses []clusterv1.MachineAddress) string {
+	var internal string
+	for _, addr := range addresses {
+		if addr.Type == clusterv1.MachineExternalIP && addr.Address != "" {
+			return addr.Address
+		}
+		if addr.Type == clusterv1.MachineInternalIP && internal == "" {
+			internal = addr.Address
+		}
+	}
+	return internal
 }
