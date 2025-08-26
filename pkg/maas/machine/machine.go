@@ -370,9 +370,10 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list LXD VM hosts")
 	}
-	selectedHost, err := lxd.SelectLXDHostWithMaasClient(hosts, zone, resourcePool)
+	// selectedHost, err := lxd.SelectLXDHostWithMaasClient(hosts, zone, resourcePool)
+	selectedHost, err := lxd.SelectLXDHostStrict(hosts, zone, resourcePool)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to select LXD VM host")
+		return nil, errors.Wrap(err, "no matching LXD VM host for placement")
 	}
 
 	// Create the VM on the selected host
@@ -508,12 +509,16 @@ func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string
 }
 
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
+	az := ""
+	if m.Zone() != nil {
+		az = m.Zone().Name()
+	}
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
 		Hostname:         m.Hostname(),
 		State:            infrav1beta1.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
-		AvailabilityZone: m.Zone().Name(),
+		AvailabilityZone: az,
 	}
 
 	if m.FQDN() != "" {
