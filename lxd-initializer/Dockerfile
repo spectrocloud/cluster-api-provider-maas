@@ -1,5 +1,5 @@
 # Build the manager binary
-ARG BUILDER_GOLANG_VERSION
+ARG BUILDER_GOLANG_VERSION=1.24.5
 # First stage: build the executable.
 FROM --platform=$TARGETPLATFORM us-docker.pkg.dev/palette-images/build-base-images/golang:${BUILDER_GOLANG_VERSION}-alpine as toolchain
 
@@ -15,11 +15,14 @@ RUN apk add --no-cache git make
 # Copy go.mod and go.sum files
 COPY go.mod go.sum ./
 
-# Download dependencies
+# Copy vendor directory (contains all dependencies)
+COPY vendor/ vendor/
+
+# Download dependencies (optional with vendor)
 RUN go mod download
 
 # Copy source code
-COPY lxd-initializer.go .
+COPY *.go ./
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o lxd-initializer .

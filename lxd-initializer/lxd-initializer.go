@@ -201,6 +201,16 @@ func main() {
 		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicType, nicParent); err != nil {
 			log.Fatalf("Failed to initialize LXD: %v", err)
 		}
+
+		// Mark the node as LXD initialized (production: only log errors)
+		if nodeName != "" {
+			nodeLabeler, err := NewNodeLabeler(nodeName)
+			if err != nil {
+				log.Printf("Warning: Failed to create node labeler for %s: %v", nodeName, err)
+			} else {
+				nodeLabeler.SafeMarkLXDInitialized()
+			}
+		}
 	}
 
 	// If running as a standalone binary, exit after completing the actions

@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
-REGISTRY ?= us-east1-docker.pkg.dev/spectro-public/release/cluster-api-provider-maas
+PROJECT ?= "spectro-images/dev"
+REGISTRY ?= us-east1-docker.pkg.dev/${PROJECT}/${USER}
 IMG ?= $(REGISTRY)/capmaas-lxd-initializer
 TAG ?= latest
 

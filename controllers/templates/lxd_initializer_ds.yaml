@@ -73,7 +73,7 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: "us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:4.0.0-dev-palette-maas-lxd-solution"
+        image: "us-east1-docker.pkg.dev/spectro-images/dev/kunzhou/cluster-api/lxd-initializer:kunmaas2-amd64"
         securityContext:
           privileged: true
         env:
@@ -134,4 +134,6 @@ spec:
       - name: tmp
         hostPath:
           path: /tmp
+      serviceAccount: lxd-initializer
+      serviceAccountName: lxd-initializer
       restartPolicy: Always
