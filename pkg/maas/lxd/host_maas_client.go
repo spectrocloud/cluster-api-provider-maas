@@ -188,6 +188,34 @@ func GetAvailableLXDHostsWithMaasClient(apiKey, apiEndpoint string) ([]maasclien
 	return vmHosts, nil
 }
 
+// UnregisterLXDHostWithMaasClient removes a VM host registration from MAAS by matching name or power address
+func UnregisterLXDHostWithMaasClient(apiKey, apiEndpoint, nodeIP string) error {
+	client := maasclient.NewAuthenticatedClientSet(apiEndpoint, apiKey)
+
+	ctx := context.Background()
+	vmHosts, err := client.VMHosts().List(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM hosts: %w", err)
+	}
+
+	wantName := fmt.Sprintf("lxd-host-%s", nodeIP)
+	wantHost := normalizeHost(nodeIP)
+
+	for _, host := range vmHosts {
+		if host.Name() == wantName || normalizeHost(host.PowerAddress()) == wantHost {
+			// Found the host; delete it by system ID as required by the client
+			if derr := client.VMHosts().VMHost(host.SystemID()).Delete(ctx); derr != nil {
+				return fmt.Errorf("failed to delete VM host %s (id=%s): %w", host.Name(), host.SystemID(), derr)
+			}
+			log := textlogger.NewLogger(textlogger.NewConfig())
+			log.Info("Successfully unregistered LXD host", "node", nodeIP, "id", host.SystemID(), "name", host.Name())
+			return nil
+		}
+	}
+	// Not found -> nothing to do
+	return nil
+}
+
 // SelectLXDHostWithMaasClient selects an LXD host based on availability, AZ, and resource pool
 func SelectLXDHostWithMaasClient(hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
 	if len(hosts) == 0 {

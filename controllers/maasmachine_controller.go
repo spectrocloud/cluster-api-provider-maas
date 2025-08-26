@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,6 +47,7 @@ import (
 	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
@@ -196,9 +198,64 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		return ctrl.Result{}, err
 	}
 
+	// If LXD host feature is enabled and this is a control-plane node, proactively
+	// attempt to unregister the VM host before releasing the machine. This avoids
+	// MAAS 400 errors requiring VM host removal.
+	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+		api := clusterScope.GetMaasClientIdentity()
+		nodeIP := ""
+		for _, addr := range m.Addresses {
+			if addr.Type == clusterv1.MachineExternalIP {
+				nodeIP = addr.Address
+				break
+			}
+			if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
+				nodeIP = addr.Address
+			}
+		}
+		if nodeIP != "" {
+			if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
+				machineScope.Error(uerr, "best-effort unregister of LXD VM host before release failed", "nodeIP", nodeIP)
+			} else {
+				machineScope.Info("Best-effort unregistered LXD VM host before release", "nodeIP", nodeIP)
+			}
+		}
+	}
+
 	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
-		machineScope.Error(err, "failed to release machine")
-		return ctrl.Result{}, err
+		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
+		if strings.Contains(err.Error(), "must be removed first") || strings.Contains(err.Error(), "VM hosts") {
+			api := clusterScope.GetMaasClientIdentity()
+			// choose ExternalIP first, then InternalIP
+			nodeIP := ""
+			for _, addr := range m.Addresses {
+				if addr.Type == clusterv1.MachineExternalIP {
+					nodeIP = addr.Address
+					break
+				}
+				if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
+					nodeIP = addr.Address
+				}
+			}
+			if nodeIP != "" {
+				if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
+					machineScope.Error(uerr, "failed to unregister LXD VM host prior to release")
+					return ctrl.Result{}, err
+				}
+				machineScope.Info("Unregistered LXD VM host prior to release", "nodeIP", nodeIP)
+				// retry release
+				if rerr := machineSvc.ReleaseMachine(m.ID); rerr != nil {
+					machineScope.Error(rerr, "failed to release machine after unregistering VM host")
+					return ctrl.Result{}, rerr
+				}
+			} else {
+				machineScope.Error(err, "failed to release machine and no node IP for VM host unregister")
+				return ctrl.Result{}, err
+			}
+		} else {
+			machineScope.Error(err, "failed to release machine")
+			return ctrl.Result{}, err
+		}
 	}
 
 	conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
