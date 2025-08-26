@@ -78,12 +78,20 @@ func SetupLXDHostWithMaasClient(config HostConfig) error {
 
 	if isRegistered {
 		log.Info("LXD host is already registered with MAAS", "node", config.NodeIP)
+		// Ensure placement (zone/pool) matches desired config
+		if uerr := ensureVMHostPlacement(client, config.NodeIP, config.Zone, config.ResourcePool); uerr != nil {
+			log.Error(uerr, "failed to ensure VM host placement")
+		}
 		return nil
 	}
 
 	// Register the host with MAAS as a KVM host
 	if err := registerWithMaasClient(client, config); err != nil {
 		return fmt.Errorf("failed to register with MAAS: %w", err)
+	}
+	// After registration, enforce placement
+	if uerr := ensureVMHostPlacement(client, config.NodeIP, config.Zone, config.ResourcePool); uerr != nil {
+		log.Error(uerr, "failed to ensure VM host placement after registration")
 	}
 
 	log.Info("Successfully set up LXD host", "node", config.NodeIP)
@@ -173,6 +181,36 @@ func registerWithMaasClient(client maasclient.ClientSetInterface, config HostCon
 	return nil
 }
 
+// ensureVMHostPlacement finds the VM host and updates zone/pool if provided
+func ensureVMHostPlacement(client maasclient.ClientSetInterface, nodeIP, zone, pool string) error {
+	if zone == "" && pool == "" {
+		return nil
+	}
+	ctx := context.Background()
+	vmHosts, err := client.VMHosts().List(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("list vm-hosts: %w", err)
+	}
+	wantName := fmt.Sprintf("lxd-host-%s", nodeIP)
+	wantHost := normalizeHost(nodeIP)
+	for _, h := range vmHosts {
+		if h.Name() == wantName || normalizeHost(h.PowerAddress()) == wantHost {
+			upd := maasclient.ParamsBuilder()
+			if zone != "" {
+				upd.Set("zone", zone)
+			}
+			if pool != "" {
+				upd.Set("pool", pool)
+			}
+			if _, uerr := client.VMHosts().VMHost(h.SystemID()).Update(ctx, upd); uerr != nil {
+				return fmt.Errorf("update vm-host placement: %w", uerr)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("vm-host not found for %s", nodeIP)
+}
+
 // GetAvailableLXDHostsWithMaasClient returns a list of available LXD hosts from MAAS
 func GetAvailableLXDHostsWithMaasClient(apiKey, apiEndpoint string) ([]maasclient.VMHost, error) {
 	// Create MAAS client
@@ -241,6 +279,48 @@ func SelectLXDHostWithMaasClient(hosts []maasclient.VMHost, az, resourcePool str
 
 	// If no host matches the criteria, return the first host
 	return hosts[0], nil
+}
+
+// SelectLXDHostStrict selects an LXD host strictly matching the provided placement.
+// If both az and resourcePool are set, both must match. If only one is set, that
+// constraint must match. Returns an error when no matching host is found.
+func SelectLXDHostStrict(hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("no LXD hosts available")
+	}
+
+	matches := make([]maasclient.VMHost, 0)
+	for _, host := range hosts {
+		hostZone := ""
+		if host.Zone() != nil {
+			hostZone = host.Zone().Name()
+		}
+		hostPool := ""
+		if host.ResourcePool() != nil {
+			hostPool = host.ResourcePool().Name()
+		}
+
+		zoneOK := (az == "" || hostZone == az)
+		poolOK := (resourcePool == "" || hostPool == resourcePool)
+		if zoneOK && poolOK {
+			matches = append(matches, host)
+		}
+	}
+
+	if len(matches) == 0 {
+		if az != "" && resourcePool != "" {
+			return nil, fmt.Errorf("no LXD host found matching zone=%s and resourcePool=%s", az, resourcePool)
+		}
+		if az != "" {
+			return nil, fmt.Errorf("no LXD host found matching zone=%s", az)
+		}
+		if resourcePool != "" {
+			return nil, fmt.Errorf("no LXD host found matching resourcePool=%s", resourcePool)
+		}
+		return nil, fmt.Errorf("no LXD host found for placement constraints")
+	}
+
+	return matches[0], nil
 }
 
 // CreateLXDVMWithMaasClient creates a VM on an LXD host using MAAS API

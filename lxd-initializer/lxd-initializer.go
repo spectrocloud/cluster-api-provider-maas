@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	lxdclient "github.com/canonical/lxd/client"
@@ -116,6 +118,28 @@ func main() {
 		storageSize = os.Getenv("STORAGE_SIZE")
 		if storageSize == "" {
 			storageSize = "50" // Default to 50GB
+		}
+	}
+	// Support auto-sizing to use (almost) full host capacity when requested
+	// if storageSize is not set, it defaults to 50GB, in that case we need to auto-size
+	if storageSize == "50" || storageSize == "auto" || storageSize == "max" || storageSize == "AUTO" {
+		if gb, err := computeHostFreeGB("/var/snap/lxd/common/lxd"); err == nil {
+			// Leave 5GB headroom; ensure at least 50GB when possible
+			desired := gb - 5
+			if desired < 10 && gb > 0 {
+				desired = gb // very small hosts: use what we have
+			}
+			if desired < 50 && gb >= 50 {
+				desired = 50
+			}
+			if desired > 0 {
+				storageSize = fmt.Sprintf("%d", desired)
+				log.Printf("Auto-sized LXD storage pool to %sGB (host avail %dGB)", storageSize, gb)
+			} else {
+				log.Printf("Auto-sizing failed (computed %dGB); falling back to %sGB", desired, storageSize)
+			}
+		} else {
+			log.Printf("Failed to compute host free space: %v; falling back to %sGB", err, storageSize)
 		}
 	}
 
@@ -284,6 +308,24 @@ func logLXDDiagnostics() {
 		log.Printf("process list:\n%s", string(psOut))
 	}
 	log.Println("===== end diagnostics =====")
+}
+
+// computeHostFreeGB returns available space of the filesystem containing the
+// given path, in whole gigabytes.
+func computeHostFreeGB(path string) (int, error) {
+	// Resolve to host path via nsenter if needed: the DS mounts host paths, so direct statfs should reflect host
+	abs := path
+	if !filepath.IsAbs(abs) {
+		abs = "/"
+	}
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(abs, &st); err != nil {
+		return 0, err
+	}
+	// Available blocks * size per block
+	freeBytes := st.Bavail * uint64(st.Bsize)
+	gb := int(freeBytes / (1024 * 1024 * 1024))
+	return gb, nil
 }
 
 // setTrustPassword sets core.trust_password and verifies it.
