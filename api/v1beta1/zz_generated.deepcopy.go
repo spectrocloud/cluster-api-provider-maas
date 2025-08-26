@@ -273,8 +273,8 @@ func (in *MaasMachineSpec) DeepCopyInto(out *MaasMachineSpec) {
 		*out = new(int)
 		**out = **in
 	}
-	if in.MinStorageInGB != nil {
-		in, out := &in.MinStorageInGB, &out.MinStorageInGB
+	if in.MinDiskSizeInGB != nil {
+		in, out := &in.MinDiskSizeInGB, &out.MinDiskSizeInGB
 		*out = new(int)
 		**out = **in
 	}
