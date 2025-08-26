@@ -15,20 +15,29 @@ limitations under the License.
 package lxd
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	corev1 "k8s.io/api/core/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Service provides LXD operations for a cluster
 type Service struct {
 	clusterScope *scope.ClusterScope
 }
+
+const (
+	// LXD Host initialization label
+	LXDHostInitializedLabel = "lxdhost.cluster.com/initialized"
+)
 
 // NewService creates a new LXD service
 func NewService(clusterScope *scope.ClusterScope) *Service {
@@ -47,39 +56,32 @@ func (s *Service) ReconcileLXD() error {
 	// Get the cluster
 	cluster := s.clusterScope.MaasCluster
 
-	// // Check if LXD is already ready
-	// if conditions.IsTrue(cluster, v1beta1.LXDReadyCondition) {
-	// 	return nil
-	// }
-
-	// Even if LXDReady is already true we still verify that each control-plane node remains registered.
-
 	// Set the LXD setup pending condition
 	conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "LXD setup is pending")
 
-	// Get the control plane machines
-	cpMachines, err := s.clusterScope.GetControlPlaneMaasMachines()
+	// Get ALL machines in the cluster (control plane + worker nodes)
+	allMachines, err := s.clusterScope.GetClusterMaasMachines()
 	if err != nil {
-		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, "Failed to get control plane machines: %v", err)
-		return errors.Wrap(err, "failed to get control plane machines")
+		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, "Failed to get cluster machines: %v", err)
+		return errors.Wrap(err, "failed to get cluster machines")
 	}
 
-	// Check if there are any control plane machines
-	if len(cpMachines) == 0 {
-		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "No control plane machines found")
+	// Check if there are any machines
+	if len(allMachines) == 0 {
+		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "No machines found in cluster")
 		return nil
 	}
 
-	// Check if all control plane machines are ready
-	for _, machine := range cpMachines {
+	// Check if all machines are ready
+	for _, machine := range allMachines {
 		if !machine.Status.Ready {
-			conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Control plane machine %s is not ready", machine.Name)
+			conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Machine %s is not ready", machine.Name)
 			return nil
 		}
 	}
 
-	// Set up LXD on each control plane machine
-	for _, machine := range cpMachines {
+	// Set up LXD on each machine
+	for _, machine := range allMachines {
 		if err := s.setupLXDOnMachine(machine); err != nil {
 			conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, "Failed to set up LXD on machine %s: %v", machine.Name, err)
 			return errors.Wrapf(err, "failed to set up LXD on machine %s", machine.Name)
@@ -115,6 +117,8 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		return fmt.Errorf("machine %s has no valid IP address", machine.Name)
 	}
 
+	s.clusterScope.Info("Setting up LXD host", "machine", machine.Name, "ip", nodeIP)
+
 	// Get the LXD configuration from the cluster
 	lxdConfig := s.clusterScope.GetLXDConfig()
 
@@ -131,6 +135,18 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		TrustPassword:   "capmaas",
 	}
 
+	// Check if LXD initialization is complete on the node before attempting MAAS registration
+	lxdReady, err := s.isNodeLXDInitialized(machine)
+	if err != nil {
+		return errors.Wrapf(err, "failed to check LXD initialization status for machine %s", machine.Name)
+	}
+
+	if !lxdReady {
+		s.clusterScope.V(1).Info("LXD not yet initialized, will retry", "machine", machine.Name)
+		// Return a specific error to trigger requeue instead of silently skipping
+		return fmt.Errorf("LXD not ready on machine %s, waiting for initialization", machine.Name)
+	}
+
 	// Set up LXD on the machine
 	// Note: This now relies on the DaemonSet to initialize LXD
 	// It only checks if the host is registered with MAAS and registers it if not
@@ -141,4 +157,35 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 	}
 
 	return nil
+}
+
+// isNodeLXDInitialized checks if a node has the LXD initialization label
+// The lxd-initializer DaemonSet runs on target cluster nodes and labels them when LXD init completes
+func (s *Service) isNodeLXDInitialized(machine *v1beta1.MaasMachine) (bool, error) {
+	// Get the node name from the machine hostname (same logic as SetNodeProviderID)
+	nodeName := strings.ToLower(*machine.Status.Hostname)
+	if machine.Status.Hostname == nil || *machine.Status.Hostname == "" {
+		return false, fmt.Errorf("machine %s has no hostname set", machine.Name)
+	}
+
+	// Get the workload cluster client to check node labels in target cluster
+	ctx := context.Background()
+	remoteClient, err := s.clusterScope.GetWorkloadClusterClient(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to get workload cluster client: %w", err)
+	}
+
+	// Get the node from target cluster
+	node := &corev1.Node{}
+	if err := remoteClient.Get(ctx, client.ObjectKey{Name: nodeName}, node); err != nil {
+		return false, fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+
+	// Check if the node has the LXD initialization label set by lxd-initializer
+	if node.Labels == nil {
+		return false, nil
+	}
+
+	value, exists := node.Labels[LXDHostInitializedLabel]
+	return exists && value == "true", nil
 }
