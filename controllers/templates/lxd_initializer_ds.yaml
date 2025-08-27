@@ -73,7 +73,7 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: "us-east1-docker.pkg.dev/spectro-images/dev/kunzhou/cluster-api/lxd-initializer:kunmaas2-amd64"
+        image: "us-east1-docker.pkg.dev/spectro-images/dev/kunzhou/cluster-api/capmaas-lxd-initializer:kunmaas3"
         securityContext:
           privileged: true
         env:
@@ -87,18 +87,12 @@ spec:
               fieldPath: status.hostIP
         - name: STORAGE_BACKEND
           value: "${STORAGE_BACKEND}"
-        - name: STORAGE_SIZE
-          value: "${STORAGE_SIZE}"
         - name: NETWORK_BRIDGE
           value: "${NETWORK_BRIDGE}"
         - name: SKIP_NETWORK_UPDATE
           value: "${SKIP_NETWORK_UPDATE}"
         - name: TRUST_PASSWORD
           value: "${TRUST_PASSWORD}"
-        - name: NIC_TYPE
-          value: "${NIC_TYPE}"
-        - name: NIC_PARENT
-          value: "${NIC_PARENT}"
         volumeMounts:
         - name: var-lib-lxd
           mountPath: /var/lib/lxd

@@ -15,11 +15,12 @@ spec:
       labels:
         app: lxd-initializer
     spec:
+      serviceAccountName: lxd-initializer
       hostNetwork: true
       hostPID: true
       containers:
       - name: lxd-initializer
-        image: ${REGISTRY}/lxd-initializer:${TAG}
+        image: us-east1-docker.pkg.dev/spectro-images/dev/kunzhou/cluster-api/capmaas-lxd-initializer:kunmaas3
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -47,22 +48,10 @@ spec:
               fieldPath: status.hostIP
         - name: STORAGE_BACKEND
           value: "zfs"
-        - name: STORAGE_SIZE
-          value: "50"
         - name: NETWORK_BRIDGE
           value: "br0"
         - name: SKIP_NETWORK_UPDATE
           value: "true"
-        - name: MAAS_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: maas-credentials
-              key: apiKey
-        - name: MAAS_ENDPOINT
-          valueFrom:
-            configMapKeyRef:
-              name: capmaas-config
-              key: maasEndpoint
         - name: ZONE
           value: "default"
         - name: RESOURCE_POOL
