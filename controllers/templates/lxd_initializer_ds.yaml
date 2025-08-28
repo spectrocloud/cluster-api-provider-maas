@@ -73,7 +73,7 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: "us-east1-docker.pkg.dev/spectro-images/dev/kunzhou/cluster-api/capmaas-lxd-initializer:kunmaas3"
+        image: "us-east1-docker.pkg.dev/spectro-images/dev/cluster-api/capmaas-lxd-initializer:v0.0.1"
         securityContext:
           privileged: true
         env:
