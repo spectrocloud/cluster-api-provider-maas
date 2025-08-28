@@ -1,8 +1,8 @@
 # Image URL to use all building/pushing image targets
-PROJECT ?= "spectro-images/dev"
-REGISTRY ?= us-east1-docker.pkg.dev/${PROJECT}/${USER}
+REGISTRY ?= us-east1-docker.pkg.dev/spectro-images/dev/cluster-api
 IMG ?= $(REGISTRY)/capmaas-lxd-initializer
-TAG ?= latest
+TAG ?= v0.0.1
+BUILDER_GOLANG_VERSION ?= 1.24
 
 # Build binary
 build:
@@ -14,7 +14,7 @@ run:
 
 # Build the docker image
 docker-build:
-	docker build -t ${IMG}:${TAG} .
+	docker build --platform linux/amd64 --build-arg BUILDER_GOLANG_VERSION=${BUILDER_GOLANG_VERSION} -t ${IMG}:${TAG} .
 
 # Push the docker image
 docker-push:
