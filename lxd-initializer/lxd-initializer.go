@@ -1,22 +1,24 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
+	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	lxdclient "github.com/canonical/lxd/client"
 	"github.com/canonical/lxd/shared/api"
+	"github.com/spectrocloud/maas-client-go/maasclient"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 // Common LXD socket paths
@@ -24,46 +26,120 @@ var lxdSocketPaths = []string{
 	"/var/snap/lxd/common/lxd/unix.socket", // Snap path
 }
 
-var lxdSocketPathsLegacy = []string{
-	"/var/lib/lxd/unix.socket",             // Default path
-	"/var/snap/lxd/common/lxd/unix.socket", // Snap installation path
-	"/run/lxd.socket",                      // Alternative path
+// getKubernetesClient returns a Kubernetes client using in-cluster config
+func getKubernetesClient() (*kubernetes.Clientset, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get in-cluster config: %v", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client: %v", err)
+	}
+
+	return clientset, nil
 }
 
-// auto-detection helpers
-// getDefaultIface returns interface name owning default route
-func getDefaultIface() (string, error) {
-	f, err := os.Open("/proc/net/route")
+// getMaasCredentialsFromSecret reads MAAS credentials from the capmaas-manager-bootstrap-credentials secret
+// It searches across all namespaces to find the secret
+func getMaasCredentialsFromSecret() (string, string, error) {
+	client, err := getKubernetesClient()
 	if err != nil {
-		return "", err
+		return "", "", fmt.Errorf("failed to get kubernetes client: %v", err)
 	}
-	defer f.Close()
-	s := bufio.NewScanner(f)
-	for s.Scan() {
-		fields := strings.Fields(s.Text())
-		if len(fields) > 2 && fields[1] == "00000000" {
-			return fields[0], nil
+
+	secretName := "capmaas-manager-bootstrap-credentials"
+
+	// List all secrets across all namespaces
+	secretList, err := client.CoreV1().Secrets("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return "", "", fmt.Errorf("failed to list secrets: %v", err)
+	}
+
+	// Search for the capmaas-manager-bootstrap-credentials secret
+	for _, secret := range secretList.Items {
+		if secret.Name == secretName {
+			maasEndpoint := string(secret.Data["MAAS_ENDPOINT"])
+			maasAPIKey := string(secret.Data["MAAS_API_KEY"])
+
+			if maasEndpoint == "" || maasAPIKey == "" {
+				log.Printf("Warning: Found secret %s in namespace %s but MAAS_ENDPOINT or MAAS_API_KEY is empty", secretName, secret.Namespace)
+				continue
+			}
+
+			log.Printf("Found MAAS credentials in secret %s in namespace %s", secretName, secret.Namespace)
+			return maasEndpoint, maasAPIKey, nil
 		}
 	}
-	return "", fmt.Errorf("no default route found")
+
+	return "", "", fmt.Errorf("secret %s not found in any namespace", secretName)
 }
 
-func linkExists(name string) bool {
-	return exec.Command("ip", "link", "show", name).Run() == nil
-}
-
-// isLinuxBridge returns true if the given interface is a Linux bridge
-func isLinuxBridge(name string) bool {
-	_, err := os.Stat("/sys/class/net/" + name + "/bridge")
-	return err == nil
-}
-
-// autoUplink returns the interface owning the default route or a safe fallback
-func autoUplink() string {
-	if u, err := getDefaultIface(); err == nil && u != "" {
-		return u
+// extractSystemIDFromNodeName extracts system ID from MAAS node name
+func extractSystemIDFromNodeName(nodeName string) (string, error) {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		return "", fmt.Errorf("failed to get in-cluster config: %w", err)
 	}
-	return "enp2s0f0"
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+
+	ctx := context.Background()
+	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+	providerID := node.Spec.ProviderID
+	if err != nil {
+		return "", fmt.Errorf("failed to get node %s: %w", nodeName, err)
+	}
+	if !strings.HasPrefix(providerID, "maas:///") {
+		return "", fmt.Errorf("invalid MAAS providerID format: %s", providerID)
+	}
+
+	parts := strings.Split(providerID, "/")
+	if len(parts) < 4 {
+		return "", fmt.Errorf("invalid MAAS providerID format")
+	}
+
+	systemID := parts[len(parts)-1]
+	if systemID == "" {
+		return "", fmt.Errorf("empty system ID in providerID: %s", providerID)
+	}
+
+	return systemID, nil
+}
+
+// getStorageSizeFromMaas retrieves storage size from MAAS for the current node
+func getStorageSizeFromMaas(nodeName, maasAPIKey, maasEndpoint string) (string, error) {
+	if nodeName == "" || maasAPIKey == "" || maasEndpoint == "" {
+		return "", fmt.Errorf("missing required parameters")
+	}
+	ctx := context.Background()
+	systemID, err := extractSystemIDFromNodeName(nodeName)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract system ID: %w", err)
+	}
+
+	client := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+	machineClient := client.Machines().Machine(systemID)
+	machine, err := machineClient.Get(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get machine details from MAAS: %w", err)
+	}
+
+	// Get total storage size
+	totalStorageGB := machine.TotalStorageGB()
+	if totalStorageGB == 0 {
+		return "", fmt.Errorf("no storage found")
+	}
+
+	// Use 80% of total storage for LXD pool (leave space for OS)
+	lxdStorageGB := totalStorageGB * 0.8
+	log.Printf("Using storage size: %.0fGB (%.0f%% of total)", lxdStorageGB, lxdStorageGB/totalStorageGB*100)
+
+	return strconv.FormatFloat(lxdStorageGB, 'f', 0, 64), nil
 }
 
 // ResourcePool represents a MAAS resource pool
@@ -73,20 +149,45 @@ type ResourcePool struct {
 	Description string `json:"description"`
 }
 
+// getMachineInfoFromMaas gets zone, resource pool, and boot interface from MAAS for the current node
+func getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint string) (zone, resourcePool, bootInterface string, err error) {
+	if nodeName == "" || maasAPIKey == "" || maasEndpoint == "" {
+		return "", "", "", fmt.Errorf("missing required parameters")
+	}
+	ctx := context.Background()
+	systemID, err := extractSystemIDFromNodeName(nodeName)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to extract system ID: %w", err)
+	}
+
+	client := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+	machine, err := client.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to get machine details from MAAS: %w", err)
+	}
+
+	// Get zone
+	if machine.Zone() != nil {
+		zone = machine.Zone().Name()
+	}
+
+	resourcePool = machine.ResourcePoolName()
+	bootInterface = machine.BootInterfaceName()
+
+	return zone, resourcePool, bootInterface, nil
+}
+
 func main() {
 	log.Println("Starting LXD initializer")
 
 	// Define command-line flags
 	action := flag.String("action", "", "Action to perform: init, register, or both")
 	storageBackendFlag := flag.String("storage-backend", "", "Storage backend (dir, zfs)")
-	storageSizeFlag := flag.String("storage-size", "", "Storage size in GB")
 	networkBridgeFlag := flag.String("network-bridge", "", "Network bridge name")
 	skipNetworkUpdateFlag := flag.Bool("skip-network-update", false, "Skip updating existing network")
 	nodeIPFlag := flag.String("node-ip", "", "Node IP address for registration")
 	maasEndpointFlag := flag.String("maas-endpoint", "", "MAAS API endpoint")
 	maasAPIKeyFlag := flag.String("maas-api-key", "", "MAAS API key")
-	zoneFlag := flag.String("zone", "", "MAAS zone for VM host")
-	resourcePoolFlag := flag.String("resource-pool", "", "MAAS resource pool for VM host")
 	trustPasswordFlag := flag.String("trust-password", "", "Trust password for LXD")
 
 	flag.Parse()
@@ -113,11 +214,23 @@ func main() {
 		}
 	}
 
-	storageSize := *storageSizeFlag
-	if storageSize == "" {
-		storageSize = os.Getenv("STORAGE_SIZE")
-		if storageSize == "" {
-			storageSize = "50" // Default to 50GB
+	var storageSize string
+
+	// Auto-detect Storage Size of a bare metal machine
+	maasAPIKey := *maasAPIKeyFlag
+	maasEndpoint := *maasEndpointFlag
+
+	// If flags are not provided, try to read from the Kubernetes secret
+	if maasAPIKey == "" || maasEndpoint == "" {
+		if secretEndpoint, secretAPIKey, err := getMaasCredentialsFromSecret(); err == nil {
+			if maasEndpoint == "" {
+				maasEndpoint = secretEndpoint
+			}
+			if maasAPIKey == "" {
+				maasAPIKey = secretAPIKey
+			}
+		} else {
+			log.Printf("Warning: Failed to get MAAS credentials from secret: %v", err)
 		}
 	}
 	// Support auto-sizing to use (almost) full host capacity when requested
@@ -143,41 +256,40 @@ func main() {
 		}
 	}
 
-	nicType := os.Getenv("NIC_TYPE")
-	nicParent := os.Getenv("NIC_PARENT")
+	if maasAPIKey != "" && maasEndpoint != "" {
+		if maasStorageSize, err := getStorageSizeFromMaas(nodeName, maasAPIKey, maasEndpoint); err == nil {
+			storageSize = maasStorageSize
+			log.Printf("Using storage size from MAAS: %s GB", storageSize)
+		} else {
+			log.Printf("Warning: Failed to get storage size from MAAS: %v, using default", err)
+			storageSize = "50"
+		}
+	} else {
+		log.Printf("Warning: MAAS API credentials not available, using default storage size")
+		storageSize = "50"
+	}
+
+	nicType := "macvlan"
 
 	networkBridge := *networkBridgeFlag
 	if networkBridge == "" {
-
 		networkBridge = os.Getenv("NETWORK_BRIDGE")
 		if networkBridge == "" {
 			networkBridge = "br0" // Default to br0
 		}
 	}
 
-	// Determine final NIC behaviour
-	switch nicType {
-	case "bridged":
-		if nicParent == "" {
-			nicParent = networkBridge
-		}
-		if !isLinuxBridge(nicParent) {
-			log.Printf("Parent %s is not a bridge – falling back to macvlan", nicParent)
-			nicType, nicParent = "macvlan", autoUplink()
-		}
-	case "macvlan":
-		if nicParent == "" {
-			nicParent = autoUplink()
-		}
-	default: // empty or unknown -> full auto
-		if networkBridge != "" && isLinuxBridge(networkBridge) {
-			nicType, nicParent = "bridged", networkBridge
-		} else if isLinuxBridge("br0") {
-			nicType, nicParent = "bridged", "br0"
-		} else {
-			nicType, nicParent = "macvlan", autoUplink()
-		}
+	// Auto-detect zone, resource pool, and boot interface name from MAAS
+	zone, resourcePool, bootInterfaceName, err := getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint)
+	if err != nil {
+		log.Fatalf("Failed to get machine information from MAAS: %v", err)
 	}
+	log.Printf("Zone retrieved from MAAS: %s", zone)
+	log.Printf("Resource pool retrieved from MAAS: %s", resourcePool)
+	log.Printf("Boot interface retrieved from MAAS: %s", bootInterfaceName)
+
+	nicParent := bootInterfaceName
+
 	log.Printf("Using NIC type=%s parent=%s", nicType, nicParent)
 
 	skipNetworkUpdate := *skipNetworkUpdateFlag
@@ -186,26 +298,6 @@ func main() {
 		if skipNetworkUpdateEnv == "true" || skipNetworkUpdateEnv == "1" || skipNetworkUpdateEnv == "yes" {
 			skipNetworkUpdate = true
 		}
-	}
-
-	maasAPIKey := *maasAPIKeyFlag
-	if maasAPIKey == "" {
-		maasAPIKey = os.Getenv("MAAS_API_KEY")
-	}
-
-	maasEndpoint := *maasEndpointFlag
-	if maasEndpoint == "" {
-		maasEndpoint = os.Getenv("MAAS_ENDPOINT")
-	}
-
-	zone := *zoneFlag
-	if zone == "" {
-		zone = os.Getenv("ZONE")
-	}
-
-	resourcePool := *resourcePoolFlag
-	if resourcePool == "" {
-		resourcePool = os.Getenv("RESOURCE_POOL")
 	}
 
 	trustPassword := *trustPasswordFlag
@@ -613,214 +705,3 @@ func configureLXDNetwork(trustPassword string) error {
 	log.Println("LXD configured to listen on port 8443")
 	return nil
 }
-
-// extractLXDCertificateAndKey extracts the LXD certificate and key to the specified paths
-func extractLXDCertificateAndKey(certPath, keyPath string) error {
-	// Copy the certificate
-	cmd := exec.Command("cp", "/var/snap/lxd/common/lxd/server.crt", certPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Try alternative path
-		cmd = exec.Command("cp", "/var/lib/lxd/server.crt", certPath)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to copy certificate: %s: %w", string(output), err)
-		}
-	}
-
-	// Copy the key
-	cmd = exec.Command("cp", "/var/snap/lxd/common/lxd/server.key", keyPath)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		// Try alternative path
-		cmd = exec.Command("cp", "/var/lib/lxd/server.key", keyPath)
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to copy key: %s: %w", string(output), err)
-		}
-	}
-
-	// Fix permissions
-	cmd = exec.Command("chmod", "644", certPath, keyPath)
-	output, err = cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to set permissions: %s: %w", string(output), err)
-	}
-
-	return nil
-}
-
-// getResourcePools gets the available resource pools from MAAS
-func getResourcePools(maasEndpoint, maasAPIKey string) ([]ResourcePool, error) {
-	log.Println("Getting available resource pools from MAAS")
-
-	// Get MAAS profile name from API key
-	profileName := ""
-	if maasAPIKey != "" {
-		parts := strings.Split(maasAPIKey, ":")
-		if len(parts) > 0 {
-			profileName = parts[0]
-		}
-	}
-
-	if profileName == "" {
-		profileName = "admin" // Default profile name
-	}
-
-	// Use maas CLI to get resource pools
-	cmd := exec.Command("maas", profileName, "resource-pools", "read")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// If CLI fails, try direct HTTP request
-		return getResourcePoolsViaHTTP(maasEndpoint, maasAPIKey)
-	}
-
-	// Parse JSON output
-	var pools []ResourcePool
-	err = json.Unmarshal(output, &pools)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse resource pools: %w", err)
-	}
-
-	// Print available pools
-	log.Println("Available resource pools:")
-	for _, pool := range pools {
-		log.Printf("  - %s (ID: %d)", pool.Name, pool.ID)
-	}
-
-	return pools, nil
-}
-
-// getResourcePoolsViaHTTP gets the available resource pools from MAAS via HTTP
-func getResourcePoolsViaHTTP(maasEndpoint, maasAPIKey string) ([]ResourcePool, error) {
-	// Construct the URL
-	endpoint := fmt.Sprintf("%s/api/2.0/resource-pools/", strings.TrimSuffix(maasEndpoint, "/"))
-
-	// Create the request
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	// Add OAuth header
-	req.Header.Add("Authorization", fmt.Sprintf("OAuth %s", maasAPIKey))
-
-	// Execute the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check the response
-	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read error response body: %w", err)
-		}
-		return nil, fmt.Errorf("MAAS API returned non-OK status: %d - %s", resp.StatusCode, string(body))
-	}
-
-	// Parse the response
-	var pools []ResourcePool
-	err = json.NewDecoder(resp.Body).Decode(&pools)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	// Print available pools
-	log.Println("Available resource pools:")
-	for _, pool := range pools {
-		log.Printf("  - %s (ID: %d)", pool.Name, pool.ID)
-	}
-
-	return pools, nil
-}
-
-// // registerWithMAAS registers the host with MAAS as a VM host
-// func registerWithMAAS(nodeIP, maasAPIKey, maasEndpoint, zone, resourcePool string) error {
-// 	log.Printf("Registering host %s with MAAS", nodeIP)
-
-// 	if nodeIP == "" {
-// 		return fmt.Errorf("node IP is required for MAAS registration")
-// 	}
-
-// 	// Extract certificate and key
-// 	certPath := "/tmp/lxd.crt"
-// 	keyPath := "/tmp/lxd.key"
-
-// 	err := extractLXDCertificateAndKey(certPath, keyPath)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to extract LXD certificate and key: %w", err)
-// 	}
-
-// 	// Auto-detect resource pool if not specified
-// 	if resourcePool == "" {
-// 		pools, err := getResourcePools(maasEndpoint, maasAPIKey)
-// 		if err != nil {
-// 			log.Printf("Warning: Failed to get resource pools: %v", err)
-// 			log.Println("Using default resource pool")
-// 			resourcePool = "default"
-// 		} else if len(pools) > 0 {
-// 			resourcePool = pools[0].Name
-// 			log.Printf("Auto-detected resource pool: %s", resourcePool)
-// 		} else {
-// 			log.Println("No resource pools found, using default")
-// 			resourcePool = "default"
-// 		}
-// 	}
-
-// 	// Get MAAS profile name from API key
-// 	profileName := ""
-// 	if maasAPIKey != "" {
-// 		parts := strings.Split(maasAPIKey, ":")
-// 		if len(parts) > 0 {
-// 			profileName = parts[0]
-// 		}
-// 	}
-
-// 	if profileName == "" {
-// 		profileName = "admin" // Default profile name
-// 	}
-
-// 	// Login to MAAS
-// 	cmd := exec.Command("maas", "login", profileName, maasEndpoint, maasAPIKey)
-// 	output, err := cmd.CombinedOutput()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to login to MAAS: %s: %w", string(output), err)
-// 	}
-
-// 	// Register the host with MAAS
-// 	powerAddress := fmt.Sprintf("https://%s:8443", nodeIP)
-// 	hostName := fmt.Sprintf("lxd-host-%s", nodeIP)
-
-// 	args := []string{
-// 		profileName, "vm-hosts", "create",
-// 		"type=lxd",
-// 		"power_address=" + powerAddress,
-// 		"power_user=root",
-// 		"name=" + hostName,
-// 		"pool=" + resourcePool,
-// 		"project=default",
-// 		"tags=lxd-host,capmaas",
-// 	}
-
-// 	// Add zone if specified
-// 	if zone != "" {
-// 		args = append(args, "zone="+zone)
-// 	}
-
-// 	// Add certificate and key
-// 	args = append(args, "certificate=@"+certPath)
-// 	args = append(args, "key=@"+keyPath)
-
-// 	cmd = exec.Command("maas", args...)
-// 	output, err = cmd.CombinedOutput()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to register VM host: %s: %w", string(output), err)
-// 	}
-
-// 	log.Printf("LXD host registered successfully with MAAS: %s", hostName)
-// 	return nil
-// }

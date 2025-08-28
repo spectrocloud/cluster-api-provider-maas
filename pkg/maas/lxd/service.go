@@ -128,10 +128,9 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		MaasAPIKey:      s.clusterScope.GetMaasClientIdentity().Token,
 		MaasAPIEndpoint: s.clusterScope.GetMaasClientIdentity().URL,
 		StorageBackend:  lxdConfig.StorageBackend,
-		StorageSize:     lxdConfig.StorageSize,
 		NetworkBridge:   lxdConfig.NetworkBridge,
-		ResourcePool:    lxdConfig.ResourcePool,
-		Zone:            lxdConfig.Zone,
+		ResourcePool:    *machine.Spec.ResourcePool,
+		Zone:            *machine.Spec.FailureDomain,
 		TrustPassword:   "capmaas",
 	}
 
