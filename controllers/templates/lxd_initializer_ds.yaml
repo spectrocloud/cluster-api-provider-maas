@@ -87,6 +87,12 @@ spec:
               fieldPath: status.hostIP
         - name: STORAGE_BACKEND
           value: "${STORAGE_BACKEND}"
+        - name: NIC_TYPE
+          value: "${NIC_TYPE}"
+        - name: NIC_PARENT
+          value: "${NIC_PARENT}"
+        - name: STORAGE_SIZE
+          value: "${STORAGE_SIZE}"                   
         - name: NETWORK_BRIDGE
           value: "${NETWORK_BRIDGE}"
         - name: SKIP_NETWORK_UPDATE
