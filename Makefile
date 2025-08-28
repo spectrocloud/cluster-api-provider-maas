@@ -209,3 +209,19 @@ templates: ## Generate release templates
 
 version: ## Prints version of current make
 	@echo $(VERSION)
+
+# --------------------------------------------------------------------
+# LXD-initializer image (privileged DaemonSet)
+# --------------------------------------------------------------------
+INIT_IMAGE_NAME ?= "lxd-initializer"
+INIT_IMG_TAG    ?= $(IMG_TAG)          # reuse the same tag as controller
+INIT_DRI_IMG    ?= us-east1-docker.pkg.dev/$(PROJECT)/$(USER)/cluster-api/$(INIT_IMAGE_NAME):$(INIT_IMG_TAG)
+
+.PHONY: lxd-initializer-docker-build
+lxd-initializer-docker-build: ## Build LXD initializer image
+	docker buildx build --load --platform linux/$(ARCH) \
+	    -f lxd-initializer/Dockerfile \
+	    ${BUILD_ARGS} \
+	    lxd-initializer -t $(INIT_DRI_IMG)
+
+.PHONY: lxd-initializer-docker-push
