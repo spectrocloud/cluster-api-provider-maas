@@ -255,7 +255,7 @@ func main() {
 		}
 	}
 
-	// Auto-detect Zone, Resource Pool, and Boot Interface Name from MAAS
+	// Auto-detect zone, resource pool, and boot interface name from MAAS
 	zone, resourcePool, bootInterfaceName, err := getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint)
 	if err != nil {
 		log.Fatalf("Failed to get machine information from MAAS: %v", err)
