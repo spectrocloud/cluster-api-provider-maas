@@ -4,12 +4,10 @@ go 1.24.5
 
 require (
 	github.com/canonical/lxd v0.0.0-20250730070707-c4a122e242bb
-	github.com/spectrocloud/maas-client-go v0.0.3-beta1
+	github.com/spectrocloud/maas-client-go v0.0.4-beta1
 	k8s.io/apimachinery v0.31.3
 	k8s.io/client-go v0.31.3
 )
-
-replace github.com/spectrocloud/maas-client-go => github.com/spectrocloud/maas-client-go v0.0.3-beta1.0.20250827045052-74bc4bc3ae10
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
