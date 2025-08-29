@@ -359,12 +359,6 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		diskSizeGB = *mm.Spec.LXD.VMConfig.DiskSize
 	}
 
-	params := maasclient.ParamsBuilder().
-		Set("hostname", vmName).
-		Set("cores", fmt.Sprintf("%d", cpu)).
-		Set("memory", fmt.Sprintf("%d", mem)).
-		Set("storage", fmt.Sprintf("%d", diskSizeGB))
-
 	// Select an LXD VM host based on zone and resource pool
 	hosts, err := s.maasClient.VMHosts().List(ctx, nil)
 	if err != nil {
@@ -375,6 +369,15 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		return nil, errors.Wrap(err, "failed to select LXD VM host")
 	}
 
+	zoneID := selectedHost.Zone().ID()
+
+	params := maasclient.ParamsBuilder().
+	Set("hostname", vmName).
+	Set("cores", fmt.Sprintf("%d", cpu)).
+	Set("memory", fmt.Sprintf("%d", mem)).
+	Set("storage", fmt.Sprintf("%d", diskSizeGB)).
+	Set("zone", fmt.Sprintf("%d", zoneID))
+	
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
