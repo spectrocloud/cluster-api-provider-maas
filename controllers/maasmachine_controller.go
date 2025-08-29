@@ -240,6 +240,18 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		}
 	}
 
+	// If this is an LXD VM, delete it after successful release
+	if machineScope.GetDynamicLXD() {
+		machineScope.Info("Deleting LXD VM after release", "system-id", m.ID)
+		api := clusterScope.GetMaasClientIdentity()
+		if uerr := lxd.DeleteLXDVMWithMaasClient(api.Token, api.URL, m.ID); uerr != nil {
+			machineScope.Error(uerr, "failed to delete LXD VM after release", "system-id", m.ID)
+			// Continue with cleanup despite deletion failure
+		} else {
+			machineScope.Info("Successfully deleted LXD VM after release", "system-id", m.ID)
+		}
+	}
+
 	conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
 	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", m.ID)
 
