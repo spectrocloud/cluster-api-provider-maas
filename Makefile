@@ -24,12 +24,11 @@ ifeq ($(FIPS_ENABLE),yes)
 endif
 
 # Image URL to use all building/pushing image targets
-PROJECT ?= "spectro-images/dev"
-IMG_TAG ?= "4.0.0-dev"
-IMAGE_NAME := "cluster-api-provider-maas-controller"
-DRI_IMG ?= "us-east1-docker.pkg.dev/${PROJECT}/${USER}/cluster-api/${IMAGE_NAME}:${IMG_TAG}"
-
-
+IMAGE_NAME := cluster-api-provider-maas-controller
+REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
+SPECTRO_VERSION ?= 4.0.0-dev
+IMG_TAG ?= v0.6.1-spectro-${SPECTRO_VERSION}
+CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
@@ -40,7 +39,7 @@ endif
 
 # Release images
 # Release docker variables
-RELEASE_REGISTRY := us-east1-docker.pkg.dev/spectro-public/release/cluster-api-provider-maas
+RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-maas
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -146,7 +145,7 @@ generate: $(CONTROLLER_GEN) $(CONVERSION_GEN)
 	$(MAKE) generate-manifests
 
 generate-go:
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
 	$(CONVERSION_GEN) \
 		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
@@ -155,18 +154,18 @@ generate-go:
 		./api/v1beta1
 
 generate-manifests:  ## Generate manifests
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./api/...;./controllers/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
 
 
 # Build the docker image
 .PHONY: docker-build
 docker-build: #test
-	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t  ${DRI_IMG}
+	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
 .PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-	docker push ${DRI_IMG}
+	docker push  $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 ## --------------------------------------
 ## Docker — All ARCH
@@ -226,5 +225,3 @@ lxd-initializer-docker-build: ## Build LXD initializer image
 	    lxd-initializer -t $(INIT_DRI_IMG)
 
 .PHONY: lxd-initializer-docker-push
-lxd-initializer-docker-push: ## Push LXD initializer image
-	docker push $(INIT_DRI_IMG)
