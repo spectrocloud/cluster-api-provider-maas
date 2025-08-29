@@ -300,18 +300,29 @@ func CreateLXDVMWithMaasClient(apiKey, apiEndpoint, vmHostID, vmName, vmCores, v
 	return machine.SystemID(), nil
 }
 
-// DeleteLXDVMWithMaasClient deletes a VM using MAAS API
+// DeleteLXDVMWithMaasClient deletes a VM using MAAS API if it's an LXD VM
 func DeleteLXDVMWithMaasClient(apiKey, apiEndpoint, systemID string) error {
 	// Create MAAS client
 	client := maasclient.NewAuthenticatedClientSet(apiEndpoint, apiKey)
 
 	// Get the machine
 	machine := client.Machines().Machine(systemID)
-
-	// Delete the machine
 	ctx := context.Background()
+
+	// Get machine details to check power type
+	m, err := machine.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get machine %s: %w", systemID, err)
+	}
+
+	// Only delete if this is an LXD VM
+	if m.PowerType() != "lxd" {
+		return fmt.Errorf("machine %s is not an LXD VM (power_type: %s)", systemID, m.PowerType())
+	}
+
+	// Delete the LXD VM
 	if err := machine.Delete(ctx); err != nil {
-		return fmt.Errorf("failed to delete VM: %w", err)
+		return fmt.Errorf("failed to delete LXD VM: %w", err)
 	}
 
 	return nil
