@@ -182,6 +182,14 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	}
 
 	if m == nil {
+		// Gate finalizer removal to avoid races during early delete phases.
+		if !maasMachine.DeletionTimestamp.IsZero() {
+			deletionAge := time.Since(maasMachine.DeletionTimestamp.Time)
+			if deletionAge < 2*time.Minute {
+				machineScope.Info("Not removing finalizer yet; waiting for deletion age threshold", "age", deletionAge.String())
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
+		}
 		machineScope.V(2).Info("Unable to locate MaaS instance by ID or tags", "system-id", machineScope.GetInstanceID())
 		r.Recorder.Eventf(maasMachine, corev1.EventTypeWarning, "NoMachineFound", "Unable to find matching MaaS machine")
 		controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
