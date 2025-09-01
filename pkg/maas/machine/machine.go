@@ -71,6 +71,11 @@ func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
 
 	m, err := s.maasClient.Machines().Machine(systemID).Get(context.Background())
 	if err != nil {
+		// Treat MAAS 404 as not found (already deleted)
+		msg := err.Error()
+		if strings.Contains(msg, "status: 404") || strings.Contains(strings.ToLower(msg), "no machine matches") {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -179,6 +184,12 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 				// Is it right to NOT set rerr so we can see the original issue?
 				log.Error(err, "Unable to release properly")
 			}
+
+			// Clear IDs so the next reconcile can allocate a different machine instead of
+			// getting stuck trying to reuse a bad one (e.g., no network link/config).
+			s.scope.MaasMachine.Spec.ProviderID = nil
+			s.scope.MaasMachine.Spec.SystemID = nil
+			_ = s.scope.PatchObject()
 		}
 	}()
 
@@ -233,7 +244,8 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
 		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
 			if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
-				s.scope.Error(err, "failed to configure static IP", "ip", staticIP)
+				// Fail fast so we don't attempt Deploy without a network link configured
+				return nil, errors.Wrap(err, "failed to configure static IP before deploy")
 			}
 		}
 		deployingM, err := m.Deployer().
@@ -369,15 +381,17 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		return nil, errors.Wrap(err, "failed to select LXD VM host")
 	}
 
+	s.scope.Info("Selected LXD host for VM", "host-name", selectedHost.Name(), "host-id", selectedHost.SystemID(), "zone", zone, "resource-pool", resourcePool)
+
 	zoneID := selectedHost.Zone().ID()
 
 	params := maasclient.ParamsBuilder().
-	Set("hostname", vmName).
-	Set("cores", fmt.Sprintf("%d", cpu)).
-	Set("memory", fmt.Sprintf("%d", mem)).
-	Set("storage", fmt.Sprintf("%d", diskSizeGB)).
-	Set("zone", fmt.Sprintf("%d", zoneID))
-	
+		Set("hostname", vmName).
+		Set("cores", fmt.Sprintf("%d", cpu)).
+		Set("memory", fmt.Sprintf("%d", mem)).
+		Set("storage", fmt.Sprintf("%d", diskSizeGB)).
+		Set("zone", fmt.Sprintf("%d", zoneID))
+
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
@@ -438,6 +452,8 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 			}
 			return nil, errors.Wrap(err, "failed to compose VM on LXD host")
 		}
+
+		return nil, errors.Wrap(err, "failed to compose VM on LXD host")
 	}
 
 	// Set IDs early so system-id/providerID are recorded
