@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
@@ -235,7 +236,15 @@ func SelectLXDHostWithMaasClient(hosts []maasclient.VMHost, az, resourcePool str
 		}
 
 		if (az == "" || hostZone == az) && (resourcePool == "" || hostPool == resourcePool) {
-			return host, nil
+			powerHost := normalizeHost(host.PowerAddress())
+			if powerHost != "" {
+				d := net.Dialer{Timeout: 1500 * time.Millisecond}
+				if conn, err := d.Dial("tcp", net.JoinHostPort(powerHost, "8443")); err == nil {
+					_ = conn.Close()
+					return host, nil
+				}
+			}
+			continue
 		}
 	}
 
