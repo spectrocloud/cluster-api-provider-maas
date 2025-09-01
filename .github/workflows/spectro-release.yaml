@@ -66,8 +66,8 @@ jobs:
         run: |
           make docker-build-all
           make docker-push-all
-          make lxd-initializer-docker-build
-          make lxd-initializer-docker-push
+#          make lxd-initializer-docker-build
+#          make lxd-initializer-docker-push
       -
         name: Build Image - FIPS Mode
         env:
@@ -76,8 +76,8 @@ jobs:
         run: |
           make docker-build-all
           make docker-push-all
-          make lxd-initializer-docker-build
-          make lxd-initializer-docker-push
+#          make lxd-initializer-docker-build
+#          make lxd-initializer-docker-push
       -
         name: Create Tag
         if: ${{ github.event.inputs.rel_type == 'release' }}
