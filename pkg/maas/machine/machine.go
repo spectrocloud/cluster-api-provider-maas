@@ -376,7 +376,7 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list LXD VM hosts")
 	}
-	selectedHost, err := lxd.SelectLXDHostWithMaasClient(hosts, zone, resourcePool)
+	selectedHost, err := lxd.SelectLXDHostWithMaasClient(s.maasClient, hosts, zone, resourcePool)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select LXD VM host")
 	}
