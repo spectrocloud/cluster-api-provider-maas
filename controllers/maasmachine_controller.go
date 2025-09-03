@@ -50,6 +50,7 @@ import (
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 var ErrRequeueDNS = errors.New("need to requeue DNS")
@@ -221,6 +222,18 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		}
 	}
 
+	// (Defer) Revert BM networking (bridge -> physical) for LXD host mode only after a successful release
+	releaseOK := false
+	defer func() {
+		if releaseOK && clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+			if err := r.revertBMNetworking(machineScope, m.ID); err != nil {
+				machineScope.Error(err, "failed to revert BM networking", "system-id", m.ID)
+			} else {
+				machineScope.Info("Reverted BM networking to physical NIC (best-effort)", "system-id", m.ID)
+			}
+		}
+	}()
+
 	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
 		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
 		if isVMHostRemovalRequiredError(err) {
@@ -246,6 +259,8 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 			machineScope.Error(err, "failed to release machine")
 			return ctrl.Result{}, err
 		}
+	} else {
+		releaseOK = true
 	}
 
 	// If this is an LXD VM, delete it after successful release
@@ -594,6 +609,75 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 	}
 
 	return result
+}
+
+// revertBMNetworking attempts to move IP config from a MAAS-created bridge back to the physical boot NIC
+// and delete the bridge, restoring the machine to a reusable state. All operations are best-effort.
+func (r *MaasMachineReconciler) revertBMNetworking(machineScope *scope.MachineScope, systemID string) error {
+	ctx := context.TODO()
+	api := machineScope.ClusterScope.GetMaasClientIdentity()
+	client := maasclient.NewAuthenticatedClientSet(api.URL, api.Token)
+
+	// Identify the boot interface
+	m, err := client.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get machine %s: %w", systemID, err)
+	}
+
+	ifs, err := client.NetworkInterfaces().Get(ctx, systemID)
+	if err != nil {
+		return fmt.Errorf("failed to list interfaces for %s: %w", systemID, err)
+	}
+
+	var bootIface maasclient.NetworkInterface
+	var bridgeIface maasclient.NetworkInterface
+	bootID := m.BootInterfaceID()
+
+	for _, ni := range ifs {
+		if ni.ID() == bootID {
+			bootIface = ni
+			break
+		}
+	}
+	if bootIface == nil {
+		return nil // nothing to do
+	}
+
+	// Find a bridge that has the boot iface as a child
+	for _, ni := range ifs {
+		if ni.Type() == "bridge" {
+			for _, child := range ni.Children() {
+				if child == bootIface.Name() || strings.Contains(child, bootIface.Name()) {
+					bridgeIface = ni
+					break
+				}
+			}
+		}
+		if bridgeIface != nil {
+			break
+		}
+	}
+	if bridgeIface == nil {
+		return nil // nothing to revert
+	}
+
+	// Move links from bridge to boot interface (best-effort)
+	for _, link := range bridgeIface.Links() {
+		_ = bridgeIface.UnlinkSubnet(ctx, link.ID())
+		if link.Subnet() != nil {
+			subnetID := fmt.Sprintf("%d", link.Subnet().ID())
+			if link.Mode() == maasclient.ModeStatic && link.IPAddress() != nil {
+				ip := link.IPAddress().String()
+				_ = bootIface.LinkSubnet(ctx, subnetID, ip)
+			} else {
+				_ = bootIface.LinkSubnet(ctx, subnetID, "")
+			}
+		}
+	}
+
+	// Delete the bridge interface (best-effort)
+	_ = bridgeIface.Delete(ctx)
+	return nil
 }
 
 // isVMHostRemovalRequiredError returns true if the MAAS error indicates the
