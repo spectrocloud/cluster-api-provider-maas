@@ -17,9 +17,9 @@ jobs:
       )
     steps:
       - name: Backport Action
-        uses: sqren/backport-github-action@v9.2.2
+        uses: sorenlouv/backport-github-action@v9.5.1
         with:
-          github_token: ${{ secrets.REPO_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           auto_backport_label_prefix: backport-
           add_original_reviewers: true
 
