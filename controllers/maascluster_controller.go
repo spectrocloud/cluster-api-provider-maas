@@ -19,9 +19,10 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"net"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -43,6 +44,7 @@ import (
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -315,7 +317,50 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
 
+	// Set API server readiness label on target cluster's kube-system namespace
+	if err := r.ensureClusterReadinessLabel(clusterScope); err != nil {
+		clusterScope.Error(err, "failed to set API server readiness label")
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if clusterScope.IsLXDHostEnabled() {
+		// Check if current cluster has the API server readiness label
+		// This prevents deployment in bootstrap cluster and only allows in target cluster
+		ready, err := infrautil.HasNamespaceLabel(context.TODO(), r.Client, "kube-system", infrautil.APIServerReadinessLabel, "true")
+		if err != nil || !ready {
+			if err != nil {
+				clusterScope.Error(err, "failed to check API server readiness label")
+			} else {
+				clusterScope.Info("Current cluster not ready for DaemonSet deployment - API server readiness label not found")
+			}
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for API server readiness label")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		clusterScope.Info("Current cluster ready for DaemonSet deployment")
+
+		// Ensure LXD initializer DaemonSet exists/absent as needed
+		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD initializer DaemonSet")
+			return reconcile.Result{}, err
+		}
+
+		lxdService := lxd.NewService(clusterScope)
+		if err := lxdService.ReconcileLXD(); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD hosts")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			return reconcile.Result{}, err
+		}
+		conditions.MarkTrue(maasCluster, infrav1beta1.LXDReadyCondition)
+		clusterScope.Info("LXD hosts are available")
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// ensureClusterReadinessLabel sets the API server readiness label on the target cluster's kube-system namespace
+func (r *MaasClusterReconciler) ensureClusterReadinessLabel(clusterScope *scope.ClusterScope) error {
+	return clusterScope.EnsureClusterReadinessLabel()
 }
 
 // SetupWithManager will add watches for this controller

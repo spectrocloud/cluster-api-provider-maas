@@ -19,17 +19,19 @@ package main
 import (
 	"context"
 	"flag"
-	"k8s.io/klog/v2/textlogger"
 	"math/rand"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"time"
+
+	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 
 	"github.com/spf13/pflag"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
@@ -65,6 +67,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = infrav1beta1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme) // Add this for DaemonSet support
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -160,6 +163,7 @@ func main() {
 		if err := (&controllers.MaasClusterReconciler{
 			Client:   mgr.GetClient(),
 			Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+			Scheme:   mgr.GetScheme(),
 			Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
 			Tracker:  tracker,
 		}).SetupWithManager(mgr); err != nil {

@@ -1,0 +1,139 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: lxd-initializer
+  labels:
+    app: lxd-initializer
+spec:
+  selector:
+    matchLabels:
+      app: lxd-initializer
+  template:
+    metadata:
+      labels:
+        app: lxd-initializer
+    spec:
+      hostNetwork: true
+      hostPID: true
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: node.kubernetes.io/memory-pressure
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: node-role.kubernetes.io/control-plane
+        operator: "Exists"
+        effect: "NoSchedule"
+      initContainers:
+      - name: ensure-lxd
+        image: ubuntu:22.04
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -ex
+          if ! command -v lxd >/dev/null 2>&1; then
+            echo "LXD not present, installing via snap";
+            apt-get update;
+            apt-get install -y snapd systemd;
+            systemctl enable --now snapd.socket;
+            snap install lxd --channel=5.0/stable;
+          fi
+          echo "Ensuring LXD daemon is running on host";
+          if nsenter -t 1 -m -p -- systemctl is-active --quiet snap.lxd.daemon; then
+            echo "LXD daemon already active";
+          else
+            echo "Starting LXD daemon via host systemd";
+            nsenter -t 1 -m -p -- systemctl start snap.lxd.daemon || snap start --enable lxd.daemon;
+          fi
+          # Wait for LXD to report readiness (up to 5 minutes)
+          echo "Waiting for LXD to become ready on host (timeout 5 min)…"
+          if ! nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300 ; then
+            echo "LXD did not become ready after 5 minutes"; exit 1;
+          fi
+          echo "Host LXD is ready";
+
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: var-lib-snapd
+          mountPath: /var/lib/snapd
+        - name: snap
+          mountPath: /snap
+        - name: run
+          mountPath: /run
+        - name: var-snap-lxd
+          mountPath: /var/snap/lxd
+          mountPropagation: HostToContainer
+        - name: var-snap-common-lxd
+          mountPath: /var/snap/lxd/common/lxd
+          mountPropagation: HostToContainer
+      containers:
+      - name: lxd-initializer
+        image: "us-east1-docker.pkg.dev/spectro-images/dev/cluster-api/capmaas-lxd-initializer:v0.0.1"
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: STORAGE_BACKEND
+          value: "${STORAGE_BACKEND}"
+        - name: NIC_TYPE
+          value: "${NIC_TYPE}"
+        - name: NIC_PARENT
+          value: "${NIC_PARENT}"
+        - name: STORAGE_SIZE
+          value: "${STORAGE_SIZE}"                   
+        - name: NETWORK_BRIDGE
+          value: "${NETWORK_BRIDGE}"
+        - name: SKIP_NETWORK_UPDATE
+          value: "${SKIP_NETWORK_UPDATE}"
+        - name: TRUST_PASSWORD
+          value: "${TRUST_PASSWORD}"
+        volumeMounts:
+        - name: var-lib-lxd
+          mountPath: /var/lib/lxd
+        - name: var-snap-lxd
+          mountPath: /var/snap/lxd
+          mountPropagation: HostToContainer
+        - name: var-snap-common-lxd
+          mountPath: /var/snap/lxd/common/lxd
+          mountPropagation: HostToContainer
+        - name: run
+          mountPath: /run
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: var-lib-lxd
+        hostPath:
+          path: /var/lib/lxd
+      - name: var-snap-lxd
+        hostPath:
+          path: /var/snap/lxd
+      - name: var-snap-common-lxd
+        hostPath:
+          path: /var/snap/lxd/common/lxd
+      - name: var-lib-snapd
+        hostPath:
+          path: /var/lib/snapd
+      - name: snap
+        hostPath:
+          path: /snap
+      - name: run
+        hostPath:
+          path: /run
+      - name: tmp
+        hostPath:
+          path: /tmp
+      serviceAccount: lxd-initializer
+      serviceAccountName: lxd-initializer
+      restartPolicy: Always

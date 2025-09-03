@@ -50,11 +50,18 @@ type MaasMachineSpec struct {
 
 	// MinCPU minimum number of CPUs
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=4
 	MinCPU *int `json:"minCPU"`
 
 	// MinMemoryInMB minimum memory in MB
 	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=8192
 	MinMemoryInMB *int `json:"minMemory"`
+
+	// MinDiskSizeInGB minimum disk size in GB
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:default=60
+	MinDiskSizeInGB *int `json:"minDiskSize"`
 
 	// Tags for placement
 	// +optional
@@ -63,6 +70,68 @@ type MaasMachineSpec struct {
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
+
+	// LXD contains configuration for creating this machine as an LXD VM on a host
+	// when enabled. When nil or disabled, this machine is created on bare metal.
+	// +optional
+	LXD *MachineLXDConfig `json:"lxd,omitempty"`
+
+	// StaticIP configuration for VMs
+	// +optional
+	StaticIP *StaticIPConfig `json:"staticIP,omitempty"`
+}
+
+// MachineLXDConfig defines LXD VM creation options for a machine
+type MachineLXDConfig struct {
+	// Enabled specifies whether this machine should be created as an LXD VM
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// VMConfig contains additional VM configuration
+	// +optional
+	VMConfig *VMConfig `json:"vmConfig,omitempty"`
+}
+
+// StaticIPConfig defines the static IP configuration for a VM
+type StaticIPConfig struct {
+
+	// IP is the static IP address to assign
+	// +optional
+	IP string `json:"ip"`
+
+	// CIDR is the network CIDR
+	// +optional
+	CIDR string `json:"cidr,omitempty"`
+
+	// Gateway is the network gateway
+	// +optional
+	Gateway string `json:"gateway,omitempty"`
+
+	// Nameservers is a list of DNS servers
+	// +optional
+	Nameservers []string `json:"nameservers,omitempty"`
+}
+
+// VMConfig contains additional VM configuration
+type VMConfig struct {
+	// DiskSize is the size of the VM disk in GB
+	// +kubebuilder:default=60
+	// +optional
+	DiskSize *int `json:"diskSize,omitempty"`
+
+	// StoragePool is the storage pool to use for the VM
+	// +optional
+	StoragePool string `json:"storagePool,omitempty"`
+
+	// Network is the network to connect the VM to
+	// +optional
+	Network string `json:"network,omitempty"`
+
+	// AutoStart specifies whether the VM should automatically start
+	// +kubebuilder:default=true
+	// +optional
+	AutoStart *bool `json:"autoStart,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine

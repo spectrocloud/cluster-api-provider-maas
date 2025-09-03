@@ -25,8 +25,8 @@ endif
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-REGISTRY ?= gcr.io/spectro-dev-public/${RELEASE_LOC}/cluster-api
-SPECTRO_VERSION ?= 4.0.0-dev
+REGISTRY ?= "us-east1-docker.pkg.dev/spectro-images/dev/${USER}/cluster-api"
+SPECTRO_VERSION ?= 4.0.0-dev-29082025
 IMG_TAG ?= v0.6.1-spectro-${SPECTRO_VERSION}
 CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
@@ -209,3 +209,21 @@ templates: ## Generate release templates
 
 version: ## Prints version of current make
 	@echo $(VERSION)
+
+# --------------------------------------------------------------------
+# LXD-initializer image (privileged DaemonSet)
+# --------------------------------------------------------------------
+INIT_IMAGE_NAME ?= "lxd-initializer"
+INIT_IMG_TAG    ?= $(IMG_TAG)          # reuse the same tag as controller
+INIT_DRI_IMG    ?= us-east1-docker.pkg.dev/spectro-images/dev/$(USER)/cluster-api/$(INIT_IMAGE_NAME):$(INIT_IMG_TAG)
+
+.PHONY: lxd-initializer-docker-build
+lxd-initializer-docker-build: ## Build LXD initializer image
+	docker buildx build --load --platform linux/$(ARCH) \
+	    -f lxd-initializer/Dockerfile \
+	    ${BUILD_ARGS} \
+	    lxd-initializer -t $(INIT_DRI_IMG)
+
+.PHONY: lxd-initializer-docker-push
+lxd-initializer-docker-push: ## Push LXD initializer image
+	docker push $(INIT_DRI_IMG)

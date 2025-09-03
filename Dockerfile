@@ -26,8 +26,7 @@ COPY api/ api/
 COPY pkg/ pkg/
 COPY controllers/ controllers/
 
-# Build
-
+# Build with -mod=vendor flag to use the vendored dependencies
 RUN  --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.local/share/golang \
