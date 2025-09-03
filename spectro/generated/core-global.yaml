@@ -84,6 +84,51 @@ spec:
                 items:
                   type: string
                 type: array
+              lxdConfig:
+                description: LXDConfig contains the configuration for LXD hosts
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether to enable LXD VM support
+                    type: boolean
+                  networkBridge:
+                    description: NetworkBridge specifies the network bridge to use
+                      (legacy, prefer NICParent)
+                    type: string
+                  nicParent:
+                    description: NICParent selects the parent interface or bridge
+                      for the NIC
+                    type: string
+                  nicType:
+                    description: NICType selects the LXD NIC type (bridge or macvlan)
+                    enum:
+                    - bridge
+                    - macvlan
+                    type: string
+                  resourcePool:
+                    description: ResourcePool specifies the MAAS resource pool to
+                      use for LXD VM hosts
+                    type: string
+                  skipNetworkUpdate:
+                    default: true
+                    description: SkipNetworkUpdate specifies whether to skip updating
+                      existing networks
+                    type: boolean
+                  storageBackend:
+                    default: zfs
+                    description: StorageBackend specifies the storage backend to use
+                      (zfs, dir, etc.)
+                    type: string
+                  storageSize:
+                    default: "50"
+                    description: StorageSize specifies the size of the storage pool
+                      in GB
+                    type: string
+                  zone:
+                    description: Zone specifies the MAAS availability zone to register
+                      LXD VM hosts in
+                    type: string
+                type: object
             required:
             - dnsDomain
             type: object
@@ -248,11 +293,49 @@ spec:
                 description: Image will be the MaaS image id
                 minLength: 1
                 type: string
+              lxd:
+                description: |-
+                  LXD contains configuration for creating this machine as an LXD VM on a host
+                  when enabled. When nil or disabled, this machine is created on bare metal.
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled specifies whether this machine should be
+                      created as an LXD VM
+                    type: boolean
+                  vmConfig:
+                    description: VMConfig contains additional VM configuration
+                    properties:
+                      autoStart:
+                        default: true
+                        description: AutoStart specifies whether the VM should automatically
+                          start
+                        type: boolean
+                      diskSize:
+                        default: 60
+                        description: DiskSize is the size of the VM disk in GB
+                        type: integer
+                      network:
+                        description: Network is the network to connect the VM to
+                        type: string
+                      storagePool:
+                        description: StoragePool is the storage pool to use for the
+                          VM
+                        type: string
+                    type: object
+                type: object
               minCPU:
+                default: 4
                 description: MinCPU minimum number of CPUs
                 minimum: 0
                 type: integer
+              minDiskSize:
+                default: 60
+                description: MinDiskSizeInGB minimum disk size in GB
+                minimum: 0
+                type: integer
               minMemory:
+                default: 8192
                 description: MinMemoryInMB minimum memory in MB
                 minimum: 0
                 type: integer
@@ -262,6 +345,24 @@ spec:
               resourcePool:
                 description: ResourcePool will be the MAAS Machine resourcepool
                 type: string
+              staticIP:
+                description: StaticIP configuration for VMs
+                properties:
+                  cidr:
+                    description: CIDR is the network CIDR
+                    type: string
+                  gateway:
+                    description: Gateway is the network gateway
+                    type: string
+                  ip:
+                    description: IP is the static IP address to assign
+                    type: string
+                  nameservers:
+                    description: Nameservers is a list of DNS servers
+                    items:
+                      type: string
+                    type: array
+                type: object
               systemID:
                 description: SystemID will be the MaaS machine ID
                 type: string
@@ -273,6 +374,7 @@ spec:
             required:
             - image
             - minCPU
+            - minDiskSize
             - minMemory
             type: object
           status:
@@ -458,11 +560,51 @@ spec:
                         description: Image will be the MaaS image id
                         minLength: 1
                         type: string
+                      lxd:
+                        description: |-
+                          LXD contains configuration for creating this machine as an LXD VM on a host
+                          when enabled. When nil or disabled, this machine is created on bare metal.
+                        properties:
+                          enabled:
+                            default: false
+                            description: Enabled specifies whether this machine should
+                              be created as an LXD VM
+                            type: boolean
+                          vmConfig:
+                            description: VMConfig contains additional VM configuration
+                            properties:
+                              autoStart:
+                                default: true
+                                description: AutoStart specifies whether the VM should
+                                  automatically start
+                                type: boolean
+                              diskSize:
+                                default: 60
+                                description: DiskSize is the size of the VM disk in
+                                  GB
+                                type: integer
+                              network:
+                                description: Network is the network to connect the
+                                  VM to
+                                type: string
+                              storagePool:
+                                description: StoragePool is the storage pool to use
+                                  for the VM
+                                type: string
+                            type: object
+                        type: object
                       minCPU:
+                        default: 4
                         description: MinCPU minimum number of CPUs
                         minimum: 0
                         type: integer
+                      minDiskSize:
+                        default: 60
+                        description: MinDiskSizeInGB minimum disk size in GB
+                        minimum: 0
+                        type: integer
                       minMemory:
+                        default: 8192
                         description: MinMemoryInMB minimum memory in MB
                         minimum: 0
                         type: integer
@@ -473,6 +615,24 @@ spec:
                       resourcePool:
                         description: ResourcePool will be the MAAS Machine resourcepool
                         type: string
+                      staticIP:
+                        description: StaticIP configuration for VMs
+                        properties:
+                          cidr:
+                            description: CIDR is the network CIDR
+                            type: string
+                          gateway:
+                            description: Gateway is the network gateway
+                            type: string
+                          ip:
+                            description: IP is the static IP address to assign
+                            type: string
+                          nameservers:
+                            description: Nameservers is a list of DNS servers
+                            items:
+                              type: string
+                            type: array
+                        type: object
                       systemID:
                         description: SystemID will be the MaaS machine ID
                         type: string
@@ -484,6 +644,7 @@ spec:
                     required:
                     - image
                     - minCPU
+                    - minDiskSize
                     - minMemory
                     type: object
                 required:

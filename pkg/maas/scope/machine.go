@@ -19,6 +19,8 @@ package scope
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -33,7 +35,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 // MachineScopeParams defines the input parameters used to create a new Scope.
@@ -289,4 +290,34 @@ func (m *MachineScope) SetNodeProviderID() error {
 	node.Spec.ProviderID = providerID
 
 	return patchHelper.Patch(ctx, node)
+}
+
+// GetDynamicLXD returns whether this machine should be created as an LXD VM (driven by higher-level policy).
+func (m *MachineScope) GetDynamicLXD() bool {
+	if m.MaasMachine.Spec.LXD != nil && m.MaasMachine.Spec.LXD.Enabled != nil {
+		return *m.MaasMachine.Spec.LXD.Enabled
+	}
+	return false
+}
+
+// GetStaticIP returns the static IP to assign to the machine, if configured
+func (m *MachineScope) GetStaticIP() string {
+	if m.MaasMachine.Spec.StaticIP == nil {
+		m.Info("StaticIP config is nil")
+		return ""
+	}
+
+	m.Info("StaticIP config found", "ip", m.MaasMachine.Spec.StaticIP.IP)
+	return m.MaasMachine.Spec.StaticIP.IP
+}
+
+// GetStaticIPConfig returns the full static IP configuration if configured
+func (m *MachineScope) GetStaticIPConfig() *infrav1beta1.StaticIPConfig {
+	if m.MaasMachine.Spec.StaticIP == nil {
+		m.Info("StaticIPConfig: StaticIP config is nil")
+		return nil
+	}
+
+	m.Info("StaticIPConfig: returning config", "ip", m.MaasMachine.Spec.StaticIP.IP)
+	return m.MaasMachine.Spec.StaticIP
 }
