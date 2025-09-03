@@ -20,7 +20,6 @@ import (
 	"net"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
@@ -218,7 +217,9 @@ func UnregisterLXDHostWithMaasClient(apiKey, apiEndpoint, nodeIP string) error {
 }
 
 // SelectLXDHostWithMaasClient selects an LXD host based on availability, AZ, and resource pool
-func SelectLXDHostWithMaasClient(hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
+func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
+	log := textlogger.NewLogger(textlogger.NewConfig())
+
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no LXD hosts available")
 	}
@@ -236,12 +237,24 @@ func SelectLXDHostWithMaasClient(hosts []maasclient.VMHost, az, resourcePool str
 		}
 
 		if (az == "" || hostZone == az) && (resourcePool == "" || hostPool == resourcePool) {
-			powerHost := normalizeHost(host.PowerAddress())
-			if powerHost != "" {
-				d := net.Dialer{Timeout: 1500 * time.Millisecond}
-				if conn, err := d.Dial("tcp", net.JoinHostPort(powerHost, "8443")); err == nil {
-					_ = conn.Close()
-					return host, nil
+
+			// Check if the underlying host machine is deployed and powered on
+			hostSystemID := host.HostSystemID()
+			if hostSystemID != "" {
+				// Check actual machine status using MAAS client
+				ctx := context.Background()
+				machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
+				if err != nil {
+					log.Info("Failed to get machine details", "system-id", hostSystemID, "error", err.Error())
+				} else {
+					powerState := machine.PowerState()
+					machineState := machine.State()
+					isHealthy := powerState == "on" && machineState == "Deployed"
+
+					if isHealthy {
+						log.Info("Selected LXD host", "host-name", host.Name(), "host-id", host.SystemID())
+						return host, nil
+					}
 				}
 			}
 			continue
