@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -40,23 +41,24 @@ func (r *MaasMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachinetemplates,versions=v1beta1,name=vmaasmachinetemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasMachineTemplate{}
-	_ webhook.Validator = &MaasMachineTemplate{}
+	_ webhook.CustomDefaulter = &MaasMachineTemplate{}
+	_ webhook.CustomValidator = &MaasMachineTemplate{}
 )
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasMachineTemplate) Default() {
+func (r *MaasMachineTemplate) Default(ctx context.Context, obj runtime.Object) error {
 	maasmachinetemplatelog.Info("default", "name", r.Name)
+	return nil
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
+func (r *MaasMachineTemplate) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate create", "name", r.Name)
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *MaasMachineTemplate) ValidateUpdate(ctx context.Context, old runtime.Object, new runtime.Object) (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate update", "name", r.Name)
 	oldM := old.(*MaasMachineTemplate)
 
@@ -75,7 +77,7 @@ func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warn
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateDelete() (admission.Warnings, error) {
+func (r *MaasMachineTemplate) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }
