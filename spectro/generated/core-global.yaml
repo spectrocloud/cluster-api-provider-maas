@@ -371,7 +371,6 @@ spec:
             required:
             - image
             - minCPU
-            - minDiskSize
             - minMemory
             type: object
           status:
@@ -638,7 +637,6 @@ spec:
                     required:
                     - image
                     - minCPU
-                    - minDiskSize
                     - minMemory
                     type: object
                 required:
