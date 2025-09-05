@@ -58,6 +58,7 @@ type MaasMachineSpec struct {
 
 	// MinDiskSizeInGB minimum disk size in GB
 	// +kubebuilder:validation:Minimum=0
+	// +optional
 	MinDiskSizeInGB *int `json:"minDiskSize,omitempty"`
 
 	// Tags for placement
