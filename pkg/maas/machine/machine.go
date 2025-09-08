@@ -139,6 +139,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			allocator.WithResourcePool(*mm.Spec.ResourcePool)
 		}
 
+		// For HCP clusters, control-plane must be bare metal: exclude pod-backed VM hosts
+		s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
+		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+			allocator.WithNotPod(true)
+			allocator.WithNotPodType("lxd")
+			s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
+		}
+
 		if len(mm.Spec.Tags) > 0 {
 			allocator.WithTags(mm.Spec.Tags)
 		}
@@ -154,6 +162,17 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
 		}
 
+		// Backstop: If MAAS still returned a VM host, reject it for HCP control-plane
+		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+			pt := strings.ToLower(m.PowerType())
+			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
+				s.scope.Info("Rejecting VM host allocation for CP under HCP; releasing and retrying",
+					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
+				_, _ = m.Releaser().WithForce().Release(ctx)
+				return nil, ErrBrokenMachine
+			}
+		}
+
 		s.scope.SetProviderID(m.SystemID(), m.Zone().Name())
 		err = s.scope.PatchObject()
 		if err != nil {
@@ -163,6 +182,21 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		m, err = s.maasClient.Machines().Machine(*s.scope.GetInstanceID()).Get(ctx)
 		if err != nil {
 			return nil, errors.Wrapf(err, "unable to find machine %s", *s.scope.GetInstanceID())
+		}
+
+		// Backstop for reuse path: if previous reconcile captured a VM host, reject for HCP CP
+		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+			pt := strings.ToLower(m.PowerType())
+			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
+				s.scope.Info("Releasing previously selected VM host for CP under HCP; will re-allocate BM",
+					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
+				_, _ = m.Releaser().WithForce().Release(ctx)
+				// Clear IDs so next reconcile re-allocates
+				s.scope.MaasMachine.Spec.ProviderID = nil
+				s.scope.MaasMachine.Spec.SystemID = nil
+				_ = s.scope.PatchObject()
+				return nil, ErrBrokenMachine
+			}
 		}
 	}
 
