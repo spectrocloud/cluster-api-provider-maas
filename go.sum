@@ -168,6 +168,8 @@ github.com/shopspring/decimal v1.4.0 h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp
 github.com/shopspring/decimal v1.4.0/go.mod h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=
 github.com/spectrocloud/maas-client-go v0.0.6-beta1.0.20250908080254-ebf14c2b6edf h1:CeyrzfN2Wp5BUJ/iFtGHrHOldp2aUhUF+SBp03lMQb8=
 github.com/spectrocloud/maas-client-go v0.0.6-beta1.0.20250908080254-ebf14c2b6edf/go.mod h1:CaqAAlh6/xfzc/cDpU8eMG0wqnwx1ODSyXcH86uV7Ww=
+github.com/spectrocloud/maas-client-go v0.0.7-beta1 h1:2GryA5JSrjlsvzLaCIGyPfxcaSCPrw7fm8ixMf7aRbY=
+github.com/spectrocloud/maas-client-go v0.0.7-beta1/go.mod h1:CaqAAlh6/xfzc/cDpU8eMG0wqnwx1ODSyXcH86uV7Ww=
 github.com/spf13/cast v1.7.0 h1:ntdiHjuueXFgm5nzDRdOS4yfT43P5Fnud6DH50rz/7w=
 github.com/spf13/cast v1.7.0/go.mod h1:ancEpBxwJDODSW/UG4rDrAqiKolqNNh2DX3mk86cAdo=
 github.com/spf13/cobra v1.8.1 h1:e5/vxKd/rZsfSJMUX1agtjeTDf+qv1/JdBF8gg5k9ZM=
