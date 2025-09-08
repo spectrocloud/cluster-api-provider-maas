@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -324,20 +325,26 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	}
 
 	if clusterScope.IsLXDHostEnabled() {
-		// Check if current cluster has the API server readiness label
-		// This prevents deployment in bootstrap cluster and only allows in target cluster
-		ready, err := infrautil.HasNamespaceLabel(context.TODO(), r.Client, "kube-system", infrautil.APIServerReadinessLabel, "true")
-		if err != nil || !ready {
-			if err != nil {
-				clusterScope.Error(err, "failed to check API server readiness label")
-			} else {
-				clusterScope.Info("Current cluster not ready for DaemonSet deployment - API server readiness label not found")
-			}
-			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for API server readiness label")
+		// Check readiness label on the TARGET cluster (not management)
+		remoteClient, err := clusterScope.GetWorkloadClusterClient(context.TODO())
+		if err != nil {
+			clusterScope.Info("Target cluster client not available yet; will retry")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for target cluster client")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		ns := &corev1.Namespace{}
+		if e := remoteClient.Get(context.TODO(), types.NamespacedName{Name: "kube-system"}, ns); e != nil {
+			clusterScope.Info("kube-system namespace not found on target; will retry")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for kube-system on target cluster")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		if ns.Labels == nil || ns.Labels[infrautil.APIServerReadinessLabel] != "true" {
+			clusterScope.Info("Target cluster not ready for DaemonSet deployment - API server readiness label not found")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for API server readiness label on target cluster")
 			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		clusterScope.Info("Current cluster ready for DaemonSet deployment")
+		clusterScope.Info("Target cluster ready for DaemonSet deployment")
 
 		// Ensure LXD initializer DaemonSet exists/absent as needed
 		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {
