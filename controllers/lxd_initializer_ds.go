@@ -37,9 +37,15 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	dsName := fmt.Sprintf("lxd-initializer-%s", cluster.Name)
 	dsNamespace := cluster.Namespace
 
+	// Always operate on the TARGET cluster client
+	remoteClient, err := clusterScope.GetWorkloadClusterClient(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get target cluster client: %v", err)
+	}
+
 	// First clean up any existing DaemonSets in this namespace
 	dsList := &appsv1.DaemonSetList{}
-	if err := r.Client.List(ctx, dsList, client.InNamespace(dsNamespace), client.MatchingLabels{
+	if err := remoteClient.List(ctx, dsList, client.InNamespace(dsNamespace), client.MatchingLabels{
 		"app": "lxd-initializer",
 	}); err != nil {
 		return fmt.Errorf("failed to list DaemonSets: %v", err)
@@ -47,7 +53,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 
 	// Delete all existing LXD initializer DaemonSets
 	for _, ds := range dsList.Items {
-		if err := r.Client.Delete(ctx, &ds); err != nil {
+		if err := remoteClient.Delete(ctx, &ds); err != nil {
 			return fmt.Errorf("failed to delete DaemonSet %s: %v", ds.Name, err)
 		}
 	}
@@ -57,8 +63,8 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return nil
 	}
 
-	// Ensure RBAC resources are created
-	if err := r.ensureLXDInitializerRBAC(ctx, dsNamespace); err != nil {
+	// Ensure RBAC resources are created on target cluster
+	if err := r.ensureLXDInitializerRBACOnTarget(ctx, remoteClient, dsNamespace); err != nil {
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
 
@@ -109,16 +115,13 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	ds.Spec.Template.Labels["app"] = dsName
 	ds.Namespace = dsNamespace
 
-	if err := controllerutil.SetControllerReference(cluster, ds, r.Scheme); err != nil {
-		return err
-	}
-
-	_, err := controllerutil.CreateOrPatch(ctx, r.Client, ds, func() error { return nil })
+	// Do not set owner refs across clusters; just create/patch on target cluster
+	_, err = controllerutil.CreateOrPatch(ctx, remoteClient, ds, func() error { return nil })
 	return err
 }
 
-// ensureLXDInitializerRBAC creates the RBAC resources for lxd-initializer
-func (r *MaasClusterReconciler) ensureLXDInitializerRBAC(ctx context.Context, namespace string) error {
+// ensureLXDInitializerRBACOnTarget creates the RBAC resources for lxd-initializer on the target cluster
+func (r *MaasClusterReconciler) ensureLXDInitializerRBACOnTarget(ctx context.Context, remoteClient client.Client, namespace string) error {
 	// Parse RBAC template into separate resources
 	rbacYaml := strings.ReplaceAll(lxdInitRBACTemplate, "namespace: default", fmt.Sprintf("namespace: %s", namespace))
 
@@ -142,10 +145,8 @@ func (r *MaasClusterReconciler) ensureLXDInitializerRBAC(ctx context.Context, na
 			obj.SetNamespace(namespace)
 		}
 
-		// Create or update the resource
-		_, err := controllerutil.CreateOrPatch(ctx, r.Client, obj, func() error {
-			return nil
-		})
+		// Create or update the resource on target cluster
+		_, err := controllerutil.CreateOrPatch(ctx, remoteClient, obj, func() error { return nil })
 		if err != nil {
 			return fmt.Errorf("failed to create/patch %s %s: %v", obj.GetKind(), obj.GetName(), err)
 		}
