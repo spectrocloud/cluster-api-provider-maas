@@ -278,7 +278,9 @@ func main() {
 
 	trustPassword := *trustPasswordFlag
 	if trustPassword == "" {
-		trustPassword = os.Getenv("TRUST_PASSWORD")
+		basePassword := os.Getenv("TRUST_PASSWORD")
+		trustPassword = basePassword + nodeName
+		log.Printf("Using trust password: %s", trustPassword)
 	}
 
 	// Determine action based on flag or default to both
