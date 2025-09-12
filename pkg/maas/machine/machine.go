@@ -418,13 +418,19 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	s.scope.Info("Selected LXD host for VM", "host-name", selectedHost.Name(), "host-id", selectedHost.SystemID(), "zone", zone, "resource-pool", resourcePool)
 
 	zoneID := selectedHost.Zone().ID()
+	rp := selectedHost.ResourcePool()
+	if rp == nil {
+		return nil, errors.New("selected LXD host has no resource pool; shouldn't use default resource pool")
+	}
+	poolID := rp.ID()
 
 	params := maasclient.ParamsBuilder().
 		Set("hostname", vmName).
 		Set("cores", fmt.Sprintf("%d", cpu)).
 		Set("memory", fmt.Sprintf("%d", mem)).
 		Set("storage", fmt.Sprintf("%d", diskSizeGB)).
-		Set("zone", fmt.Sprintf("%d", zoneID))
+		Set("zone", fmt.Sprintf("%d", zoneID)).
+		Set("pool", fmt.Sprintf("%d", poolID))
 
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
