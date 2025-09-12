@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -40,23 +41,24 @@ func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1beta1,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasCluster{}
-	_ webhook.Validator = &MaasCluster{}
+	_ webhook.CustomDefaulter = &MaasCluster{}
+	_ webhook.CustomValidator = &MaasCluster{}
 )
 
 // Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasCluster) Default() {
+func (r *MaasCluster) Default(ctx context.Context, obj runtime.Object) error {
 	maasclusterlog.Info("default", "name", r.Name)
+	return nil
 }
 
 // ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
+func (r *MaasCluster) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	maasclusterlog.Info("validate create", "name", r.Name)
 	return nil, nil
 }
 
 // ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
+func (r *MaasCluster) ValidateUpdate(ctx context.Context, old runtime.Object, new runtime.Object) (admission.Warnings, error) {
 	maasclusterlog.Info("validate update", "name", r.Name)
 	oldC, ok := old.(*MaasCluster)
 	if !ok {
@@ -70,7 +72,7 @@ func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, er
 }
 
 // ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateDelete() (admission.Warnings, error) {
+func (r *MaasCluster) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	maasclusterlog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }
