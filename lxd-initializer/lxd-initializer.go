@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -22,6 +24,48 @@ import (
 // Common LXD socket paths
 var lxdSocketPaths = []string{
 	"/var/snap/lxd/common/lxd/unix.socket", // Snap path
+}
+
+// normalizeToken makes a safe-ish token from a string
+func normalizeToken(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevDash = false
+			continue
+		}
+		if !prevDash {
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func envBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "true" || v == "1" || v == "yes" {
+		return true
+	}
+	if v == "false" || v == "0" || v == "no" {
+		return false
+	}
+	return def
+}
+
+func deriveTrustPassword(seed string) string {
+	sum := sha256.Sum256([]byte("lxd-trust:" + seed))
+	val := hex.EncodeToString(sum[:])
+	if len(val) > 32 {
+		return val[:32]
+	}
+	return val
 }
 
 // getKubernetesClient returns a Kubernetes client using in-cluster config
