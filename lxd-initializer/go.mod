@@ -4,7 +4,7 @@ go 1.24.5
 
 require (
 	github.com/canonical/lxd v0.0.0-20250730070707-c4a122e242bb
-	github.com/spectrocloud/maas-client-go v0.0.6-beta1
+	github.com/spectrocloud/maas-client-go v0.0.8-beta1
 	k8s.io/apimachinery v0.31.3
 	k8s.io/client-go v0.31.3
 )

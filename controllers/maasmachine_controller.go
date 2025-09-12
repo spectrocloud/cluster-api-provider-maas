@@ -50,6 +50,7 @@ import (
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 var ErrRequeueDNS = errors.New("need to requeue DNS")
@@ -227,6 +228,30 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 			api := clusterScope.GetMaasClientIdentity()
 			// choose ExternalIP first, then InternalIP
 			nodeIP := getNodeIP(m.Addresses)
+			// For control-plane BM that backs an LXD VM host, force-delete guest VMs to unblock release
+			if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+				ctx := context.Background()
+				client := maasclient.NewAuthenticatedClientSet(api.URL, api.Token)
+				if hosts, herr := client.VMHosts().List(ctx, nil); herr == nil {
+					for _, h := range hosts {
+						if h.HostSystemID() == m.ID {
+							if guests, gerr := h.Machines().List(ctx); gerr == nil {
+								for _, g := range guests {
+									gid := g.SystemID()
+									if gid == "" {
+										continue
+									}
+									// Fetch details to confirm and delete
+									if gm, ge := client.Machines().Machine(gid).Get(ctx); ge == nil {
+										_ = client.Machines().Machine(gm.SystemID()).Delete(ctx)
+									}
+								}
+							}
+							break
+						}
+					}
+				}
+			}
 			if nodeIP != "" {
 				if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
 					machineScope.Error(uerr, "failed to unregister LXD VM host prior to release")

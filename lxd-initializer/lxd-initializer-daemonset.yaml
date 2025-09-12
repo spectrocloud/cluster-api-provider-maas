@@ -20,7 +20,7 @@ spec:
       hostPID: true
       containers:
       - name: lxd-initializer
-        image: us-east1-docker.pkg.dev/spectro-images/dev/cluster-api/capmaas-lxd-initializer:v0.0.1
+        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.0.0-dev-11102025-03
         imagePullPolicy: Always
         securityContext:
           privileged: true
