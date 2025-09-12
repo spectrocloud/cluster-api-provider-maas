@@ -225,7 +225,7 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 		profile := "ds"
 		// Non-interactive login (idempotent)
 		_ = runCmd("maas", []string{"login", profile, maasEndpoint, maasAPIKey})
-		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName)}
+		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName), "project=maas"}
 		// Do not pass zone/pool on create
 		if err := runCmd("maas", args); err != nil {
 			return fmt.Errorf("maas cli create failed: %w", err)
@@ -242,6 +242,8 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 	if trustPassword != "" {
 		params.Set("password", trustPassword)
 	}
+	// Set only project to 'maas' per request
+	params.Set("project", "maas")
 	if _, err := client.VMHosts().Create(ctx, params); err != nil {
 		return fmt.Errorf("create vm host: %w", err)
 	}
@@ -414,12 +416,18 @@ func main() {
 	}
 
 	if actionStr == "register" || actionStr == "both" {
-		// Build a stable host name using MAAS system-id
+		// Build a stable host name using MAAS system-id and node hostname
 		systemID, sErr := extractSystemIDFromNodeName(nodeName)
 		if sErr != nil {
 			log.Fatalf("Failed to extract system ID from node name: %v", sErr)
 		}
-		hostName := fmt.Sprintf("lxd-host-%s", systemID)
+		hn := nodeName
+		if hn == "" {
+			if osHN, _ := os.Hostname(); osHN != "" {
+				hn = osHN
+			}
+		}
+		hostName := fmt.Sprintf("lxd-host-%s-%s", hn, systemID)
 		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName); err != nil {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
