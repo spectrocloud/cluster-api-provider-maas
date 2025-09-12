@@ -28,6 +28,7 @@ import (
 // HostConfig contains the configuration for setting up an LXD host
 type HostConfig struct {
 	NodeIP          string
+	HostName        string
 	MaasAPIKey      string
 	MaasAPIEndpoint string
 	StorageBackend  string
@@ -142,10 +143,14 @@ func registerWithMaasClient(client maasclient.ClientSetInterface, config HostCon
 	ctx := context.Background()
 
 	// Create registration parameters
+	name := config.HostName
+	if name == "" {
+		name = fmt.Sprintf("lxd-host-%s", config.NodeIP)
+	}
 	params := maasclient.ParamsBuilder().
 		Set("type", "lxd").
 		Set("power_address", fmt.Sprintf("https://%s:8443", config.NodeIP)).
-		Set("name", fmt.Sprintf("lxd-host-%s", config.NodeIP))
+		Set("name", name)
 
 	if config.Zone != "" {
 		// Pass the zone name directly. MAAS API expects the zone name, not ID.
@@ -162,7 +167,7 @@ func registerWithMaasClient(client maasclient.ClientSetInterface, config HostCon
 	}
 
 	log := textlogger.NewLogger(textlogger.NewConfig())
-	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"))
+	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"), "name", name)
 
 	// Register the host with MAAS
 	_, err := client.VMHosts().Create(ctx, params)

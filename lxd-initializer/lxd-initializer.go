@@ -175,6 +175,89 @@ func getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint string) (zone, re
 	return zone, resourcePool, bootInterface, nil
 }
 
+// registerWithMAAS registers the node as an LXD VM host in MAAS (idempotent)
+func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName string) error {
+	if maasEndpoint == "" || maasAPIKey == "" {
+		return fmt.Errorf("MAAS credentials unavailable")
+	}
+	ctx := context.Background()
+	client := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
+
+	// Guard 1: Verify the MAAS machine identified by systemID owns nodeIP (or derive power IP)
+	m, err := client.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return fmt.Errorf("get machine %s: %w", systemID, err)
+	}
+	hostIP := nodeIP
+	owns := false
+	for _, ip := range m.IPAddresses() {
+		if ip.String() == nodeIP {
+			owns = true
+			break
+		}
+	}
+	if !owns {
+		ips := m.IPAddresses()
+		if len(ips) == 0 {
+			return fmt.Errorf("ownership check failed: system-id %s has no IPs; cannot register", systemID)
+		}
+		hostIP = ips[0].String()
+	}
+
+	// Idempotency/conflict checks via API for speed
+	hosts, err := client.VMHosts().List(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("list vm hosts: %w", err)
+	}
+	wantHost := fmt.Sprintf("https://%s:8443", hostIP)
+	for _, h := range hosts {
+		if h.PowerAddress() == wantHost && h.HostSystemID() != "" && h.HostSystemID() != systemID {
+			return fmt.Errorf("conflict: existing VM host %s uses %s mapped to %s", h.Name(), wantHost, h.HostSystemID())
+		}
+		if h.Name() == hostName || h.PowerAddress() == wantHost {
+			log.Printf("MAAS VM host already present: name=%s power_address=%s", h.Name(), h.PowerAddress())
+			return nil
+		}
+	}
+
+	// Prefer MAAS CLI for creation to match manual success path
+	if _, err := exec.LookPath("maas"); err == nil {
+		profile := "ds"
+		// Non-interactive login (idempotent)
+		_ = runCmd("maas", []string{"login", profile, maasEndpoint, maasAPIKey})
+		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName)}
+		// Do not pass zone/pool on create
+		if err := runCmd("maas", args); err != nil {
+			return fmt.Errorf("maas cli create failed: %w", err)
+		}
+		log.Printf("MAAS VM host registered via CLI: %s (%s)", hostName, wantHost)
+		return nil
+	}
+
+	// Fallback: minimal API create
+	params := maasclient.ParamsBuilder().
+		Set("type", "lxd").
+		Set("power_address", wantHost).
+		Set("name", hostName)
+	if trustPassword != "" {
+		params.Set("password", trustPassword)
+	}
+	if _, err := client.VMHosts().Create(ctx, params); err != nil {
+		return fmt.Errorf("create vm host: %w", err)
+	}
+	log.Printf("MAAS VM host registered via API: %s (%s)", hostName, wantHost)
+	return nil
+}
+
+func runCmd(bin string, args []string) error {
+	cmd := exec.Command(bin, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s %v: %s", bin, args, string(out))
+	}
+	return nil
+}
+
 func main() {
 	log.Println("Starting LXD initializer")
 
@@ -218,7 +301,13 @@ func main() {
 	maasAPIKey := *maasAPIKeyFlag
 	maasEndpoint := *maasEndpointFlag
 
-	// If flags are not provided, try to read from the Kubernetes secret
+	// If flags are not provided, use env (set by DS rendering) or try to read from the Kubernetes secret
+	if maasEndpoint == "" {
+		maasEndpoint = os.Getenv("MAAS_ENDPOINT")
+	}
+	if maasAPIKey == "" {
+		maasAPIKey = os.Getenv("MAAS_API_KEY")
+	}
 	if maasAPIKey == "" || maasEndpoint == "" {
 		if secretEndpoint, secretAPIKey, err := getMaasCredentialsFromSecret(); err == nil {
 			if maasEndpoint == "" {
@@ -245,7 +334,16 @@ func main() {
 		storageSize = "50"
 	}
 
-	nicType := "macvlan"
+	// Determine NIC type and parent
+	// NIC_TYPE env supports values like "bridge"/"bridged" or "macvlan". Default to bridge.
+	nicTypeEnv := os.Getenv("NIC_TYPE")
+	if nicTypeEnv == "" {
+		nicTypeEnv = "bridge"
+	}
+	nicMode := strings.ToLower(nicTypeEnv)
+	if nicMode == "bridged" {
+		nicMode = "bridge"
+	}
 
 	networkBridge := *networkBridgeFlag
 	if networkBridge == "" {
@@ -264,9 +362,19 @@ func main() {
 	log.Printf("Resource pool retrieved from MAAS: %s", resourcePool)
 	log.Printf("Boot interface retrieved from MAAS: %s", bootInterfaceName)
 
-	nicParent := bootInterfaceName
+	nicParent := os.Getenv("NIC_PARENT")
+	if nicParent == "" {
+		nicParent = bootInterfaceName
+	}
 
-	log.Printf("Using NIC type=%s parent=%s", nicType, nicParent)
+	// Log final NIC config
+	log.Printf("Using NIC mode=%s (device nictype=%s) parent=%s", nicMode, func() string {
+		if nicMode == "bridge" {
+			return "bridged"
+		} else {
+			return nicMode
+		}
+	}(), nicParent)
 
 	skipNetworkUpdate := *skipNetworkUpdateFlag
 	if !skipNetworkUpdate {
@@ -290,7 +398,7 @@ func main() {
 	// Perform actions based on the specified action
 	if actionStr == "init" || actionStr == "both" {
 		// Initialize LXD
-		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicType, nicParent); err != nil {
+		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicMode, nicParent); err != nil {
 			log.Fatalf("Failed to initialize LXD: %v", err)
 		}
 
@@ -302,6 +410,18 @@ func main() {
 			} else {
 				nodeLabeler.SafeMarkLXDInitialized()
 			}
+		}
+	}
+
+	if actionStr == "register" || actionStr == "both" {
+		// Build a stable host name using MAAS system-id
+		systemID, sErr := extractSystemIDFromNodeName(nodeName)
+		if sErr != nil {
+			log.Fatalf("Failed to extract system ID from node name: %v", sErr)
+		}
+		hostName := fmt.Sprintf("lxd-host-%s", systemID)
+		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName); err != nil {
+			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
 	}
 
@@ -602,6 +722,11 @@ func ensureMAASProfile(c lxdclient.InstanceServer, nicType, nicParent, pool stri
 			return nil // already present
 		}
 	}
+	// Map network mode to device nictype expected by LXD
+	deviceNictype := nicType
+	if deviceNictype == "bridge" {
+		deviceNictype = "bridged"
+	}
 	profile := api.ProfilesPost{
 		Name: profileName,
 		ProfilePut: api.ProfilePut{
@@ -614,7 +739,7 @@ func ensureMAASProfile(c lxdclient.InstanceServer, nicType, nicParent, pool stri
 				},
 				"eth0": {
 					"type":    "nic",
-					"nictype": nicType,
+					"nictype": deviceNictype,
 					"parent":  nicParent,
 					"name":    "eth0",
 				},

@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util/trust"
 
 	// embed template
 	_ "embed"
@@ -85,8 +86,12 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 
 	nt := cfg.NICType
+	if nt == "" {
+		nt = "bridged"
+	}
 	np := cfg.NICParent
-	tp := "capmaas"
+	// Deterministic per-cluster trust password derived from cluster UID
+	tp := trust.DeriveTrustPassword(string(cluster.UID))
 
 	rendered := render(map[string]string{
 		"${STORAGE_BACKEND}":     sb,
