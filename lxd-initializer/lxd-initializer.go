@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -22,6 +24,48 @@ import (
 // Common LXD socket paths
 var lxdSocketPaths = []string{
 	"/var/snap/lxd/common/lxd/unix.socket", // Snap path
+}
+
+// normalizeToken makes a safe-ish token from a string
+func normalizeToken(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevDash = false
+			continue
+		}
+		if !prevDash {
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func envBool(key string, def bool) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if v == "true" || v == "1" || v == "yes" {
+		return true
+	}
+	if v == "false" || v == "0" || v == "no" {
+		return false
+	}
+	return def
+}
+
+func deriveTrustPassword(seed string) string {
+	sum := sha256.Sum256([]byte("lxd-trust:" + seed))
+	val := hex.EncodeToString(sum[:])
+	if len(val) > 32 {
+		return val[:32]
+	}
+	return val
 }
 
 // getKubernetesClient returns a Kubernetes client using in-cluster config
@@ -225,7 +269,7 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 		profile := "ds"
 		// Non-interactive login (idempotent)
 		_ = runCmd("maas", []string{"login", profile, maasEndpoint, maasAPIKey})
-		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName)}
+		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName), "project=maas"}
 		// Do not pass zone/pool on create
 		if err := runCmd("maas", args); err != nil {
 			return fmt.Errorf("maas cli create failed: %w", err)
@@ -242,6 +286,8 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 	if trustPassword != "" {
 		params.Set("password", trustPassword)
 	}
+	// Set only project to 'maas' per request
+	params.Set("project", "maas")
 	if _, err := client.VMHosts().Create(ctx, params); err != nil {
 		return fmt.Errorf("create vm host: %w", err)
 	}
@@ -414,12 +460,18 @@ func main() {
 	}
 
 	if actionStr == "register" || actionStr == "both" {
-		// Build a stable host name using MAAS system-id
+		// Build a stable host name using MAAS system-id and node hostname
 		systemID, sErr := extractSystemIDFromNodeName(nodeName)
 		if sErr != nil {
 			log.Fatalf("Failed to extract system ID from node name: %v", sErr)
 		}
-		hostName := fmt.Sprintf("lxd-host-%s", systemID)
+		hn := nodeName
+		if hn == "" {
+			if osHN, _ := os.Hostname(); osHN != "" {
+				hn = osHN
+			}
+		}
+		hostName := fmt.Sprintf("lxd-host-%s-%s", hn, systemID)
 		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName); err != nil {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
