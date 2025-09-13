@@ -243,6 +243,9 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 									// Fetch details to confirm and delete
 									if gm, ge := client.Machines().Machine(gid).Get(ctx); ge == nil {
 										_ = client.Machines().Machine(gm.SystemID()).Delete(ctx)
+										if derr := client.Machines().Machine(gm.SystemID()).Delete(ctx); derr != nil {
+											machineScope.Error(derr, "failed to delete guest VM during host release cleanup", "guestSystemID", gm.SystemID())
+										}
 									}
 								}
 							}
