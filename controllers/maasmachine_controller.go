@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
@@ -225,6 +226,34 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
 		if isVMHostRemovalRequiredError(err) {
 			api := clusterScope.GetMaasClientIdentity()
+
+			// For control-plane BM that backs an LXD VM host, force-delete guest VMs to unblock release
+			if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+				ctx := context.Background()
+				client := maasclient.NewAuthenticatedClientSet(api.URL, api.Token)
+				if hosts, herr := client.VMHosts().List(ctx, nil); herr == nil {
+					for _, h := range hosts {
+						if h.HostSystemID() == m.ID {
+							if guests, gerr := h.Machines().List(ctx); gerr == nil {
+								for _, g := range guests {
+									gid := g.SystemID()
+									if gid == "" {
+										continue
+									}
+									// Fetch details to confirm and delete
+									if gm, ge := client.Machines().Machine(gid).Get(ctx); ge == nil {
+										if derr := client.Machines().Machine(gm.SystemID()).Delete(ctx); derr != nil {
+											machineScope.Error(derr, "failed to delete guest VM during host release cleanup", "guestSystemID", gm.SystemID())
+										}
+									}
+								}
+							}
+							break
+						}
+					}
+				}
+			}
+
 			// choose ExternalIP first, then InternalIP
 			nodeIP := getNodeIP(m.Addresses)
 			if nodeIP != "" {
