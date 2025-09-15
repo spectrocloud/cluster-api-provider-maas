@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
@@ -50,7 +51,6 @@ import (
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 var ErrRequeueDNS = errors.New("need to requeue DNS")
@@ -226,8 +226,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
 		if isVMHostRemovalRequiredError(err) {
 			api := clusterScope.GetMaasClientIdentity()
-			// choose ExternalIP first, then InternalIP
-			nodeIP := getNodeIP(m.Addresses)
+
 			// For control-plane BM that backs an LXD VM host, force-delete guest VMs to unblock release
 			if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 				ctx := context.Background()
@@ -243,7 +242,9 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 									}
 									// Fetch details to confirm and delete
 									if gm, ge := client.Machines().Machine(gid).Get(ctx); ge == nil {
-										_ = client.Machines().Machine(gm.SystemID()).Delete(ctx)
+										if derr := client.Machines().Machine(gm.SystemID()).Delete(ctx); derr != nil {
+											machineScope.Error(derr, "failed to delete guest VM during host release cleanup", "guestSystemID", gm.SystemID())
+										}
 									}
 								}
 							}
@@ -252,6 +253,9 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 					}
 				}
 			}
+
+			// choose ExternalIP first, then InternalIP
+			nodeIP := getNodeIP(m.Addresses)
 			if nodeIP != "" {
 				if uerr := lxd.UnregisterLXDHostWithMaasClient(api.Token, api.URL, nodeIP); uerr != nil {
 					machineScope.Error(uerr, "failed to unregister LXD VM host prior to release")
