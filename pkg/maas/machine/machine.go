@@ -172,8 +172,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 				s.scope.Error(releaseErr, "Failed to release machine that doesn't match zone requirement",
 					"system-id", m.SystemID(), "required-zone", *failureDomain, "allocated-zone", allocatedZone)
 			}
-			return nil, errors.Errorf("No machines available in required zone '%s'. MAAS allocated machine in zone '%s' instead, but this doesn't meet requirements (machine %s released)",
-				*failureDomain, allocatedZone, m.SystemID())
+			return nil, errors.Errorf("Machine allocated in zone '%s' (required: '%s'); machine %s released because it does not meet zone requirement.",
+				allocatedZone, *failureDomain, m.SystemID())
 		}
 
 		// Check resource pool constraint
@@ -183,8 +183,8 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 				s.scope.Error(releaseErr, "Failed to release machine that doesn't match resource pool requirement",
 					"system-id", m.SystemID(), "required-pool", *mm.Spec.ResourcePool, "allocated-pool", allocatedPool)
 			}
-			return nil, errors.Errorf("No machines available in required resource pool '%s'. MAAS allocated machine in pool '%s' instead, but this doesn't meet requirements (machine %s released)",
-				*mm.Spec.ResourcePool, allocatedPool, m.SystemID())
+			return nil, errors.Errorf("Machine allocated in pool '%s' (required: '%s'); machine %s released because it does not meet resource pool requirement.",
+				allocatedPool, *mm.Spec.ResourcePool, m.SystemID())
 		}
 
 		s.scope.Info("Machine allocation validated successfully",
