@@ -140,7 +140,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 
 		// For HCP clusters, control-plane must be bare metal: exclude pod-backed VM hosts
-		s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
 		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
 			allocator.WithNotPod(true)
 			allocator.WithNotPodType("lxd")
@@ -161,6 +160,35 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			}
 			return nil, errors.Wrapf(err, "Unable to allocate machine")
 		}
+
+		// Validate that allocated machine matches requested constraints
+		allocatedZone := m.ZoneName()
+		allocatedPool := m.ResourcePoolName()
+
+		// Check zone constraint
+		if failureDomain != nil && *failureDomain != "" && allocatedZone != *failureDomain {
+			// Release the machine since it doesn't match requirements
+			if _, releaseErr := m.Releaser().Release(ctx); releaseErr != nil {
+				s.scope.Error(releaseErr, "Failed to release machine that doesn't match zone requirement",
+					"system-id", m.SystemID(), "required-zone", *failureDomain, "allocated-zone", allocatedZone)
+			}
+			return nil, errors.Errorf("No machines available in required zone '%s'. MAAS allocated machine in zone '%s' instead, but this doesn't meet requirements (machine %s released)",
+				*failureDomain, allocatedZone, m.SystemID())
+		}
+
+		// Check resource pool constraint
+		if mm.Spec.ResourcePool != nil && *mm.Spec.ResourcePool != "" && allocatedPool != *mm.Spec.ResourcePool {
+			// Release the machine since it doesn't match requirements
+			if _, releaseErr := m.Releaser().Release(ctx); releaseErr != nil {
+				s.scope.Error(releaseErr, "Failed to release machine that doesn't match resource pool requirement",
+					"system-id", m.SystemID(), "required-pool", *mm.Spec.ResourcePool, "allocated-pool", allocatedPool)
+			}
+			return nil, errors.Errorf("No machines available in required resource pool '%s'. MAAS allocated machine in pool '%s' instead, but this doesn't meet requirements (machine %s released)",
+				*mm.Spec.ResourcePool, allocatedPool, m.SystemID())
+		}
+
+		s.scope.Info("Machine allocation validated successfully",
+			"system-id", m.SystemID(), "zone", allocatedZone, "pool", allocatedPool)
 
 		// Backstop: If MAAS still returned a VM host, reject it for HCP control-plane
 		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
