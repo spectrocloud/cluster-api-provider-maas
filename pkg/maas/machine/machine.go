@@ -236,13 +236,15 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
-	// Configure static IP before deployment
-	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-		staticIPConfig := s.scope.GetStaticIPConfig()
-		if staticIPConfig != nil {
-			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to configure static IP")
+	// Configure static IP before deployment (control-plane only)
+	if s.scope.IsControlPlane() {
+		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+			staticIPConfig := s.scope.GetStaticIPConfig()
+			if staticIPConfig != nil {
+				err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to configure static IP")
+				}
 			}
 		}
 	}
@@ -276,10 +278,12 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
-		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-			if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
-				// Fail fast so we don't attempt Deploy without a network link configured
-				return nil, errors.Wrap(err, "failed to configure static IP before deploy")
+		if s.scope.IsControlPlane() {
+			if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+				if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
+					// Fail fast so we don't attempt Deploy without a network link configured
+					return nil, errors.Wrap(err, "failed to configure static IP before deploy")
+				}
 			}
 		}
 		deployingM, err := m.Deployer().
