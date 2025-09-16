@@ -16,6 +16,7 @@ import (
 
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util/trust"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 
 	// embed template
 	_ "embed"
@@ -66,6 +67,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
 	desiredCP := int32(1)
 	readyByKCP := int32(0)
+
 	// Prefer MaasCloudConfig.spec.machinePoolConfig[].size where isControlPlane=true (sum)
 	{
 		mccList := &unstructured.UnstructuredList{}
@@ -99,7 +101,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 					}
 				}
 				if sum > 0 {
-					desiredCP = int32(sum)
+					desiredCP = util.SafeInt64ToInt32(sum)
 					break
 				}
 			}
@@ -115,10 +117,10 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 			if len(kcpList.Items) > 0 {
 				item := kcpList.Items[0]
 				if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
-					desiredCP = int32(v)
+					desiredCP = util.SafeInt64ToInt32(v)
 				}
 				if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
-					readyByKCP = int32(v)
+					readyByKCP = util.SafeInt64ToInt32(v)
 				}
 			}
 		}
@@ -139,7 +141,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 			}
 		}
 		// Proceed when CP nodes are present and Ready, regardless of KCP readyReplicas
-		if int32(len(nodeList.Items)) < desiredCP || int32(ready) < desiredCP {
+		if int64(len(nodeList.Items)) < int64(desiredCP) || int64(ready) < int64(desiredCP) {
 			r.Log.Info("Not enough control-plane nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
 			// Not enough control-plane nodes present/ready yet; skip DS for now
 			return nil
@@ -164,6 +166,33 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	// Ensure RBAC resources are created on target cluster
 	if err := r.ensureLXDInitializerRBACOnTarget(ctx, remoteClient, dsNamespace); err != nil {
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
+	}
+
+	// Short-circuit deletion: if all control-plane nodes are labeled initialized, delete DS
+	shortCircuitNodes := &corev1.NodeList{}
+	shortCircuitSelector := labels.SelectorFromSet(labels.Set{
+		"node-role.kubernetes.io/control-plane": "",
+	})
+	if err := remoteClient.List(ctx, shortCircuitNodes, &client.ListOptions{LabelSelector: shortCircuitSelector}); err == nil && len(shortCircuitNodes.Items) > 0 {
+		// Count how many CP nodes are initialized
+		initCount := 0
+		for _, n := range shortCircuitNodes.Items {
+			if n.Labels != nil && n.Labels["lxdhost.cluster.com/initialized"] == "true" {
+				initCount++
+			}
+		}
+		// Delete DS only when we see at least desiredCP control-plane nodes
+		// AND desiredCP of them are initialized
+		if int64(len(shortCircuitNodes.Items)) >= int64(desiredCP) && int64(initCount) >= int64(desiredCP) {
+			// Delete existing DSs and return
+			shortCircuitDSList := &appsv1.DaemonSetList{}
+			if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(dsNamespace), client.MatchingLabels{"app": dsName}); err == nil {
+				for _, ds := range shortCircuitDSList.Items {
+					_ = remoteClient.Delete(ctx, &ds)
+				}
+			}
+			return nil
+		}
 	}
 
 	// pull LXD config

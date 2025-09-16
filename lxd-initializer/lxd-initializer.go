@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	crand "crypto/rand"
 	"flag"
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/url"
 	"os"
@@ -245,48 +245,30 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 	ctx := context.Background()
 	client := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 
-	// Guard 1: Verify the MAAS machine identified by systemID owns nodeIP (or derive power IP)
-	m, err := client.Machines().Machine(systemID).Get(ctx)
-	if err != nil {
-		return fmt.Errorf("get machine %s: %w", systemID, err)
-	}
-	hostIP := nodeIP
-	owns := false
-	for _, ip := range m.IPAddresses() {
-		if ip.String() == nodeIP {
-			owns = true
-			break
-		}
-	}
-	if !owns {
-		ips := m.IPAddresses()
-		if len(ips) == 0 {
-			return fmt.Errorf("ownership check failed: system-id %s has no IPs; cannot register", systemID)
-		}
-		hostIP = ips[0].String()
-	}
-
 	// Idempotency/conflict checks via API for speed
 	hosts, err := client.VMHosts().List(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("list vm hosts: %w", err)
 	}
-	// Align with manual flow: bare IP for power_address
-	wantHost := hostIP
+	// Align with manual flow: bare IP for power_address (still used for create below)
+	wantHost := nodeIP
+	// Strict guards: rely only on name and system-id for idempotency
+	expectedName := hostName
 	for _, h := range hosts {
-		if normalizeHost(h.PowerAddress()) == normalizeHost(wantHost) {
-			if h.HostSystemID() != "" && h.HostSystemID() != systemID {
-				return fmt.Errorf("conflict: existing VM host %s uses %s mapped to %s", h.Name(), wantHost, h.HostSystemID())
+		// 1) Exact name match → idempotent or conflict
+		if h.Name() == expectedName {
+			if h.HostSystemID() == "" || h.HostSystemID() == systemID {
+				log.Printf("MAAS VM host already present (name=%s, system-id=%s); skipping re-registration", h.Name(), h.HostSystemID())
+				return nil
 			}
-			if h.Name() != hostName {
-				return fmt.Errorf("conflict: power_address %s already used by VM host %s (name mismatch)", wantHost, h.Name())
-			}
-			log.Printf("MAAS VM host already present: name=%s power_address=%s", h.Name(), h.PowerAddress())
+			return fmt.Errorf("conflict: VM host %q belongs to system-id %s (expected %s)", h.Name(), h.HostSystemID(), systemID)
+		}
+		// 2) Same system already registered under a different name → idempotent
+		if h.HostSystemID() == systemID {
+			log.Printf("MAAS VM host for system-id=%s already exists under name=%s; skipping re-registration", systemID, h.Name())
 			return nil
 		}
-		if h.Name() == hostName && h.HostSystemID() != "" && h.HostSystemID() != systemID {
-			return fmt.Errorf("conflict: existing VM host %s belongs to system-id %s (expected %s)", h.Name(), h.HostSystemID(), systemID)
-		}
+		// 3) Non-matching entry → ignore
 	}
 
 	// Prefer MAAS CLI for creation to match manual success path
@@ -561,6 +543,20 @@ func main() {
 		actionStr = "both" // Default to both init and register
 	}
 
+	// Early exit: if node already marked initialized, skip all work
+	if nodeName != "" {
+		if client, err := getKubernetesClient(); err == nil {
+			if node, gerr := client.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{}); gerr == nil {
+				if node.Labels != nil {
+					if node.Labels[LXDHostInitializedLabel] == LabelValueTrue {
+						log.Printf("Node %s already labeled %s=true; skipping initializer", nodeName, LXDHostInitializedLabel)
+						return
+					}
+				}
+			}
+		}
+	}
+
 	// Perform actions based on the specified action
 	if actionStr == "init" || actionStr == "both" {
 		// Initialize LXD
@@ -632,8 +628,16 @@ func main() {
 		}
 		actualDelaySec := delaySec
 		if jitterSec > 0 {
-			rand.Seed(time.Now().UnixNano())
-			actualDelaySec += rand.Intn(jitterSec + 1)
+			// crypto-strong jitter in [0, jitterSec]
+			var rb [8]byte
+			if _, err := crand.Read(rb[:]); err == nil {
+				// Convert to uint64, then mod
+				rnd := int(rb[0])
+				if jitterSec > 0 {
+					rnd = rnd % (jitterSec + 1)
+				}
+				actualDelaySec += rnd
+			}
 		}
 		delay := time.Duration(actualDelaySec) * time.Second
 		log.Printf("LXD init complete; staggering for %v before host registration (index=%d/%d, per=%ds, cap=%ds, jitter<=%ds)", delay, nodeIndex, nodeCount, perNodeSec, maxCapSec, jitterSec)
