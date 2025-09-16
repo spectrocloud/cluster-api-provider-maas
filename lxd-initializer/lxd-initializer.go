@@ -5,8 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +26,64 @@ import (
 // Common LXD socket paths
 var lxdSocketPaths = []string{
 	"/var/snap/lxd/common/lxd/unix.socket", // Snap path
+}
+
+// normalizeName converts a string to a DNS-safe-ish token: lowercase, non-alnum -> '-'
+func normalizeName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return s
+	}
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			prevDash = false
+			continue
+		}
+		if !prevDash {
+			b.WriteByte('-')
+			prevDash = true
+		}
+	}
+	res := b.String()
+	res = strings.Trim(res, "-")
+	return res
+}
+
+// normalizeHost extracts host/IP from a MAAS power_address or raw string
+func normalizeHost(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return s
+	}
+	h := u.Host
+	if h == "" {
+		h = u.Path
+	}
+	if hp, _, err2 := net.SplitHostPort(h); err2 == nil {
+		h = hp
+	}
+	return h
+}
+
+// hostInterfaceExists returns true if an interface name exists on the host network namespace.
+func hostInterfaceExists(ifName string) bool {
+	if strings.TrimSpace(ifName) == "" {
+		return false
+	}
+	cmd := exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "ip", "link", "show", ifName)
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+	return true
 }
 
 // getKubernetesClient returns a Kubernetes client using in-cluster config
@@ -176,7 +238,7 @@ func getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint string) (zone, re
 }
 
 // registerWithMAAS registers the node as an LXD VM host in MAAS (idempotent)
-func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName string) error {
+func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, project, zone, resourcePool, hostName string) error {
 	if maasEndpoint == "" || maasAPIKey == "" {
 		return fmt.Errorf("MAAS credentials unavailable")
 	}
@@ -209,14 +271,21 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 	if err != nil {
 		return fmt.Errorf("list vm hosts: %w", err)
 	}
-	wantHost := fmt.Sprintf("https://%s:8443", hostIP)
+	// Align with manual flow: bare IP for power_address
+	wantHost := hostIP
 	for _, h := range hosts {
-		if h.PowerAddress() == wantHost && h.HostSystemID() != "" && h.HostSystemID() != systemID {
-			return fmt.Errorf("conflict: existing VM host %s uses %s mapped to %s", h.Name(), wantHost, h.HostSystemID())
-		}
-		if h.Name() == hostName || h.PowerAddress() == wantHost {
+		if normalizeHost(h.PowerAddress()) == normalizeHost(wantHost) {
+			if h.HostSystemID() != "" && h.HostSystemID() != systemID {
+				return fmt.Errorf("conflict: existing VM host %s uses %s mapped to %s", h.Name(), wantHost, h.HostSystemID())
+			}
+			if h.Name() != hostName {
+				return fmt.Errorf("conflict: power_address %s already used by VM host %s (name mismatch)", wantHost, h.Name())
+			}
 			log.Printf("MAAS VM host already present: name=%s power_address=%s", h.Name(), h.PowerAddress())
 			return nil
+		}
+		if h.Name() == hostName && h.HostSystemID() != "" && h.HostSystemID() != systemID {
+			return fmt.Errorf("conflict: existing VM host %s belongs to system-id %s (expected %s)", h.Name(), h.HostSystemID(), systemID)
 		}
 	}
 
@@ -225,8 +294,20 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 		profile := "ds"
 		// Non-interactive login (idempotent)
 		_ = runCmd("maas", []string{"login", profile, maasEndpoint, maasAPIKey})
-		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost), fmt.Sprintf("password=%s", trustPassword), fmt.Sprintf("name=%s", hostName), "project=maas"}
-		// Do not pass zone/pool on create
+		args := []string{profile, "vm-hosts", "create", "type=lxd", fmt.Sprintf("power_address=%s", wantHost)}
+		if trustPassword != "" {
+			args = append(args, fmt.Sprintf("password=%s", trustPassword))
+		}
+		args = append(args, fmt.Sprintf("name=%s", hostName))
+		if project != "" {
+			args = append(args, fmt.Sprintf("project=%s", project))
+		}
+		if zone != "" {
+			args = append(args, fmt.Sprintf("zone=%s", zone))
+		}
+		if resourcePool != "" {
+			args = append(args, fmt.Sprintf("pool=%s", resourcePool))
+		}
 		if err := runCmd("maas", args); err != nil {
 			return fmt.Errorf("maas cli create failed: %w", err)
 		}
@@ -234,7 +315,7 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 		return nil
 	}
 
-	// Fallback: minimal API create
+	// Fallback: API create with project/zone/pool
 	params := maasclient.ParamsBuilder().
 		Set("type", "lxd").
 		Set("power_address", wantHost).
@@ -242,12 +323,70 @@ func registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword,
 	if trustPassword != "" {
 		params.Set("password", trustPassword)
 	}
-	// Set only project to 'maas' per request
-	params.Set("project", "maas")
-	if _, err := client.VMHosts().Create(ctx, params); err != nil {
+	if project != "" {
+		params.Set("project", project)
+	}
+	if zone != "" {
+		params.Set("zone", zone)
+	}
+	if resourcePool != "" {
+		params.Set("pool", resourcePool)
+	}
+	created, err := client.VMHosts().Create(ctx, params)
+	if err != nil {
 		return fmt.Errorf("create vm host: %w", err)
 	}
-	log.Printf("MAAS VM host registered via API: %s (%s)", hostName, wantHost)
+
+	// Post-create verify/correct scoping in case MAAS defaulted values
+	if got, gerr := created.Get(ctx); gerr == nil {
+		// Ensure ownership did not drift to a different system-id
+		if got.HostSystemID() != "" && got.HostSystemID() != systemID {
+			return fmt.Errorf("conflict after create: VM host mapped to system-id %s (expected %s)", got.HostSystemID(), systemID)
+		}
+		needUpdate := false
+		upd := maasclient.ParamsBuilder()
+
+		if project != "" {
+			has := false
+			for _, p := range got.Projects() {
+				if p == project {
+					has = true
+					break
+				}
+			}
+			if !has {
+				upd.Set("project", project)
+				needUpdate = true
+			}
+		}
+		if zone != "" {
+			z := ""
+			if got.Zone() != nil {
+				z = got.Zone().Name()
+			}
+			if z != zone {
+				upd.Set("zone", zone)
+				needUpdate = true
+			}
+		}
+		if resourcePool != "" {
+			pl := ""
+			if got.ResourcePool() != nil {
+				pl = got.ResourcePool().Name()
+			}
+			if pl != resourcePool {
+				upd.Set("pool", resourcePool)
+				needUpdate = true
+			}
+		}
+		if needUpdate {
+			if _, uerr := created.Update(ctx, upd); uerr != nil {
+				log.Printf("Warning: VM host update to set project/zone/pool failed: %v", uerr)
+			}
+		}
+	}
+
+	log.Printf("MAAS VM host registered via API: %s (%s) project=%s zone=%s pool=%s", hostName, wantHost, project, zone, resourcePool)
 	return nil
 }
 
@@ -347,6 +486,15 @@ func main() {
 		nicMode = "bridge"
 	}
 
+	// // Determine host short name for unique bridge suffix
+	// hostShort := nodeName
+	// if hostShort == "" {
+	// 	if osHN, _ := os.Hostname(); osHN != "" {
+	// 		hostShort = osHN
+	// 	}
+	// }
+	// hostToken := normalizeName(hostShort)
+
 	networkBridge := *networkBridgeFlag
 	if networkBridge == "" {
 		networkBridge = os.Getenv("NETWORK_BRIDGE")
@@ -354,6 +502,11 @@ func main() {
 			networkBridge = "br0" // Default to br0
 		}
 	}
+	// // Unique bridge per host to avoid cross-host name collisions
+	// uniqueBridge := networkBridge
+	// if hostToken != "" {
+	// 	uniqueBridge = fmt.Sprintf("%s-%s", networkBridge, hostToken)
+	// }
 
 	// Auto-detect zone, resource pool, and boot interface name from MAAS
 	zone, resourcePool, bootInterfaceName, err := getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint)
@@ -364,19 +517,25 @@ func main() {
 	log.Printf("Resource pool retrieved from MAAS: %s", resourcePool)
 	log.Printf("Boot interface retrieved from MAAS: %s", bootInterfaceName)
 
+	// Project: default to "maas" (can be env-overridden later if needed)
+	project := "maas"
+	if p := strings.TrimSpace(os.Getenv("LXD_PROJECT")); p != "" {
+		project = p
+	}
+
 	nicParent := os.Getenv("NIC_PARENT")
 	if nicParent == "" {
 		nicParent = bootInterfaceName
 	}
 
 	// Log final NIC config
-	log.Printf("Using NIC mode=%s (device nictype=%s) parent=%s", nicMode, func() string {
+	log.Printf("Using NIC mode=%s (device nictype=%s) parent=%s project=%s", nicMode, func() string {
 		if nicMode == "bridge" {
 			return "bridged"
 		} else {
 			return nicMode
 		}
-	}(), nicParent)
+	}(), nicParent, project)
 
 	skipNetworkUpdate := *skipNetworkUpdateFlag
 	if !skipNetworkUpdate {
@@ -390,6 +549,11 @@ func main() {
 	if trustPassword == "" {
 		trustPassword = os.Getenv("TRUST_PASSWORD")
 	}
+	// Always derive a per-node unique trust password from provided seed + systemID
+	if sysID, err := extractSystemIDFromNodeName(nodeName); err == nil && strings.TrimSpace(trustPassword) != "" {
+		trustPassword = trustPassword + ":" + sysID + ":" + nodeName
+		log.Println("Derived per-node trust password from provided seed")
+	}
 
 	// Determine action based on flag or default to both
 	actionStr := *action
@@ -400,7 +564,7 @@ func main() {
 	// Perform actions based on the specified action
 	if actionStr == "init" || actionStr == "both" {
 		// Initialize LXD
-		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicMode, nicParent); err != nil {
+		if err := initializeLXD(storageBackend, storageSize, networkBridge, skipNetworkUpdate, trustPassword, nicMode, nicParent, project, nodeIP); err != nil {
 			log.Fatalf("Failed to initialize LXD: %v", err)
 		}
 
@@ -415,20 +579,75 @@ func main() {
 		}
 	}
 
+	// Add a fixed delay after init before registration when doing both steps
+	if actionStr == "both" {
+		// Stagger registration across control-plane nodes by stable index
+		nodeIndex := 0
+		nodeCount := 0
+		if nodeName != "" {
+			if client, err := getKubernetesClient(); err == nil {
+				// List control-plane nodes on the cluster
+				nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{LabelSelector: "node-role.kubernetes.io/control-plane"})
+				if err == nil && len(nodes.Items) > 0 {
+					nodeCount = len(nodes.Items)
+					names := make([]string, 0, len(nodes.Items))
+					for _, n := range nodes.Items {
+						names = append(names, n.Name)
+					}
+					sort.Strings(names)
+					for i, n := range names {
+						if n == nodeName {
+							nodeIndex = i
+							break
+						}
+					}
+				}
+			}
+		}
+
+		// Configurable stagger via env with sane defaults
+		perNodeSec := 60
+		if v := strings.TrimSpace(os.Getenv("STAGGER_PER_NODE_SEC")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				perNodeSec = n
+			}
+		}
+		maxCapSec := 300 // 5 minutes cap; set 0 to disable
+		if v := strings.TrimSpace(os.Getenv("STAGGER_MAX_SEC")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				maxCapSec = n
+			}
+		}
+		jitterSec := 10
+		if v := strings.TrimSpace(os.Getenv("STAGGER_JITTER_SEC")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				jitterSec = n
+			}
+		}
+
+		// Calculate delay: index * per-node, capped, with jitter
+		delaySec := nodeIndex * perNodeSec
+		if maxCapSec > 0 && delaySec > maxCapSec {
+			delaySec = maxCapSec
+		}
+		actualDelaySec := delaySec
+		if jitterSec > 0 {
+			rand.Seed(time.Now().UnixNano())
+			actualDelaySec += rand.Intn(jitterSec + 1)
+		}
+		delay := time.Duration(actualDelaySec) * time.Second
+		log.Printf("LXD init complete; staggering for %v before host registration (index=%d/%d, per=%ds, cap=%ds, jitter<=%ds)", delay, nodeIndex, nodeCount, perNodeSec, maxCapSec, jitterSec)
+		time.Sleep(delay)
+	}
+
 	if actionStr == "register" || actionStr == "both" {
-		// Build a stable host name using MAAS system-id and node hostname
+		// Build a stable host name using MAAS system-id
 		systemID, sErr := extractSystemIDFromNodeName(nodeName)
 		if sErr != nil {
 			log.Fatalf("Failed to extract system ID from node name: %v", sErr)
 		}
-		hn := nodeName
-		if hn == "" {
-			if osHN, _ := os.Hostname(); osHN != "" {
-				hn = osHN
-			}
-		}
-		hostName := fmt.Sprintf("lxd-host-%s-%s", hn, systemID)
-		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, zone, resourcePool, hostName); err != nil {
+		hostName := fmt.Sprintf("lxd-host-%s", systemID)
+		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, project, zone, resourcePool, hostName); err != nil {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
 	}
@@ -439,17 +658,17 @@ func main() {
 		return
 	}
 
-	// Keep the container running to maintain the DaemonSet if in daemon mode
-	log.Println("LXD initialization completed successfully")
-	log.Println("Starting periodic trust-password maintainer")
-	go func() {
-		for {
-			if err := setTrustPassword(trustPassword); err != nil {
-				log.Printf("periodic trust password set failed: %v", err)
-			}
-			time.Sleep(15 * time.Minute)
-		}
-	}()
+	// // Keep the container running to maintain the DaemonSet if in daemon mode
+	// log.Println("LXD initialization completed successfully")
+	// log.Println("Starting periodic trust-password maintainer")
+	// go func() {
+	// 	for {
+	// 		if err := setTrustPassword(trustPassword); err != nil {
+	// 			log.Printf("periodic trust password set failed: %v", err)
+	// 		}
+	// 		time.Sleep(15 * time.Minute)
+	// 	}
+	// }()
 	log.Println("Entering sleep loop to keep the container running")
 	for {
 		time.Sleep(3600 * time.Second)
@@ -534,7 +753,7 @@ func setTrustPassword(pw string) error {
 }
 
 // initializeLXD initializes LXD with the specified configuration
-func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetworkUpdate bool, trustPassword, nicType, nicParent string) error {
+func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetworkUpdate bool, trustPassword, nicType, nicParent, project, hostIP string) error {
 	log.Printf("Initializing LXD with storage backend %s, size %sGB, and network bridge %s",
 		storageBackend, storageSize, networkBridge)
 
@@ -557,6 +776,15 @@ func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetwor
 		return fmt.Errorf("failed to connect to LXD: %w", err)
 	}
 
+	// Ensure project exists and get project-scoped server
+	cProj := c
+	if project != "" && project != "default" {
+		if err := ensureLXDProject(c, project); err != nil {
+			log.Printf("Warning: failed to ensure project %s: %v", project, err)
+		}
+		cProj = c.UseProject(project)
+	}
+
 	// Check if LXD is already initialized
 	server, _, err := c.GetServer()
 	if err != nil {
@@ -567,7 +795,7 @@ func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetwor
 	apiVersion := server.APIVersion
 	log.Printf("LXD API Version: %s", apiVersion)
 
-	// Check for storage pools and networks
+	// Check for storage pools and networks (global/default)
 	storagePoolsResponse, err := c.GetStoragePools()
 	if err != nil {
 		log.Printf("Warning: Failed to get storage pools: %v", err)
@@ -628,93 +856,121 @@ func initializeLXD(storageBackend, storageSize, networkBridge string, skipNetwor
 		}
 	}
 
-	// Network configuration based on nicType
+	// Network configuration based on nicType (global/default project)
+	// Use NETWORK_BRIDGE (if provided) for LXD-managed bridges; otherwise, attach VMs directly to the physical NIC (nicParent)
+	effectiveParent := nicParent
 	if nicType == "bridge" {
-		bridgeName := nicParent
-		// Check if network bridge exists
-		networkExists := false
-		var existingNetworkType string
-
-		for _, network := range networksResponse {
-			if network.Name == bridgeName {
-				networkExists = true
-				existingNetworkType = network.Type
-				log.Printf("Network '%s' already exists with type '%s'", network.Name, network.Type)
-				break
-			}
-		}
-
-		if !networkExists {
-			log.Printf("Creating network '%s'", bridgeName)
-
-			// Create network
-			networkReq := api.NetworksPost{
-				Name: bridgeName,
-				Type: "bridge",
-				NetworkPut: api.NetworkPut{
-					Config: map[string]string{
-						"ipv4.address": "auto",
-						"ipv4.nat":     "true", // Using string instead of boolean
-					},
-				},
-			}
-
-			err = c.CreateNetwork(networkReq)
-			if err != nil {
-				return fmt.Errorf("failed to create network: %w", err)
-			}
-			log.Printf("Network '%s' created successfully", bridgeName)
-		} else if !skipNetworkUpdate {
-			// Only try to update if it's a managed bridge
-			if existingNetworkType == "bridge" {
-				// Update existing network
-				network, etag, err := c.GetNetwork(bridgeName)
-				if err != nil {
-					log.Printf("Warning: Failed to get network details for update: %v", err)
-					log.Println("Skipping network update")
+		bridgeName := strings.TrimSpace(networkBridge)
+		if bridgeName != "" {
+			// Auto-detect collision: if bridgeName equals the physical parent or an interface by that name
+			// already exists on the host, skip creating/updating the LXD bridge and attach directly to nicParent.
+			if bridgeName == nicParent || hostInterfaceExists(bridgeName) {
+				log.Printf("Skipping LXD network create/update for '%s' due to collision with host interface/parent; using parent '%s'", bridgeName, nicParent)
+			} else {
+				effectiveParent = bridgeName
+				if skipNetworkUpdate {
+					log.Printf("skip-network-update=true; not creating/updating LXD network '%s'", bridgeName)
 				} else {
-					// Ensure ipv4.nat is set to "true" as a string
-					networkPut := api.NetworkPut{
-						Config: network.Config,
+					// Check if network bridge exists
+					networkExists := false
+					var existingNetworkType string
+
+					for _, network := range networksResponse {
+						if network.Name == bridgeName {
+							networkExists = true
+							existingNetworkType = network.Type
+							log.Printf("Network '%s' already exists with type '%s'", network.Name, network.Type)
+							break
+						}
 					}
 
-					// Only set if not already set
-					if networkPut.Config == nil {
-						networkPut.Config = make(map[string]string)
-					}
+					if !networkExists {
+						log.Printf("Creating network '%s'", bridgeName)
 
-					networkPut.Config["ipv4.nat"] = "true" // Using string instead of boolean
+						// Create network
+						networkReq := api.NetworksPost{
+							Name: bridgeName,
+							Type: "bridge",
+							NetworkPut: api.NetworkPut{
+								Config: map[string]string{
+									"ipv4.address": "auto",
+									"ipv4.nat":     "true",
+								},
+							},
+						}
 
-					err = c.UpdateNetwork(bridgeName, networkPut, etag)
-					if err != nil {
-						log.Printf("Warning: Failed to update network: %v", err)
-						log.Println("Continuing without network update")
+						if err := c.CreateNetwork(networkReq); err != nil {
+							return fmt.Errorf("failed to create network: %w", err)
+						}
+						log.Printf("Network '%s' created successfully", bridgeName)
 					} else {
-						log.Printf("Network '%s' updated successfully", bridgeName)
+						// Only try to update if it's a managed bridge
+						if existingNetworkType == "bridge" {
+							// Update existing network
+							network, etag, err := c.GetNetwork(bridgeName)
+							if err != nil {
+								log.Printf("Warning: Failed to get network details for update: %v", err)
+								log.Println("Skipping network update")
+							} else {
+								// Ensure ipv4.nat is set to "true"
+								networkPut := api.NetworkPut{Config: network.Config}
+								if networkPut.Config == nil {
+									networkPut.Config = make(map[string]string)
+								}
+								networkPut.Config["ipv4.nat"] = "true"
+								if err = c.UpdateNetwork(bridgeName, networkPut, etag); err != nil {
+									log.Printf("Warning: Failed to update network: %v", err)
+									log.Println("Continuing without network update")
+								} else {
+									log.Printf("Network '%s' updated successfully", bridgeName)
+								}
+							}
+						} else {
+							log.Printf("Network '%s' is type '%s', not updating (only bridge networks can be updated)", bridgeName, existingNetworkType)
+						}
 					}
 				}
-			} else {
-				log.Printf("Network '%s' is type '%s', not updating (only bridge networks can be updated)",
-					bridgeName, existingNetworkType)
 			}
 		} else {
-			log.Printf("Network '%s' exists and skip-network-update is set, skipping update", bridgeName)
+			log.Printf("NETWORK_BRIDGE not set; skipping LXD network creation. VMs will attach to parent '%s'", nicParent)
 		}
+	}
 
-	} // end if nicType == "bridge"
-
-	// Ensure MAAS VM profile exists with disk+nic
-	if err := ensureMAASProfile(c, nicType, nicParent, storagePoolName); err != nil {
+	// Ensure MAAS VM profile exists in the project
+	if err := ensureMAASProfile(cProj, nicType, effectiveParent, storagePoolName); err != nil {
 		log.Printf("Warning: Failed to ensure MAAS profile: %v", err)
 	}
 
-	// Configure LXD to listen on the network
-	if err := configureLXDNetwork(trustPassword); err != nil {
+	// Configure LXD to listen on the node IP only
+	if err := configureLXDNetwork(trustPassword, hostIP); err != nil {
 		log.Printf("Warning: Failed to configure LXD network: %v", err)
 		log.Println("Continuing anyway, as this is not critical")
 	}
 
 	return nil
+}
+
+// ensureLXDProject ensures an LXD project exists
+func ensureLXDProject(c lxdclient.InstanceServer, project string) error {
+	if project == "" || project == "default" {
+		return nil
+	}
+	projects, err := c.GetProjects()
+	if err != nil {
+		return err
+	}
+	for _, p := range projects {
+		if p.Name == project {
+			return nil
+		}
+	}
+	req := api.ProjectsPost{
+		Name: project,
+		ProjectPut: api.ProjectPut{
+			Config: map[string]string{},
+		},
+	}
+	return c.CreateProject(req)
 }
 
 // configureLXDNetwork configures LXD to listen on the network
@@ -759,16 +1015,20 @@ func ensureMAASProfile(c lxdclient.InstanceServer, nicType, nicParent, pool stri
 	}
 	return nil
 }
-
-func configureLXDNetwork(trustPassword string) error {
+func configureLXDNetwork(trustPassword, hostIP string) error {
 	log.Println("Configuring LXD to listen on the network")
 
-	// Set LXD to listen on all interfaces on port 8443
-	cmd := exec.Command("/snap/bin/lxc", "config", "set", "core.https_address", ":8443")
+	// Prefer binding to the node's IP to avoid exposing on all interfaces
+	address := ":8443"
+	if ip := strings.TrimSpace(hostIP); ip != "" {
+		address = ip + ":8443"
+	}
+
+	cmd := exec.Command("/snap/bin/lxc", "config", "set", "core.https_address", address)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("lxc command failed (%v), trying nsenter fallback", err)
-		cmd = exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "/snap/bin/lxc", "config", "set", "core.https_address", ":8443")
+		cmd = exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "/snap/bin/lxc", "config", "set", "core.https_address", address)
 		output, err = cmd.CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("failed to set core.https_address (fallback): %s: %w", string(output), err)
@@ -793,6 +1053,6 @@ func configureLXDNetwork(trustPassword string) error {
 		}
 	}
 
-	log.Println("LXD configured to listen on port 8443")
+	log.Printf("LXD configured to listen on %s", address)
 	return nil
 }

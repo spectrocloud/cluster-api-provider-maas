@@ -6,7 +6,10 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
@@ -44,7 +47,106 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return fmt.Errorf("failed to get target cluster client: %v", err)
 	}
 
-	// First clean up any existing DaemonSets in this namespace
+	// If feature is off or cluster is being deleted, we're done
+	if !clusterScope.IsLXDHostEnabled() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
+		return nil
+	}
+
+	// Gate: ensure pivot completed. Require mgmt namespace to have clusterEnv=target
+	mgmtNS := &corev1.Namespace{}
+	if err := r.Client.Get(ctx, client.ObjectKey{Name: dsNamespace}, mgmtNS); err != nil {
+		// Namespace not readable yet on management cluster; skip for now
+		return nil
+	}
+	if v := strings.TrimSpace(mgmtNS.Annotations["clusterEnv"]); v != "target" {
+		r.Log.Info("Namespace not marked as target; deferring LXD initializer", "namespace", dsNamespace, "clusterEnv", v)
+		return nil
+	}
+
+	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
+	desiredCP := int32(1)
+	readyByKCP := int32(0)
+	// Prefer MaasCloudConfig.spec.machinePoolConfig[].size where isControlPlane=true (sum)
+	{
+		mccList := &unstructured.UnstructuredList{}
+		mccList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.spectrocloud.com", Version: "v1alpha1", Kind: "MaasCloudConfigList"})
+		if err := r.Client.List(ctx, mccList, client.InNamespace(dsNamespace)); err == nil {
+			var sum int64
+			for _, it := range mccList.Items {
+				owned := false
+				for _, or := range it.GetOwnerReferences() {
+					if or.Name == cluster.Name {
+						owned = true
+						break
+					}
+				}
+				if !owned && !strings.HasSuffix(it.GetName(), "-maas-config") {
+					continue
+				}
+				pools, found, _ := unstructured.NestedSlice(it.Object, "spec", "machinePoolConfig")
+				if !found {
+					continue
+				}
+				for _, p := range pools {
+					if mp, ok := p.(map[string]interface{}); ok {
+						isCP, _, _ := unstructured.NestedBool(mp, "isControlPlane")
+						if !isCP {
+							continue
+						}
+						if v, foundSz, _ := unstructured.NestedInt64(mp, "size"); foundSz && v > 0 {
+							sum += v
+						}
+					}
+				}
+				if sum > 0 {
+					desiredCP = int32(sum)
+					break
+				}
+			}
+		}
+	}
+	// Fallback: use KCP if MCC not found
+	if desiredCP == 1 {
+		kcpList := &unstructured.UnstructuredList{}
+		kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
+		if err := r.Client.List(ctx, kcpList, client.InNamespace(dsNamespace), client.MatchingLabels{
+			"cluster.x-k8s.io/cluster-name": cluster.Name,
+		}); err == nil {
+			if len(kcpList.Items) > 0 {
+				item := kcpList.Items[0]
+				if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
+					desiredCP = int32(v)
+				}
+				if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
+					readyByKCP = int32(v)
+				}
+			}
+		}
+	}
+
+	nodeList := &corev1.NodeList{}
+	cpSelector := labels.SelectorFromSet(labels.Set{
+		"node-role.kubernetes.io/control-plane": "",
+	})
+	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err == nil {
+		ready := 0
+		for _, n := range nodeList.Items {
+			for _, c := range n.Status.Conditions {
+				if c.Type == corev1.NodeReady && c.Status == corev1.ConditionTrue {
+					ready++
+					break
+				}
+			}
+		}
+		// Proceed when CP nodes are present and Ready, regardless of KCP readyReplicas
+		if int32(len(nodeList.Items)) < desiredCP || int32(ready) < desiredCP {
+			r.Log.Info("Not enough control-plane nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
+			// Not enough control-plane nodes present/ready yet; skip DS for now
+			return nil
+		}
+	}
+
+	// Clean up any existing DaemonSets in this namespace (old naming/labels)
 	dsList := &appsv1.DaemonSetList{}
 	if err := remoteClient.List(ctx, dsList, client.InNamespace(dsNamespace), client.MatchingLabels{
 		"app": "lxd-initializer",
@@ -57,11 +159,6 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		if err := remoteClient.Delete(ctx, &ds); err != nil {
 			return fmt.Errorf("failed to delete DaemonSet %s: %v", ds.Name, err)
 		}
-	}
-
-	// If feature is off or cluster is being deleted, we're done after cleanup
-	if !clusterScope.IsLXDHostEnabled() || !cluster.ObjectMeta.DeletionTimestamp.IsZero() {
-		return nil
 	}
 
 	// Ensure RBAC resources are created on target cluster
