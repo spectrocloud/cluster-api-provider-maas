@@ -212,7 +212,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 		r.bestEffortUnregisterLXDHost(clusterScope, machineScope, m)
 	}
-
+	
 	if err := r.tryReleaseWithVMHostHandling(context.Background(), machineScope, clusterScope, machineSvc, m); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -386,11 +386,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
-	// If static IP is configured, make sure the IP field is populated by external controller.
-	if staticIPConfig := machineScope.GetStaticIPConfig(); staticIPConfig != nil && machineScope.GetStaticIP() == "" {
-		machineScope.Info("Static IP is configured but IP field is empty, waiting for external controller to populate it")
-		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForStaticIPReason, clusterv1.ConditionSeverityInfo, "")
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// If control-plane static IP is configured, wait for IP assignment to be populated by external controller.
+	if machineScope.IsControlPlane() {
+		if staticIPConfig := machineScope.GetStaticIPConfig(); staticIPConfig != nil && machineScope.GetStaticIP() == "" {
+			machineScope.Info("Static IP is configured for control-plane but IP field is empty, waiting for external controller to populate it")
+			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForStaticIPReason, clusterv1.ConditionSeverityInfo, "")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 	}
 
 	machineSvc := maasmachine.NewService(machineScope)
