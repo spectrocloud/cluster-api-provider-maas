@@ -17,7 +17,6 @@ package lxd
 import (
 	"context"
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -80,11 +79,10 @@ func (s *Service) ReconcileLXD() error {
 		}
 	}
 
-	// Set up LXD on each machine
+	// Ensure each node has been initialized by the DaemonSet (registration happens in DS now)
 	for _, machine := range allMachines {
-		if err := s.setupLXDOnMachine(machine); err != nil {
-			conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, "Failed to set up LXD on machine %s: %v", machine.Name, err)
-			return errors.Wrapf(err, "failed to set up LXD on machine %s", machine.Name)
+		if _, err := s.isNodeLXDInitialized(machine); err != nil {
+			return errors.Wrapf(err, "failed LXD readiness check for %s", machine.Name)
 		}
 	}
 
@@ -93,67 +91,6 @@ func (s *Service) ReconcileLXD() error {
 
 	// Update the cluster status
 	s.clusterScope.SetStatus(cluster.Status)
-
-	return nil
-}
-
-// setupLXDOnMachine sets up LXD on a machine
-func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
-	// Select the first valid IP (preferring ExternalIP, then InternalIP)
-	var nodeIP string
-	for _, addr := range machine.Status.Addresses {
-		if net.ParseIP(addr.Address) == nil {
-			continue // skip hostnames
-		}
-		if addr.Type == clusterv1.MachineExternalIP {
-			nodeIP = addr.Address
-			break
-		}
-		if addr.Type == clusterv1.MachineInternalIP && nodeIP == "" {
-			nodeIP = addr.Address
-		}
-	}
-	if nodeIP == "" {
-		return fmt.Errorf("machine %s has no valid IP address", machine.Name)
-	}
-
-	s.clusterScope.Info("Setting up LXD host", "machine", machine.Name, "ip", nodeIP)
-
-	// Get the LXD configuration from the cluster
-	lxdConfig := s.clusterScope.GetLXDConfig()
-
-	// Create the host configuration
-	hostConfig := HostConfig{
-		NodeIP:          nodeIP,
-		MaasAPIKey:      s.clusterScope.GetMaasClientIdentity().Token,
-		MaasAPIEndpoint: s.clusterScope.GetMaasClientIdentity().URL,
-		StorageBackend:  lxdConfig.StorageBackend,
-		NetworkBridge:   lxdConfig.NetworkBridge,
-		ResourcePool:    *machine.Spec.ResourcePool,
-		Zone:            *machine.Spec.FailureDomain,
-		TrustPassword:   "capmaas",
-	}
-
-	// Check if LXD initialization is complete on the node before attempting MAAS registration
-	lxdReady, err := s.isNodeLXDInitialized(machine)
-	if err != nil {
-		return errors.Wrapf(err, "failed to check LXD initialization status for machine %s", machine.Name)
-	}
-
-	if !lxdReady {
-		s.clusterScope.V(1).Info("LXD not yet initialized, will retry", "machine", machine.Name)
-		// Return a specific error to trigger requeue instead of silently skipping
-		return fmt.Errorf("LXD not ready on machine %s, waiting for initialization", machine.Name)
-	}
-
-	// Set up LXD on the machine
-	// Note: This now relies on the DaemonSet to initialize LXD
-	// It only checks if the host is registered with MAAS and registers it if not
-	// Use our adapter implementation to ensure compatibility with MAAS 3.x
-	// Use the maas-client-go implementation (Zone/Pool struct fix in PR #19)
-	if err := SetupLXDHostWithMaasClient(hostConfig); err != nil {
-		return errors.Wrapf(err, "failed to set up LXD on machine %s", machine.Name)
-	}
 
 	return nil
 }
