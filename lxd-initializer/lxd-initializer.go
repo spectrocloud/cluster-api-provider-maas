@@ -468,15 +468,6 @@ func main() {
 		nicMode = "bridge"
 	}
 
-	// // Determine host short name for unique bridge suffix
-	// hostShort := nodeName
-	// if hostShort == "" {
-	// 	if osHN, _ := os.Hostname(); osHN != "" {
-	// 		hostShort = osHN
-	// 	}
-	// }
-	// hostToken := normalizeName(hostShort)
-
 	networkBridge := *networkBridgeFlag
 	if networkBridge == "" {
 		networkBridge = os.Getenv("NETWORK_BRIDGE")
@@ -484,11 +475,6 @@ func main() {
 			networkBridge = "br0" // Default to br0
 		}
 	}
-	// // Unique bridge per host to avoid cross-host name collisions
-	// uniqueBridge := networkBridge
-	// if hostToken != "" {
-	// 	uniqueBridge = fmt.Sprintf("%s-%s", networkBridge, hostToken)
-	// }
 
 	// Auto-detect zone, resource pool, and boot interface name from MAAS
 	zone, resourcePool, bootInterfaceName, err := getMachineInfoFromMaas(nodeName, maasAPIKey, maasEndpoint)
@@ -645,12 +631,16 @@ func main() {
 	}
 
 	if actionStr == "register" || actionStr == "both" {
-		// Build a stable host name using MAAS system-id
+		// Single naming convention: lxd-host-<hostname>
 		systemID, sErr := extractSystemIDFromNodeName(nodeName)
 		if sErr != nil {
 			log.Fatalf("Failed to extract system ID from node name: %v", sErr)
 		}
-		hostName := fmt.Sprintf("lxd-host-%s", systemID)
+		hostToken := normalizeName(nodeName)
+		if hostToken == "" {
+			hostToken = "node"
+		}
+		hostName := fmt.Sprintf("lxd-host-%s", hostToken)
 		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, project, zone, resourcePool, hostName); err != nil {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
@@ -662,17 +652,6 @@ func main() {
 		return
 	}
 
-	// // Keep the container running to maintain the DaemonSet if in daemon mode
-	// log.Println("LXD initialization completed successfully")
-	// log.Println("Starting periodic trust-password maintainer")
-	// go func() {
-	// 	for {
-	// 		if err := setTrustPassword(trustPassword); err != nil {
-	// 			log.Printf("periodic trust password set failed: %v", err)
-	// 		}
-	// 		time.Sleep(15 * time.Minute)
-	// 	}
-	// }()
 	log.Println("Entering sleep loop to keep the container running")
 	for {
 		time.Sleep(3600 * time.Second)
