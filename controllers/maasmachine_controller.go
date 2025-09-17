@@ -212,7 +212,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 		r.bestEffortUnregisterLXDHost(clusterScope, machineScope, m)
 	}
-	
+
 	if err := r.tryReleaseWithVMHostHandling(context.Background(), machineScope, clusterScope, machineSvc, m); err != nil {
 		return ctrl.Result{}, err
 	}
