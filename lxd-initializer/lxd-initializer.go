@@ -550,15 +550,7 @@ func main() {
 			log.Fatalf("Failed to initialize LXD: %v", err)
 		}
 
-		// Mark the node as LXD initialized (production: only log errors)
-		if nodeName != "" {
-			nodeLabeler, err := NewNodeLabeler(nodeName)
-			if err != nil {
-				log.Printf("Warning: Failed to create node labeler for %s: %v", nodeName, err)
-			} else {
-				nodeLabeler.SafeMarkLXDInitialized()
-			}
-		}
+		// Do not mark initialized here; labeling will occur only after successful registration
 	}
 
 	// Add a fixed delay after init before registration when doing both steps
@@ -643,6 +635,16 @@ func main() {
 		hostName := fmt.Sprintf("lxd-host-%s", hostToken)
 		if err := registerWithMAAS(maasEndpoint, maasAPIKey, systemID, nodeIP, trustPassword, project, zone, resourcePool, hostName); err != nil {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
+		}
+
+		// Label the node only after successful registration
+		if nodeName != "" {
+			nodeLabeler, err := NewNodeLabeler(nodeName)
+			if err != nil {
+				log.Printf("Warning: Failed to create node labeler for %s: %v", nodeName, err)
+			} else {
+				nodeLabeler.SafeMarkLXDInitialized()
+			}
 		}
 	}
 
