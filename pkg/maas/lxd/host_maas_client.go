@@ -28,6 +28,7 @@ import (
 // HostConfig contains the configuration for setting up an LXD host
 type HostConfig struct {
 	NodeIP          string
+	HostName        string
 	MaasAPIKey      string
 	MaasAPIEndpoint string
 	StorageBackend  string
@@ -70,8 +71,13 @@ func SetupLXDHostWithMaasClient(config HostConfig) error {
 	// Create MAAS client
 	client := maasclient.NewAuthenticatedClientSet(config.MaasAPIEndpoint, config.MaasAPIKey)
 
-	// Check if the host is already registered with MAAS
-	isRegistered, err := isHostRegisteredWithMaasClient(client, config.NodeIP)
+	// Check if the host is already registered with MAAS (by systemID, desired name, or power address)
+	hn := strings.TrimSpace(config.HostName)
+	desiredName := fmt.Sprintf("lxd-host-%s", hn)
+	if hn == "" {
+		desiredName = fmt.Sprintf("lxd-host-%s", config.NodeIP)
+	}
+	isRegistered, err := isHostRegisteredWithMaasClientAdvanced(client, "", desiredName, config.NodeIP)
 	if err != nil {
 		return fmt.Errorf("failed to check if host is registered: %w", err)
 	}
@@ -114,7 +120,8 @@ func normalizeHost(s string) string {
 }
 
 // isHostRegisteredWithMaasClient checks if a host is already registered with MAAS as a VM host
-func isHostRegisteredWithMaasClient(client maasclient.ClientSetInterface, nodeIP string) (bool, error) {
+// isHostRegisteredWithMaasClientAdvanced returns true if a VM host exists matching systemID, desired name, or power address host
+func isHostRegisteredWithMaasClientAdvanced(client maasclient.ClientSetInterface, systemID, desiredName, nodeIP string) (bool, error) {
 	ctx := context.Background()
 
 	vmHosts, err := client.VMHosts().List(ctx, nil)
@@ -122,15 +129,20 @@ func isHostRegisteredWithMaasClient(client maasclient.ClientSetInterface, nodeIP
 		return false, fmt.Errorf("failed to get VM hosts: %w", err)
 	}
 
-	wantName := fmt.Sprintf("lxd-host-%s", nodeIP)
-	wantHost := normalizeHost(nodeIP)
+	wantName := strings.TrimSpace(desiredName)
+	wantHost := normalizeHost(strings.TrimSpace(nodeIP))
 
 	for _, host := range vmHosts {
-		// Compare by name (our deterministic naming) or by normalized power address host component.
-		if host.Name() == wantName {
+		// 1) Prefer exact hostSystemID match when provided
+		if strings.TrimSpace(systemID) != "" && host.HostSystemID() == strings.TrimSpace(systemID) {
 			return true, nil
 		}
-		if normalizeHost(host.PowerAddress()) == wantHost {
+		// 2) Compare by desired name
+		if wantName != "" && host.Name() == wantName {
+			return true, nil
+		}
+		// 3) Legacy power address host match
+		if wantHost != "" && normalizeHost(host.PowerAddress()) == wantHost {
 			return true, nil
 		}
 	}
@@ -142,10 +154,16 @@ func registerWithMaasClient(client maasclient.ClientSetInterface, config HostCon
 	ctx := context.Background()
 
 	// Create registration parameters
+	name := strings.TrimSpace(config.HostName)
+	if name != "" {
+		name = fmt.Sprintf("lxd-host-%s", name)
+	} else {
+		name = fmt.Sprintf("lxd-host-%s", config.NodeIP)
+	}
 	params := maasclient.ParamsBuilder().
 		Set("type", "lxd").
 		Set("power_address", fmt.Sprintf("https://%s:8443", config.NodeIP)).
-		Set("name", fmt.Sprintf("lxd-host-%s", config.NodeIP))
+		Set("name", name)
 
 	if config.Zone != "" {
 		// Pass the zone name directly. MAAS API expects the zone name, not ID.
@@ -162,7 +180,7 @@ func registerWithMaasClient(client maasclient.ClientSetInterface, config HostCon
 	}
 
 	log := textlogger.NewLogger(textlogger.NewConfig())
-	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"))
+	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"), "name", name)
 
 	// Register the host with MAAS
 	_, err := client.VMHosts().Create(ctx, params)
@@ -188,8 +206,8 @@ func GetAvailableLXDHostsWithMaasClient(apiKey, apiEndpoint string) ([]maasclien
 	return vmHosts, nil
 }
 
-// UnregisterLXDHostWithMaasClient removes a VM host registration from MAAS by matching name or power address
-func UnregisterLXDHostWithMaasClient(apiKey, apiEndpoint, nodeIP string) error {
+// UnregisterLXDHostByNameWithMaasClient removes a VM host registration from MAAS by matching the exact host name
+func UnregisterLXDHostByNameWithMaasClient(apiKey, apiEndpoint, hostName string) error {
 	client := maasclient.NewAuthenticatedClientSet(apiEndpoint, apiKey)
 
 	ctx := context.Background()
@@ -198,21 +216,16 @@ func UnregisterLXDHostWithMaasClient(apiKey, apiEndpoint, nodeIP string) error {
 		return fmt.Errorf("failed to get VM hosts: %w", err)
 	}
 
-	wantName := fmt.Sprintf("lxd-host-%s", nodeIP)
-	wantHost := normalizeHost(nodeIP)
-
 	for _, host := range vmHosts {
-		if host.Name() == wantName || normalizeHost(host.PowerAddress()) == wantHost {
-			// Found the host; delete it by system ID as required by the client
+		if host.Name() == hostName {
 			if derr := client.VMHosts().VMHost(host.SystemID()).Delete(ctx); derr != nil {
 				return fmt.Errorf("failed to delete VM host %s (id=%s): %w", host.Name(), host.SystemID(), derr)
 			}
 			log := textlogger.NewLogger(textlogger.NewConfig())
-			log.Info("Successfully unregistered LXD host", "node", nodeIP, "id", host.SystemID(), "name", host.Name())
+			log.Info("Successfully unregistered LXD host", "name", hostName, "id", host.SystemID())
 			return nil
 		}
 	}
-	// Not found -> nothing to do
 	return nil
 }
 
