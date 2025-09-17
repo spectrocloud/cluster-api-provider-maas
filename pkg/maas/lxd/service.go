@@ -131,7 +131,7 @@ func (s *Service) setupLXDOnMachine(machine *v1beta1.MaasMachine) error {
 		NetworkBridge:   lxdConfig.NetworkBridge,
 		ResourcePool:    *machine.Spec.ResourcePool,
 		Zone:            *machine.Spec.FailureDomain,
-		TrustPassword:   "capmaas",
+		TrustPassword:   "capmaas" + *machine.Status.Hostname,
 	}
 
 	// Check if LXD initialization is complete on the node before attempting MAAS registration

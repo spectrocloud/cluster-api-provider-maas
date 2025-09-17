@@ -81,13 +81,17 @@ func SetupLXDHostWithMaasClient(config HostConfig) error {
 		return nil
 	}
 
-	// Register the host with MAAS as a KVM host
-	if err := registerWithMaasClient(client, config); err != nil {
-		return fmt.Errorf("failed to register with MAAS: %w", err)
-	}
-
-	log.Info("Successfully set up LXD host", "node", config.NodeIP)
+	// Skip automatic registration - manual registration required
+	log.Info("Skipping automatic LXD host registration (manual registration required)", "node", config.NodeIP)
 	return nil
+
+	// Register the host with MAAS as a KVM host (DISABLED)
+	// if err := registerWithMaasClient(client, config); err != nil {
+	// 	return fmt.Errorf("failed to register with MAAS: %w", err)
+	// }
+
+	// log.Info("Successfully set up LXD host", "node", config.NodeIP)
+	// return nil
 }
 
 // normalizeHost extracts the host part from a MAAS power_address or raw string
@@ -138,40 +142,42 @@ func isHostRegisteredWithMaasClient(client maasclient.ClientSetInterface, nodeIP
 }
 
 // registerWithMaasClient registers a host with MAAS as a VM host
-func registerWithMaasClient(client maasclient.ClientSetInterface, config HostConfig) error {
-	ctx := context.Background()
+// func registerWithMaasClient(client maasclient.ClientSetInterface, config HostConfig) error {
+// 	ctx := context.Background()
+// 	log := textlogger.NewLogger(textlogger.NewConfig())
+// 	log.Info("registering with MAAS", "node", config.NodeIP, "trust_password", config.TrustPassword)
 
-	// Create registration parameters
-	params := maasclient.ParamsBuilder().
-		Set("type", "lxd").
-		Set("power_address", fmt.Sprintf("https://%s:8443", config.NodeIP)).
-		Set("name", fmt.Sprintf("lxd-host-%s", config.NodeIP))
+// 	// Create registration parameters
+// 	params := maasclient.ParamsBuilder().
+// 		Set("type", "lxd").
+// 		Set("power_address", config.NodeIP).
+// 		Set("name", fmt.Sprintf("lxd-host-%s", config.NodeIP)).
+// 		Set("project", "maas")
 
-	if config.Zone != "" {
-		// Pass the zone name directly. MAAS API expects the zone name, not ID.
-		params.Set("zone", config.Zone)
-	}
+// 	if config.Zone != "" {
+// 		// Pass the zone name directly. MAAS API expects the zone name, not ID.
+// 		params.Set("zone", config.Zone)
+// 	}
 
-	if config.ResourcePool != "" {
-		// Pass pool name directly.
-		params.Set("pool", config.ResourcePool)
-	}
+// 	if config.ResourcePool != "" {
+// 		// Pass pool name directly.
+// 		params.Set("pool", config.ResourcePool)
+// 	}
 
-	if config.TrustPassword != "" {
-		params.Set("password", config.TrustPassword)
-	}
+// 	if config.TrustPassword != "" {
+// 		params.Set("password", config.TrustPassword)
+// 	}
 
-	log := textlogger.NewLogger(textlogger.NewConfig())
-	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"))
+// 	log.Info("register params", "zone", params.Values().Get("zone"), "pool", params.Values().Get("pool"))
 
-	// Register the host with MAAS
-	_, err := client.VMHosts().Create(ctx, params)
-	if err != nil {
-		return fmt.Errorf("failed to register host with MAAS: %w", err)
-	}
+// 	// Register the host with MAAS
+// 	_, err := client.VMHosts().Create(ctx, params)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to register host with MAAS: %w", err)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // GetAvailableLXDHostsWithMaasClient returns a list of available LXD hosts from MAAS
 func GetAvailableLXDHostsWithMaasClient(apiKey, apiEndpoint string) ([]maasclient.VMHost, error) {
