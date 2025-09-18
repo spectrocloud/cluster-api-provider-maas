@@ -29,32 +29,29 @@ spec:
         effect: "NoSchedule"
       initContainers:
       - name: ensure-lxd
-        image: ubuntu:22.04
+        image: us-east1-docker.pkg.dev/spectro-images/cluster-api/lxd-initializer:v0.6.1-spectro-4.7.13
+        imagePullPolicy: IfNotPresent
         command:
-        - /bin/bash
+        - /bin/sh
         - -c
         - |
           set -ex
-          if ! command -v lxd >/dev/null 2>&1; then
-            echo "LXD not present, installing via snap";
-            apt-get update;
-            apt-get install -y snapd systemd;
-            systemctl enable --now snapd.socket;
-            snap install lxd --channel=5.0/stable;
-          fi
-          echo "Ensuring LXD daemon is running on host";
-          if nsenter -t 1 -m -p -- systemctl is-active --quiet snap.lxd.daemon; then
-            echo "LXD daemon already active";
+          # Install LXD on host if missing (operate only via nsenter on the host)
+          if nsenter -t 1 -m -p -- test -x /snap/bin/lxd; then
+            echo "LXD present on host"
           else
-            echo "Starting LXD daemon via host systemd";
-            nsenter -t 1 -m -p -- systemctl start snap.lxd.daemon || snap start --enable lxd.daemon;
+            echo "Installing LXD via snap on host"
+            nsenter -t 1 -m -p -- sh -c 'command -v apt-get >/dev/null 2>&1 && apt-get update || true'
+            nsenter -t 1 -m -p -- sh -c 'command -v apt-get >/dev/null 2>&1 && apt-get install -y snapd systemd || true'
+            nsenter -t 1 -m -p -- systemctl enable --now snapd.socket || true
+            nsenter -t 1 -m -p -- snap install lxd --channel=5.0/stable
           fi
+          # Ensure daemon running
+          nsenter -t 1 -m -p -- sh -c 'systemctl is-active --quiet snap.lxd.daemon || systemctl start snap.lxd.daemon || snap start --enable lxd.daemon'
           # Wait for LXD to report readiness (up to 5 minutes)
           echo "Waiting for LXD to become ready on host (timeout 5 min)…"
-          if ! nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300 ; then
-            echo "LXD did not become ready after 5 minutes"; exit 1;
-          fi
-          echo "Host LXD is ready";
+          nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300
+          echo "Host LXD is ready"
 
         securityContext:
           privileged: true
@@ -73,8 +70,8 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.0.0-dev-17102025-01
-        imagePullPolicy: Always
+        image: us-east1-docker.pkg.dev/spectro-images/cluster-api/lxd-initializer:v0.6.1-spectro-4.7.13
+        imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
         env:
@@ -93,7 +90,7 @@ spec:
         - name: NIC_PARENT
           value: "${NIC_PARENT}"
         - name: STORAGE_SIZE
-          value: "${STORAGE_SIZE}"                   
+          value: "${STORAGE_SIZE}"
         - name: NETWORK_BRIDGE
           value: "${NETWORK_BRIDGE}"
         - name: SKIP_NETWORK_UPDATE
@@ -138,3 +135,11 @@ spec:
       serviceAccount: lxd-initializer
       serviceAccountName: lxd-initializer
       restartPolicy: Always
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: lxdhost.cluster.com/initialized
+                operator: NotIn
+                values: ["true"]
