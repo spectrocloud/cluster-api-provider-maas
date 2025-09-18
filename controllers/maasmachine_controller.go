@@ -331,11 +331,48 @@ func (r *MaasMachineReconciler) maybeDeleteDynamicLXDVM(clusterScope *scope.Clus
 	}
 	machineScope.Info("Deleting LXD VM after release", "system-id", systemID)
 	api := clusterScope.GetMaasClientIdentity()
+
+	// First, delete the VM using MAAS client
 	if uerr := lxd.DeleteLXDVMWithMaasClient(api.Token, api.URL, systemID); uerr != nil {
 		machineScope.Error(uerr, "failed to delete LXD VM after release", "system-id", systemID)
 		return
 	}
 	machineScope.Info("Successfully deleted LXD VM after release", "system-id", systemID)
+
+	// Then, release any static IP to ensure it's not in reserved but unused state
+	r.releaseStaticIPForLXDVM(clusterScope, machineScope, systemID)
+}
+
+// releaseStaticIPForLXDVM releases the static IP address assigned to an LXD VM
+func (r *MaasMachineReconciler) releaseStaticIPForLXDVM(clusterScope *scope.ClusterScope, machineScope *scope.MachineScope, systemID string) {
+	// Check if this machine has a static IP configuration
+	staticIPConfig := machineScope.GetStaticIPConfig()
+	if staticIPConfig == nil || staticIPConfig.IP == "" {
+		machineScope.V(2).Info("No static IP configured for LXD VM, skipping IP release", "system-id", systemID)
+		return
+	}
+
+	machineScope.Info("Releasing static IP for LXD VM", "system-id", systemID, "ip", staticIPConfig.IP)
+
+	api := clusterScope.GetMaasClientIdentity()
+	client := maasclient.NewAuthenticatedClientSet(api.URL, api.Token)
+	ctx := context.Background()
+
+	// First, check if the IP address exists in MAAS
+	_, err := client.IPAddresses().Get(ctx, staticIPConfig.IP)
+	if err != nil {
+		machineScope.Info("Static IP address not found in MAAS, no need to release", "ip", staticIPConfig.IP, "system-id", systemID)
+		return
+	}
+
+	// Release the IP address using MAAS client
+	err = client.IPAddresses().Release(ctx, staticIPConfig.IP)
+	if err != nil {
+		machineScope.Error(err, "Failed to release static IP address", "ip", staticIPConfig.IP, "system-id", systemID)
+		return
+	}
+
+	machineScope.Info("Successfully released static IP address", "ip", staticIPConfig.IP, "system-id", systemID)
 }
 
 // finalizeMachineDeletion marks conditions, records event, and removes the finalizer
