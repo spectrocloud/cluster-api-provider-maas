@@ -519,16 +519,35 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 }
 
 // setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
+// It first checks if the IP is already allocated elsewhere and releases it if necessary
 func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
 	ctx := context.TODO()
 
-	// Use the new simplified API to set static IP on boot interface
-	err := s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+	// Check if the IP is already allocated elsewhere using GetAll (admin-only operation)
+	s.scope.V(1).Info("Checking existing IP allocation", "ip", config.IP)
+	_, err := s.maasClient.IPAddresses().Get(ctx, config.IP)
+	if err == nil {
+		// IP exists - attempt to release it
+		s.scope.Info("Found existing IP allocation, attempting to release", "ip", config.IP)
+
+		// Try normal release only - no force release to avoid risky operations
+		if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
+			return fmt.Errorf("failed to release existing IP allocation %s: %w (manual intervention may be required)", config.IP, releaseErr)
+		}
+		s.scope.Info("Successfully released IP", "ip", config.IP)
+	} else {
+		// IP doesn't exist or GetAll failed - this is fine, we can proceed with assignment
+		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
+	}
+
+	// Now set the static IP on the target machine's boot interface
+	s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
+	err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
 	if err != nil {
 		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
 	}
 
-	s.scope.Info("Static IP configured", "ip", config.IP, "systemID", systemID)
+	s.scope.Info("Static IP configured successfully", "ip", config.IP, "systemID", systemID)
 	return nil
 }
 
