@@ -1,7 +1,5 @@
 module github.com/spectrocloud/cluster-api-provider-maas
 
-go 1.23.0
-
 toolchain go1.23.6
 
 require (

@@ -17,9 +17,14 @@ ALL_ARCH = amd64 arm64
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-IMG_TAG ?= v0.6.1
-IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
+REGISTRY ?= "us-east1-docker.pkg.dev/spectro-images/dev/${USER}/cluster-api"
+SPECTRO_VERSION ?= 4.0.0-dev
+IMG_TAG ?= v0.6.1-spectro-${SPECTRO_VERSION}
+CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
+
+
+LXD_IMAGE_NAME ?= "lxd-initializer"
+LXD_CONTROLLER_IMG ?= ${REGISTRY}/${LXD_IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
