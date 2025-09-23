@@ -523,12 +523,17 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
 	ctx := context.TODO()
 
-	// Check if the IP is already allocated elsewhere using GetAll (admin-only operation)
+	// Check if the IP is already allocated elsewhere
 	s.scope.V(1).Info("Checking existing IP allocation", "ip", config.IP)
-	_, err := s.maasClient.IPAddresses().Get(ctx, config.IP)
+	existingIP, err := s.maasClient.IPAddresses().Get(ctx, config.IP)
 	if err == nil {
-		// IP exists - attempt to release it
-		s.scope.Info("Found existing IP allocation, attempting to release", "ip", config.IP)
+		// IP exists - check if it's actually allocated to any interfaces
+		interfaces := existingIP.InterfaceSet()
+		if len(interfaces) > 0 {
+			s.scope.Info("Found existing IP allocation, attempting to release", "ip", config.IP, "interfaceCount", len(interfaces))
+		} else {
+			s.scope.Info("Found IP with no interfaces, releasing to clean up stale state", "ip", config.IP)
+		}
 
 		// Try normal release only - no force release to avoid risky operations
 		if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
