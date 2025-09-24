@@ -516,16 +516,16 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 		// IP exists - check if it's actually allocated to any interfaces
 		interfaces := existingIP.InterfaceSet()
 		if len(interfaces) > 0 {
-			s.scope.Info("Found existing IP allocation, attempting to release", "ip", config.IP, "interfaceCount", len(interfaces))
+			s.scope.Info("Found existing IP allocation with interfaces, skipping release", "ip", config.IP, "interfaceCount", len(interfaces))
 		} else {
 			s.scope.Info("Found IP with no interfaces, releasing to clean up stale state", "ip", config.IP)
-		}
 
-		// Try normal release only - no force release to avoid risky operations
-		if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
-			return fmt.Errorf("failed to release existing IP allocation %s: %w (manual intervention may be required)", config.IP, releaseErr)
+			// Try normal release only - no force release to avoid risky operations
+			if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
+				return fmt.Errorf("failed to release existing IP allocation %s: %w (manual intervention may be required)", config.IP, releaseErr)
+			}
+			s.scope.Info("Successfully released IP", "ip", config.IP)
 		}
-		s.scope.Info("Successfully released IP", "ip", config.IP)
 	} else {
 		// IP doesn't exist or GetAll failed - this is fine, we can proceed with assignment
 		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
