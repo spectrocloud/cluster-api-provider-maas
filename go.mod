@@ -1,6 +1,9 @@
 module github.com/spectrocloud/cluster-api-provider-maas
 
+
 go 1.24.6
+
+toolchain go1.24.6
 
 require (
 	github.com/go-logr/logr v1.4.2
@@ -9,7 +12,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.1
 	github.com/pkg/errors v0.9.1
-	github.com/spectrocloud/maas-client-go v0.0.8-beta1
+	github.com/spectrocloud/maas-client-go v0.0.9-beta1
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver v0.31.3

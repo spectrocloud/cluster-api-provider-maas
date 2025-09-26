@@ -327,20 +327,6 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 	return nil, ErrVMComposing
 }
 
-// createLXDVM creates a new LXD VM and registers it with MAAS
-// This method uses MAAS API for cross-cluster communication
-// createLXDVM is deprecated; unified creation flow is handled in DeployMachine.
-// Keeping a stub for backward compatibility and to minimize churn.
-func (s *Service) createLXDVM(userDataB64 string) (*infrav1beta1.Machine, error) {
-	return nil, errors.New("createLXDVM is deprecated; use DeployMachine unified flow")
-}
-
-// createLXDVMForWorkloadCluster creates an LXD VM for a workload cluster machine
-// createLXDVMForWorkloadCluster is deprecated; unified creation flow is handled in DeployMachine.
-func (s *Service) createLXDVMForWorkloadCluster(userDataB64 string) (*infrav1beta1.Machine, error) {
-	return nil, errors.New("createLXDVMForWorkloadCluster is deprecated; use DeployMachine unified flow")
-}
-
 // PrepareLXDVM composes an LXD VM and sets providerID; it does not deploy/boot the VM.
 func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, error) {
 
@@ -519,16 +505,40 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 }
 
 // setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
+// It first checks if the IP is already allocated elsewhere and releases it if necessary
 func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
 	ctx := context.TODO()
 
-	// Use the new simplified API to set static IP on boot interface
-	err := s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+	// Check if the IP is already allocated elsewhere
+	s.scope.V(1).Info("Checking existing IP allocation", "ip", config.IP)
+	existingIP, err := s.maasClient.IPAddresses().Get(ctx, config.IP)
+	if err == nil {
+		// IP exists - check if it's actually allocated to any interfaces
+		interfaces := existingIP.InterfaceSet()
+		if len(interfaces) > 0 {
+			s.scope.Info("Found existing IP allocation with interfaces, skipping release", "ip", config.IP, "interfaceCount", len(interfaces))
+		} else {
+			s.scope.Info("Found IP with no interfaces, releasing to clean up stale state", "ip", config.IP)
+
+			// Try normal release only - no force release to avoid risky operations
+			if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
+				return fmt.Errorf("failed to release existing IP allocation %s: %w (manual intervention may be required)", config.IP, releaseErr)
+			}
+			s.scope.Info("Successfully released IP", "ip", config.IP)
+		}
+	} else {
+		// IP doesn't exist or GetAll failed - this is fine, we can proceed with assignment
+		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
+	}
+
+	// Now set the static IP on the target machine's boot interface
+	s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
+	err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
 	if err != nil {
 		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
 	}
 
-	s.scope.Info("Static IP configured", "ip", config.IP, "systemID", systemID)
+	s.scope.Info("Static IP configured successfully", "ip", config.IP, "systemID", systemID)
 	return nil
 }
 
