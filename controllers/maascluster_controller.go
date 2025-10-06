@@ -51,6 +51,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 
+const lastAppliedAnn = "infrastructure.cluster.x-k8s.io/last-applied-dns-hash"
+
 // MaasClusterReconciler reconciles a MaasCluster object
 type MaasClusterReconciler struct {
 	client.Client
@@ -185,7 +187,6 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 	}
 
 	// Early-exit gate using last-applied hash
-	const lastAppliedAnn = "infrastructure.cluster.x-k8s.io/last-applied-dns-hash"
 	desiredHash := infrautil.StableHashStringSlice(runningIpAddresses)
 	if clusterScope.MaasCluster.Annotations != nil && clusterScope.MaasCluster.Annotations[lastAppliedAnn] == desiredHash {
 		return nil
@@ -278,21 +279,18 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 
 	dnsService := dns.NewService(clusterScope)
 
-	// Only reconcile DNS resource creation if DNS name is not set or DNS is not ready
-	dnsReady := conditions.IsTrue(maasCluster, infrav1beta1.DNSReadyCondition)
-	if maasCluster.Status.Network.DNSName == "" || !dnsReady {
-		if err := dnsService.ReconcileDNS(); err != nil {
-			clusterScope.Error(err, "failed to reconcile load balancer")
-			conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
-			return reconcile.Result{}, err
-		}
-
-		if maasCluster.Status.Network.DNSName == "" {
-			conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
-			clusterScope.Info("Waiting on API server DNS name")
-			return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
-		}
+	if err := dnsService.ReconcileDNS(); err != nil {
+		clusterScope.Error(err, "failed to reconcile load balancer")
+		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.DNSFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		return reconcile.Result{}, err
 	}
+
+	if maasCluster.Status.Network.DNSName == "" {
+		conditions.MarkFalse(maasCluster, infrav1beta1.DNSReadyCondition, infrav1beta1.WaitForDNSNameReason, clusterv1.ConditionSeverityInfo, "")
+		clusterScope.Info("Waiting on API server DNS name")
+		return reconcile.Result{RequeueAfter: 15 * time.Second}, nil
+	}
+	
 
 	maasCluster.Spec.ControlPlaneEndpoint = infrav1beta1.APIEndpoint{
 		Host: maasCluster.Status.Network.DNSName,
