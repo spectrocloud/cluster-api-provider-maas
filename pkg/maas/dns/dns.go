@@ -2,6 +2,8 @@ package dns
 
 import (
 	"context"
+	"sort"
+
 	"github.com/pkg/errors"
 	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
@@ -57,26 +59,52 @@ func (s *Service) ReconcileDNS() error {
 	return nil
 }
 
-// UpdateAttachments reconciles the load balancers for the given cluster.
-func (s *Service) UpdateDNSAttachments(IPs []string) error {
-	s.scope.V(2).Info("Updating DNS Attachments")
+// UpdateDNSAttachmentsWithResource updates DNS attachments using a pre-fetched DNS resource,
+// avoiding additional GET API calls. Returns true if an update was performed.
+func (s *Service) UpdateDNSAttachmentsWithResource(dnsResource maasclient.DNSResource, IPs []string) (bool, error) {
+	s.scope.V(2).Info("Updating DNS Attachments with pre-fetched resource")
 
 	if s.scope.IsCustomEndpoint() {
-		return nil
+		return false, nil
 	}
 
+	return s.updateResourceIPs(dnsResource, IPs)
+}
+
+// updateResourceIPs applies desired IPs to a given DNS resource with idempotency; returns true if an update was made.
+func (s *Service) updateResourceIPs(dnsResource maasclient.DNSResource, IPs []string) (bool, error) {
 	ctx := context.TODO()
-	// get ID of loadbalancer
-	dnsResource, err := s.GetDNSResource()
-	if err != nil {
-		return err
+
+	// Build desired set (dedupe, ignore empties)
+	desired := sets.NewString()
+	for _, ip := range IPs {
+		if ip != "" {
+			desired.Insert(ip)
+		}
 	}
 
-	if _, err = dnsResource.Modifier().SetIPAddresses(IPs).Modify(ctx); err != nil {
-		return errors.Wrap(err, "Unable to update IPs")
+	// Build current set from resource
+	current := sets.NewString()
+	for _, addr := range dnsResource.IPAddresses() {
+		if a := addr.IP().String(); a != "" {
+			current.Insert(a)
+		}
 	}
 
-	return nil
+	if desired.Equal(current) {
+		s.scope.V(4).Info("DNS attachments up-to-date; skipping MAAS update")
+		return false, nil
+	}
+
+	desiredList := desired.UnsortedList()
+	sort.Strings(desiredList)
+
+	if _, err := dnsResource.Modifier().SetIPAddresses(desiredList).Modify(ctx); err != nil {
+		return false, errors.Wrap(err, "Unable to update IPs")
+	}
+
+	s.scope.V(2).Info("DNS attachments updated successfully")
+	return true, nil
 }
 
 // TODO do at some point

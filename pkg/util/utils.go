@@ -17,7 +17,10 @@ limitations under the License.
 package util
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"math"
+	"sort"
 )
 
 // SafeInt64ToInt32 safely converts int64 to int32 with overflow protection
@@ -29,4 +32,21 @@ func SafeInt64ToInt32(value int64) int32 {
 		return math.MinInt32
 	}
 	return int32(value)
+}
+
+// StableHashStringSlice returns a stable, order-insensitive sha256 hash for a slice of strings.
+func StableHashStringSlice(values []string) string {
+	filtered := make([]string, 0, len(values))
+	for _, v := range values {
+		if v != "" {
+			filtered = append(filtered, v)
+		}
+	}
+	sort.Strings(filtered)
+	h := sha256.New()
+	for _, v := range filtered {
+		h.Write([]byte(v))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
