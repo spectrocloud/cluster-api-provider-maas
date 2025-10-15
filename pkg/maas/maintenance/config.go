@@ -29,26 +29,34 @@ package maintenance
 
 import "time"
 
+// ForcePolicy determines how HMC proceeds when evacuation gates are not
+// satisfied within configured timeouts.
 type ForcePolicy string
 
 const (
-	ForceHalt  ForcePolicy = "halt"
+	// ForceHalt stops the maintenance session and requires operator action.
+	ForceHalt ForcePolicy = "halt"
+	// ForceAllow proceeds to decommission despite missing acks (unsafe).
 	ForceAllow ForcePolicy = "force"
+	// ForceRelax allows relaxing placement constraints and retrying.
 	ForceRelax ForcePolicy = "relax"
 )
 
+// HMCConfig configures Host Maintenance Controller timeouts and policy.
 type HMCConfig struct {
 	PerWLCMoveTimeout  time.Duration
 	PerHostWaveTimeout time.Duration
 	Policy             ForcePolicy
 }
 
+// VECConfig configures VM Evacuation Controller timeouts and checks.
 type VECConfig struct {
 	MoveTimeout  time.Duration
 	RetryBackoff time.Duration
 	CheckAPIPath string
 }
 
+// DefaultHMCConfig returns conservative defaults for HMC operation.
 func DefaultHMCConfig() HMCConfig {
 	return HMCConfig{
 		PerWLCMoveTimeout:  20 * time.Minute,
@@ -57,6 +65,7 @@ func DefaultHMCConfig() HMCConfig {
 	}
 }
 
+// DefaultVECConfig returns conservative defaults for VEC operation.
 func DefaultVECConfig() VECConfig {
 	return VECConfig{
 		MoveTimeout:  20 * time.Minute,

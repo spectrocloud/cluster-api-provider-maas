@@ -15,9 +15,10 @@ package maintenance
 
 import "time"
 
-// Session state stored in a ConfigMap; no CRD required.
+// SessionCMName is the name of the ConfigMap used to persist maintenance session state.
 const SessionCMName = "hcp-maintenance-session"
 
+// Status represents the lifecycle state of a maintenance session.
 type Status string
 
 const (
@@ -26,6 +27,7 @@ const (
 	StatusAborted   Status = "Aborted"
 )
 
+// State captures persisted fields for the current maintenance session.
 type State struct {
 	OpID        string
 	Status      Status
@@ -34,6 +36,8 @@ type State struct {
 }
 
 // MAAS API-facing interfaces and light types.
+// TagService abstracts MAAS tag CRUD operations.
+// EnsureTag should be idempotent: create if missing; no-op if present.
 type TagService interface {
 	EnsureTag(name string) error
 	AddTagToMachine(systemID, tag string) error
@@ -42,12 +46,14 @@ type TagService interface {
 	RemoveTagFromHost(systemID, tag string) error
 }
 
+// InventoryService abstracts MAAS inventory reads used by HMC/VEC.
 type InventoryService interface {
 	ListHostVMs(hostSystemID string) ([]Machine, error)
 	ResolveSystemIDByHostname(hostname string) (string, error)
 	GetMachine(systemID string) (Machine, error)
 }
 
+// Machine is a minimal view of a MAAS machine/VM for maintenance flows.
 type Machine struct {
 	SystemID     string
 	HostSystemID string
