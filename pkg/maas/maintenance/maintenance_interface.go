@@ -37,26 +37,47 @@ type State struct {
 
 // MAAS API-facing interfaces and light types.
 // TagService abstracts MAAS tag CRUD operations.
-// EnsureTag should be idempotent: create if missing; no-op if present.
 type TagService interface {
+	// EnsureTag should be idempotent, create tags in MAAS if missing.
 	EnsureTag(name string) error
+	// AddTagToMachine adds a tag to a machine.
 	AddTagToMachine(systemID, tag string) error
+	// RemoveTagFromMachine removes a tag from a machine.
 	RemoveTagFromMachine(systemID, tag string) error
+	// AddTagToHost adds a tag to a host.
 	AddTagToHost(systemID, tag string) error
+	// RemoveTagFromHost removes a tag from a host.
 	RemoveTagFromHost(systemID, tag string) error
 }
 
 // InventoryService abstracts MAAS inventory reads used by HMC/VEC.
 type InventoryService interface {
+	// ListHostVMs lists all VMs on a host.
 	ListHostVMs(hostSystemID string) ([]Machine, error)
+	// ResolveSystemIDByHostname resolves a hostname to a system ID.
 	ResolveSystemIDByHostname(hostname string) (string, error)
+	// GetMachine gets a machine by system ID.
 	GetMachine(systemID string) (Machine, error)
 }
 
 // Machine is a minimal view of a MAAS machine/VM for maintenance flows.
 type Machine struct {
+	// SystemID is the unique identifier for the machine.
 	SystemID     string
+	// HostSystemID is the system ID of the host the machine is on.
 	HostSystemID string
+	// Tags are the tags applied to the machine.
 	Tags         []string
+	// Zone is the zone the machine is in.
 	Zone         string
+	// FQDN is the fully qualified domain name of the machine.
+	FQDN         string
+	// PowerState is the power state of the machine.
+	PowerState   string
+	// PowerType is the power type of the machine.
+	PowerType    string
+	// Hostname is the hostname of the machine.
+	Hostname     string
+	// IPAddresses are the IP addresses of the machine.
+	IPAddresses  []string
 }

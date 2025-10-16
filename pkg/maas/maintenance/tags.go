@@ -13,22 +13,24 @@ limitations under the License.
 */
 package maintenance
 
-import "strings"
+import (
+	"strings"
+)
 
 const (
 	// TagHostMaintenance marks a host as under maintenance (drain source).
-	TagHostMaintenance = "maas.lxd-host-maintenance"
+	TagHostMaintenance = "maas-lxd-host-maintenance"
 	// TagHostNoSchedule prevents new placements on the host during maintenance.
-	TagHostNoSchedule = "maas.lxd-host-noschedule"
+	TagHostNoSchedule = "maas-lxd-host-noschedule"
 	// TagHostOpPrefix prefixes the maintenance session opId stored as a tag.
-	TagHostOpPrefix = "maas.lxd-hcp-op-"
+	TagHostOpPrefix = "maas-lxd-hcp-op-"
 
 	// TagVMControlPlane marks a VM as a control-plane VM.
-	TagVMControlPlane = "maas.lxd-wlc-cp"
+	TagVMControlPlane = "maas-lxd-wlc-cp"
 	// TagVMClusterPrefix prefixes the owning WLC cluster identifier.
-	TagVMClusterPrefix = "maas.lxd-wlc-"
+	TagVMClusterPrefix = "maas-lxd-wlc-"
 	// TagVMReadyOpPrefix prefixes the ready acknowledgement for a given session opId.
-	TagVMReadyOpPrefix = "maas.lxd-ready-op-"
+	TagVMReadyOpPrefix = "maas-lxd-ready-op-"
 )
 
 // BuildOpTag builds the session opId tag for hosts.
@@ -42,4 +44,41 @@ func ParseOpTag(in []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// SanitizeID converts an arbitrary identifier (e.g., clusterId) into a MAAS tag-safe
+// token: lowercase, [a-z0-9-] only, collapsing invalid sequences into '-'.
+func SanitizeID(id string) string {
+	if id == "" {
+		return id
+	}
+	b := make([]rune, 0, len(id))
+	prevDash := false
+	for _, r := range strings.ToLower(id) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b = append(b, r)
+			prevDash = false
+			continue
+		}
+		if !prevDash {
+			b = append(b, '-')
+			prevDash = true
+		}
+	}
+	// trim leading/trailing '-'
+	s := strings.Trim(string(b), "-")
+	// optional: limit length to 63 chars
+	if len(s) > 63 {
+		s = s[:63]
+	}
+	if s == "" {
+		return "x"
+	}
+	return s
+}
+
+// BuildReadyHostTag builds the per-WLC readiness host tag for the given session.
+// Example: maas-lxd-ready-<clusterId>-op-<opID>
+func BuildReadyHostTag(clusterID, opID string) string {
+	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-" + "op-" + opID
 }
