@@ -58,23 +58,19 @@ type InventoryService interface {
 	ResolveSystemIDByHostname(hostname string) (string, error)
 	// GetMachine gets a machine by system ID.
 	GetMachine(systemID string) (Machine, error)
-}
-
-// CrossIndexer provides fast VM↔host lookups.
-type CrossIndexer interface {
-	// VMToHost returns the host system ID for a given VM system ID.
-	VMToHost(systemID string) (hostSystemID string, err error)
-	// HostVMs returns all VM system IDs scheduled on the given host.
-	HostVMs(hostSystemID string) ([]string, error)
-	// ResolveSystemIDByHostname resolves a hostname to a MAAS system ID.
-	ResolveSystemIDByHostname(hostname string) (string, error)
+	// GetHost returns the MAAS machine representing an LXD/KVM host (BM).
+	GetHost(systemID string) (Machine, error)
+	// GetVM returns the MAAS machine representing a VM.
+	GetVM(systemID string) (Machine, error)
+	// GetVMHostForVM resolves the host system ID for a given VM system ID.
+	GetVMHostForVM(vmSystemID string) (hostSystemID string, err error)
 }
 
 // Machine is a minimal view of a MAAS machine/VM for maintenance flows.
 type Machine struct {
 	// SystemID is the unique identifier for the machine.
 	SystemID string
-	// HostSystemID is the system ID of the host the machine is on.
+	// HostSystemID is set for VMs and empty for hosts (BM/LXD hosts).
 	HostSystemID string
 	// Tags are the tags applied to the machine.
 	Tags []string
