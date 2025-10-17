@@ -59,6 +59,7 @@ var (
 	healthAddr           string
 	webhookPort          int
 	watchNamespace       string
+	clusterRole          string
 )
 
 func init() {
@@ -170,6 +171,19 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 			os.Exit(1)
 		}
+
+		// Register VM Evacuation Controller for WLC clusters
+		if clusterRole == "wlc" {
+			setupLog.Info("Cluster role is 'wlc', registering VM Evacuation Controller")
+			if err := (&controllers.VMEvacuationReconciler{
+				Client: mgr.GetClient(),
+				Log:    ctrl.Log.WithName("controllers").WithName("VMEvacuation"),
+				Scheme: mgr.GetScheme(),
+			}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "VMEvacuation")
+				os.Exit(1)
+			}
+		}
 	}
 
 	if webhookPort != 0 {
@@ -213,6 +227,9 @@ func initFlags(fs *pflag.FlagSet) {
 		"Webhook Server port")
 	fs.StringVar(&watchNamespace, "namespace", "",
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
+	)
+	fs.StringVar(&clusterRole, "cluster-role", "",
+		"Role of this cluster: 'hcp' (Host Control Plane) or 'wlc' (Workload Cluster). When set to 'wlc', enables VM evacuation controller.",
 	)
 
 	feature.MutableGates.AddFlag(fs)
