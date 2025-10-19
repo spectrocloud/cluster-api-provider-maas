@@ -15,6 +15,7 @@ package maintenance
 
 import (
 	"context"
+	"net"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
 )
@@ -49,9 +50,27 @@ func NewInventoryService(client maasclient.ClientSetInterface) InventoryService 
 	}
 }
 
-func (s *maasTagService) EnsureTag(name string) error {
-	// TODO: Implement
-	return nil
+// EnsureTagInInventory ensures a tag exists in MAAS inventory (idempotent).
+// If the tag already exists, this is a no-op. If it doesn't exist, it creates it.
+func (s *maasTagService) EnsureTagInInventory(name string) error {
+	ctx := context.Background()
+
+	// List all existing tags
+	existingTags, err := s.client.Tags().List(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Check if tag already exists
+	for _, tag := range existingTags {
+		if tag.Name() == name {
+			// Tag already exists, return success (idempotent)
+			return nil
+		}
+	}
+
+	// Tag doesn't exist, create it
+	return s.client.Tags().Create(ctx, name)
 }
 
 // AddTagToHost adds a tag to a host machine identified by systemID.
@@ -104,6 +123,11 @@ func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, erro
 			HostSystemID: hostSystemID, // We know this from the input
 			Tags:         detailedMachine.Tags(),
 			Zone:         detailedMachine.ZoneName(),
+			FQDN:         detailedMachine.FQDN(),
+			PowerState:   detailedMachine.PowerState(),
+			PowerType:    detailedMachine.PowerType(),
+			Hostname:     detailedMachine.Hostname(),
+			IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
 		})
 	}
 
@@ -137,6 +161,7 @@ func (s *maasInventoryService) ResolveSystemIDByHostname(hostname string) (strin
 }
 
 // GetMachine retrieves details about a specific machine by system ID.
+// This method automatically detects if the machine is a VM and populates the HostSystemID accordingly.
 func (s *maasInventoryService) GetMachine(systemID string) (Machine, error) {
 	ctx := context.Background()
 
@@ -147,15 +172,102 @@ func (s *maasInventoryService) GetMachine(systemID string) (Machine, error) {
 		return Machine{}, err
 	}
 
-	// Note: HostSystemID is not directly available from the Machine object.
-	// To get it, we'd need to list all VMHosts and find which one contains this machine.
-	// For now, leaving it empty. Can be populated by the caller if needed.
+	// Use Parent() method to get parent system_id for LXD VMs
+	// Returns empty string for non-VM machines (bare metal hosts)
 	machine := Machine{
 		SystemID:     detailedMachine.SystemID(),
-		HostSystemID: "", // TODO: Need to query VMHosts to find parent host
+		HostSystemID: detailedMachine.Parent(), // Automatically populated for LXD VMs
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		FQDN:         detailedMachine.FQDN(),
+		PowerState:   detailedMachine.PowerState(),
+		PowerType:    detailedMachine.PowerType(),
+		Hostname:     detailedMachine.Hostname(),
+		IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
 	}
 
 	return machine, nil
+}
+
+// GetHost retrieves details about a host (bare metal) machine by system ID.
+func (s *maasInventoryService) GetHost(systemID string) (Machine, error) {
+	ctx := context.Background()
+
+	// Get the machine from MAAS
+	maasMachine := s.client.Machines().Machine(systemID)
+	detailedMachine, err := maasMachine.Get(ctx)
+	if err != nil {
+		return Machine{}, err
+	}
+
+	// A host is a bare metal machine, so HostSystemID should be empty
+	machine := Machine{
+		SystemID:     detailedMachine.SystemID(),
+		HostSystemID: "", // Hosts don't have a parent host
+		Tags:         detailedMachine.Tags(),
+		Zone:         detailedMachine.ZoneName(),
+		FQDN:         detailedMachine.FQDN(),
+		PowerState:   detailedMachine.PowerState(),
+		PowerType:    detailedMachine.PowerType(),
+		Hostname:     detailedMachine.Hostname(),
+		IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
+	}
+
+	return machine, nil
+}
+
+// GetVM retrieves details about a VM by system ID.
+// This is semantically the same as GetMachine but explicitly indicates this is a VM.
+func (s *maasInventoryService) GetVM(systemID string) (Machine, error) {
+	ctx := context.Background()
+
+	// Get the machine from MAAS
+	maasMachine := s.client.Machines().Machine(systemID)
+	detailedMachine, err := maasMachine.Get(ctx)
+	if err != nil {
+		return Machine{}, err
+	}
+
+	// Use Parent() method to get parent system_id for LXD VMs
+	machine := Machine{
+		SystemID:     detailedMachine.SystemID(),
+		HostSystemID: detailedMachine.Parent(), // Parent system_id for LXD VMs
+		Tags:         detailedMachine.Tags(),
+		Zone:         detailedMachine.ZoneName(),
+		FQDN:         detailedMachine.FQDN(),
+		PowerState:   detailedMachine.PowerState(),
+		PowerType:    detailedMachine.PowerType(),
+		Hostname:     detailedMachine.Hostname(),
+		IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
+	}
+
+	return machine, nil
+}
+
+// GetVMHostForVM resolves the host system ID for a given VM system ID.
+// This method uses the Parent() method which returns the parent system_id for LXD VMs.
+func (s *maasInventoryService) GetVMHostForVM(vmSystemID string) (string, error) {
+	ctx := context.Background()
+
+	// Get the VM machine details
+	maasMachine := s.client.Machines().Machine(vmSystemID)
+	detailedMachine, err := maasMachine.Get(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	// Use the Parent() method which returns parent system_id for LXD VMs
+	// Returns empty string if not an LXD VM
+	parentSystemID := detailedMachine.Parent()
+
+	return parentSystemID, nil
+}
+
+// convertIPAddresses converts []net.IP to []string
+func convertIPAddresses(ips []net.IP) []string {
+	var result []string
+	for _, ip := range ips {
+		result = append(result, ip.String())
+	}
+	return result
 }
