@@ -70,6 +70,7 @@ func SanitizeID(id string) string {
 	// optional: limit length to 63 chars
 	if len(s) > 63 {
 		s = s[:63]
+		s = strings.TrimRight(s, "-")
 	}
 	if s == "" {
 		return "x"
