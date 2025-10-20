@@ -80,5 +80,5 @@ func SanitizeID(id string) string {
 // BuildReadyHostTag builds the per-WLC readiness host tag for the given session.
 // Example: maas-lxd-ready-<clusterId>-op-<opID>
 func BuildReadyHostTag(clusterID, opID string) string {
-	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-" + "op-" + opID
+	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-op-" + opID
 }
