@@ -175,9 +175,10 @@ func main() {
 		// PCP-5336: Wire HMC controller when cluster-role is set to hcp
 		if clusterRole == "hcp" {
 			if err := (&controllers.HMCMaintenanceReconciler{
-				Client: mgr.GetClient(),
-				Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
-				Scheme: mgr.GetScheme(),
+				Client:    mgr.GetClient(),
+				Log:       ctrl.Log.WithName("controllers").WithName("HMC"),
+				Scheme:    mgr.GetScheme(),
+				Namespace: watchNamespace,
 			}).SetupWithManager(mgr); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "HMC")
 				os.Exit(1)
