@@ -26,12 +26,7 @@ limitations under the License.
 //  3. Identify CP Machine on source host via providerID/host mapping
 //  4. For 3-CP clusters: delete targeted CP Machine; KCP replaces one
 //  5. For 1-CP clusters: KCP template swap with maxSurge=1 (handled in another repo)
-//
-// Implementation Status:
-//   - Tag detection: ✅ Implemented (uses maasclient.Machine.Tags())
-//   - CP discovery: ✅ Implemented
-//   - 3-CP evacuation: ✅ Implemented
-//   - Readiness tagging: ❌ TODO
+
 package controllers
 
 import (
@@ -131,7 +126,7 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			"opID", cpInfo.OpID)
 
 		// Step 3: Get KCP and check if we can proceed
-		kcp, err := r.getKubeadmControlPlane(ctx, cluster, log)
+		kcp, err := r.getKubeadmControlPlane(ctx, cluster)
 		if err != nil {
 			log.Error(err, "failed to get KubeadmControlPlane")
 			continue
@@ -250,7 +245,7 @@ func (r *VMEvacuationReconciler) findCPMachinesOnMaintenanceHosts(ctx context.Co
 		}
 
 		tags := hostDetails.Tags()
-		if tags == nil || len(tags) == 0 {
+		if len(tags) == 0 {
 			continue
 		}
 
@@ -323,7 +318,7 @@ func extractSystemIDFromProviderID(providerID string) string {
 }
 
 // getKubeadmControlPlane retrieves the KubeadmControlPlane for the cluster
-func (r *VMEvacuationReconciler) getKubeadmControlPlane(ctx context.Context, cluster *clusterv1.Cluster, log logr.Logger) (*unstructured.Unstructured, error) {
+func (r *VMEvacuationReconciler) getKubeadmControlPlane(ctx context.Context, cluster *clusterv1.Cluster) (*unstructured.Unstructured, error) {
 	if cluster.Spec.ControlPlaneRef == nil {
 		return nil, fmt.Errorf("cluster has no controlPlaneRef")
 	}
@@ -435,6 +430,7 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 // SetupWithManager sets up the controller with the Manager
 func (r *VMEvacuationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("vmevacuation").
 		For(&infrav1beta1.MaasCluster{}).
 		WithOptions(options).
 		Complete(r)
