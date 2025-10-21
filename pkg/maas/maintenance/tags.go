@@ -70,6 +70,7 @@ func SanitizeID(id string) string {
 	// optional: limit length to 63 chars
 	if len(s) > 63 {
 		s = s[:63]
+		s = strings.TrimRight(s, "-")
 	}
 	if s == "" {
 		return "x"
@@ -80,5 +81,5 @@ func SanitizeID(id string) string {
 // BuildReadyHostTag builds the per-WLC readiness host tag for the given session.
 // Example: maas-lxd-ready-<clusterId>-op-<opID>
 func BuildReadyHostTag(clusterID, opID string) string {
-	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-" + "op-" + opID
+	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-op-" + opID
 }
