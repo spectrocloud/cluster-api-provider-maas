@@ -291,14 +291,7 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 				isHealthy := powerState == "on" && machineState == "Deployed"
 
 				// Check if host is under maintenance
-				tags := machine.Tags()
-				isUnderMaintenance := false
-				for _, tag := range tags {
-					if tag == maintenance.TagHostMaintenance || tag == maintenance.TagHostNoSchedule {
-						isUnderMaintenance = true
-						break
-					}
-				}
+				isUnderMaintenance := isHostUnderMaintenance(client, hostSystemID, log)
 
 				if isUnderMaintenance {
 					log.Info("Skipping LXD host under maintenance", "host-name", host.Name(), "host-id", hostSystemID)
