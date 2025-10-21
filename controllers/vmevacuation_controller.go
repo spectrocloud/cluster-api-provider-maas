@@ -148,7 +148,12 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		replicas := int32(3) // default
 		if kcp != nil {
 			if r, found, _ := unstructured.NestedInt64(kcp.Object, "spec", "replicas"); found {
-				replicas = int32(r)
+				// Validate range to prevent integer overflow
+				if r < 0 || r > 2147483647 {
+					log.Info("Invalid replica count, using default", "replicas", r)
+				} else {
+					replicas = int32(r)
+				}
 			}
 		}
 
