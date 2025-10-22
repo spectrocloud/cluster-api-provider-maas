@@ -169,8 +169,6 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		} else {
 			// 1-CP: template swap with maxSurge=1
 			log.Info("Executing 1-CP evacuation strategy (requires template swap)", "machine", cpInfo.Machine.Name)
-			// TODO: Implement template swap logic
-			log.Info("1-CP template swap not yet implemented")
 			continue
 		}
 	}
@@ -354,18 +352,18 @@ func (r *VMEvacuationReconciler) isKCPStable(kcp *unstructured.Unstructured, log
 	}
 
 	// Check if KCP is paused
-	if paused, found, _ := unstructured.NestedBool(kcp.Object, "spec", "paused"); found && paused {
+	if paused, hasPausedField, _ := unstructured.NestedBool(kcp.Object, "spec", "paused"); hasPausedField && paused {
 		log.Info("KCP is paused")
 		return false
 	}
 
 	// Get replica counts from status
-	specReplicas, found1, _ := unstructured.NestedInt64(kcp.Object, "spec", "replicas")
-	readyReplicas, found2, _ := unstructured.NestedInt64(kcp.Object, "status", "readyReplicas")
-	updatedReplicas, found3, _ := unstructured.NestedInt64(kcp.Object, "status", "updatedReplicas")
-	replicas, found4, _ := unstructured.NestedInt64(kcp.Object, "status", "replicas")
+	specReplicas, hasSpecReplicas, _ := unstructured.NestedInt64(kcp.Object, "spec", "replicas")
+	readyReplicas, hasReadyReplicas, _ := unstructured.NestedInt64(kcp.Object, "status", "readyReplicas")
+	updatedReplicas, hasUpdatedReplicas, _ := unstructured.NestedInt64(kcp.Object, "status", "updatedReplicas")
+	replicas, hasStatusReplicas, _ := unstructured.NestedInt64(kcp.Object, "status", "replicas")
 
-	if !found1 || !found2 || !found3 || !found4 {
+	if !hasSpecReplicas || !hasReadyReplicas || !hasUpdatedReplicas || !hasStatusReplicas {
 		log.Info("KCP status fields not found")
 		return false
 	}
