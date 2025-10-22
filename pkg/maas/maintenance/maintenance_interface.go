@@ -38,8 +38,8 @@ type State struct {
 // MAAS API-facing interfaces and light types.
 // TagService abstracts MAAS tag CRUD operations.
 type TagService interface {
-	// EnsureTag should be idempotent, create tags in MAAS if missing.
-	EnsureTag(name string) error
+	// EnsureTagInInventory should be idempotent, create tags in MAAS if missing.
+	EnsureTagInInventory(name string) error
 	// AddTagToMachine adds a tag to a machine.
 	AddTagToMachine(systemID, tag string) error
 	// RemoveTagFromMachine removes a tag from a machine.
