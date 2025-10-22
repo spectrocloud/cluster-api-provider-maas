@@ -38,7 +38,8 @@ type HMCMaintenanceReconciler struct {
 }
 
 // Reconcile is a placeholder to enable wiring later.
-func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, _ ctrl.Request) (ctrl.Result, error) {
+func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+	r.Namespace = request.Namespace
 	// Load or create session
 	st, cm, err := maint.LoadSession(ctx, r.Client, r.Namespace)
 	if err != nil {
