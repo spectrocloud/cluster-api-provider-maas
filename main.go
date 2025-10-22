@@ -62,6 +62,11 @@ var (
 	clusterRole          string
 )
 
+const (
+	HCPClusterRoleValue = "hcp"
+	WLCClusterRoleValue = "wlc"
+)
+
 func init() {
 	klog.InitFlags(nil)
 
@@ -80,6 +85,12 @@ func main() {
 	pflag.Parse()
 
 	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
+
+	// Validate cluster role if provided
+	if clusterRole != "" && clusterRole != HCPClusterRoleValue && clusterRole != WLCClusterRoleValue {
+		setupLog.Error(nil, "invalid cluster-role value", "provided", clusterRole, "valid_values", []string{HCPClusterRoleValue, WLCClusterRoleValue})
+		os.Exit(1)
+	}
 
 	if watchNamespace == "" {
 		setupLog.Info("No namespace specified, watching all namespaces")
@@ -173,7 +184,7 @@ func main() {
 		}
 
 		// PCP-5336: Wire HMC controller when cluster-role is set to hcp
-		if clusterRole == "hcp" {
+		if clusterRole == HCPClusterRoleValue {
 			if err := (&controllers.HMCMaintenanceReconciler{
 				Client: mgr.GetClient(),
 				Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
