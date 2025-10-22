@@ -7,9 +7,12 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
@@ -311,6 +314,12 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 			s.scope.SetFailureDomain(fallbackZone)
 		}
 		_ = s.scope.PatchObject()
+
+		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		if s.scope.IsControlPlane() {
+			s.tagVMIfMaintenanceActive(ctx, deployingM.SystemID())
+		}
+
 		res := fromSDKTypeToMachine(deployingM)
 		if res.AvailabilityZone == "" {
 			res.AvailabilityZone = fallbackZone
@@ -494,6 +503,11 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 			s.scope.SetFailureDomain(zone)
 		}
 		_ = s.scope.PatchObject()
+
+		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		if s.scope.IsControlPlane() {
+			s.tagVMIfMaintenanceActive(ctx, m.SystemID())
+		}
 	}
 	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
 
@@ -609,6 +623,63 @@ func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 func (s *Service) PowerOnMachine() error {
 	_, err := s.maasClient.Machines().Machine(s.scope.GetSystemID()).PowerManagerOn().WithPowerOnComment("maas provider power on").PowerOn(context.Background())
 	return err
+}
+
+// tagVMIfMaintenanceActive checks for active maintenance ConfigMaps and tags the VM with maas-lxd-ready-op-<opID>
+func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string) {
+	if systemID == "" || s.scope == nil || s.scope.ClusterScope == nil {
+		return
+	}
+
+	namespace := s.scope.Cluster.Namespace
+
+	// List all ConfigMaps in the namespace looking for active maintenance sessions
+	cmList := &corev1.ConfigMapList{}
+	k8sClient := s.scope.ClusterScope.Client()
+	if k8sClient == nil {
+		return
+	}
+
+	if err := k8sClient.List(ctx, cmList, client.InNamespace(namespace)); err != nil {
+		s.scope.V(1).Info("Failed to list ConfigMaps for maintenance check", "error", err)
+		return
+	}
+
+	// Look for vec-maintenance-* ConfigMaps with Active status
+	for _, cm := range cmList.Items {
+		if !strings.HasPrefix(cm.Name, "vec-maintenance-") {
+			continue
+		}
+
+		opID := cm.Data[maintenance.CmKeyOpID]
+		status := cm.Data[maintenance.CmKeyStatus]
+
+		if opID == "" || status != string(maintenance.StatusActive) {
+			continue
+		}
+
+		s.scope.Info("Found active maintenance session, tagging VM", "opID", opID, "systemID", systemID)
+
+		// Tag the VM with maas-lxd-ready-op-<opID>
+		if err := maintenance.TagVMReadyOp(ctx, s.maasClient, systemID, opID); err != nil {
+			s.scope.Error(err, "Failed to tag VM with ready-op", "opID", opID, "systemID", systemID)
+			continue
+		}
+
+		s.scope.Info("Successfully tagged VM with ready-op", "opID", opID, "systemID", systemID)
+
+		// Update ConfigMap with the new VM systemID
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
+		cm.Data[maintenance.CmKeyNewVMSystemID] = systemID
+		if err := k8sClient.Update(ctx, &cm); err != nil {
+			s.scope.V(1).Info("Failed to update ConfigMap with new VM systemID", "error", err, "opID", opID)
+		}
+
+		// Only process the first active session
+		break
+	}
 }
 
 //// ReconcileDNS reconciles the load balancers for the given cluster.
