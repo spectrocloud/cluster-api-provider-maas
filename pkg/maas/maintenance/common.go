@@ -76,25 +76,25 @@ func (s *maasTagService) EnsureTagInInventory(name string) error {
 // AddTagToHost adds a tag to a host machine identified by systemID.
 func (s *maasTagService) AddTagToHost(systemID, tag string) error {
 	ctx := context.Background()
-	return s.client.Tags().Assign(ctx, tag, []string{systemID})
+	return s.client.Tags().Assign(ctx, tag, systemID)
 }
 
 // AddTagToMachine adds a tag to a machine identified by systemID.
 func (s *maasTagService) AddTagToMachine(systemID, tag string) error {
 	ctx := context.Background()
-	return s.client.Tags().Assign(ctx, tag, []string{systemID})
+	return s.client.Tags().Assign(ctx, tag, systemID)
 }
 
 // RemoveTagFromMachine removes a tag from a machine identified by systemID.
 func (s *maasTagService) RemoveTagFromMachine(systemID, tag string) error {
 	ctx := context.Background()
-	return s.client.Tags().Unassign(ctx, tag, []string{systemID})
+	return s.client.Tags().Unassign(ctx, tag, systemID)
 }
 
 // RemoveTagFromHost removes a tag from a host machine identified by systemID.
 func (s *maasTagService) RemoveTagFromHost(systemID, tag string) error {
 	ctx := context.Background()
-	return s.client.Tags().Unassign(ctx, tag, []string{systemID})
+	return s.client.Tags().Unassign(ctx, tag, systemID)
 }
 
 // ListHostVMs lists all VMs running on the specified host.
