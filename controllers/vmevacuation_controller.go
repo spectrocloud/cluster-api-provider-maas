@@ -40,10 +40,13 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -61,12 +64,31 @@ type VMEvacuationReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const (
+	// VECMaintenanceConfigMapPrefix is the prefix for ConfigMap names storing maintenance session state
+	VECMaintenanceConfigMapPrefix = "vec-maintenance-"
+	// ConfigMap data keys
+	MaintenanceOpIDKey         = "opID"
+	MaintenanceHostSystemIDKey = "hostSystemID"
+	MaintenanceStatusKey       = "status"
+
+	// Status values
+	MaintenanceStatusInProgress = "InProgress"
+	MaintenanceStatusCompleted  = "Completed"
+)
+
+// getMaintenanceConfigMapName returns the ConfigMap name for a given opID
+func getMaintenanceConfigMapName(opID string) string {
+	return VECMaintenanceConfigMapPrefix + opID
+}
+
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kubeadmcontrolplanes,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the VM evacuation process for workload clusters
 func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -104,7 +126,25 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	clientIdentity := clusterScope.GetMaasClientIdentity()
 	maasClient := maasclient.NewAuthenticatedClientSet(clientIdentity.URL, clientIdentity.Token)
 
-	// Step 1: Find all CP Machines in this cluster and check if their hosts are under maintenance
+	// Step 1: Check for existing maintenance sessions in ConfigMaps
+	activeSessions, err := r.listMaintenanceSessions(ctx, cluster.Namespace)
+	if err != nil {
+		log.Error(err, "failed to list maintenance sessions")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Step 2: If there are active sessions, continue processing them
+	if len(activeSessions) > 0 {
+		for sessionOpID := range activeSessions {
+			log.Info("Found existing maintenance session", "opID", sessionOpID)
+
+			// TODO: Implement processMaintenanceSession to find replacement VM and tag it
+			// For now, just requeue
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	// Step 3: No active session - check for new maintenance hosts
 	cpMachinesOnMaintenanceHosts, err := r.findCPMachinesOnMaintenanceHosts(ctx, maasClient, cluster, log)
 	if err != nil {
 		log.Error(err, "failed to find CP machines on maintenance hosts")
@@ -118,61 +158,68 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	log.Info("Found CP machines on maintenance hosts", "count", len(cpMachinesOnMaintenanceHosts))
 
-	// Step 2: For each CP machine on a maintenance host, handle evacuation
-	for _, cpInfo := range cpMachinesOnMaintenanceHosts {
-		log.Info("Processing CP machine on maintenance host",
-			"machine", cpInfo.Machine.Name,
-			"hostSystemID", cpInfo.HostSystemID,
-			"opID", cpInfo.OpID)
+	// Step 4: Start new maintenance session for the first detected host
+	cpInfo := cpMachinesOnMaintenanceHosts[0]
+	log.Info("Starting new maintenance session",
+		"machine", cpInfo.Machine.Name,
+		"hostSystemID", cpInfo.HostSystemID,
+		"opID", cpInfo.OpID)
 
-		// Step 3: Get KCP and check if we can proceed
-		kcp, err := r.getKubeadmControlPlane(ctx, cluster)
-		if err != nil {
-			log.Error(err, "failed to get KubeadmControlPlane")
-			continue
-		}
+	// Get KCP and check if we can proceed
+	kcp, err := r.getKubeadmControlPlane(ctx, cluster)
+	if err != nil {
+		log.Error(err, "failed to get KubeadmControlPlane")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 
-		// Step 4: Check if KCP is stable before proceeding
-		if !r.isKCPStable(kcp, log) {
-			log.Info("KCP not stable, waiting", "kcp", kcp.GetName())
-			continue
-		}
+	// Check if KCP is stable before proceeding
+	if !r.isKCPStable(kcp, log) {
+		log.Info("KCP not stable, waiting", "kcp", kcp.GetName())
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 
-		// Step 5: Check if another CP is being deleted
-		if r.hasOtherCPBeingDeleted(ctx, cluster, cpInfo.Machine, log) {
-			log.Info("Another CP is being deleted, waiting")
-			continue
-		}
+	// Check if another CP is being deleted
+	if r.hasOtherCPBeingDeleted(ctx, cluster, cpInfo.Machine, log) {
+		log.Info("Another CP is being deleted, waiting")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 
-		// Step 6: Determine replica count and evacuation strategy
-		replicas := int32(3) // default
-		if kcp != nil {
-			if r, found, _ := unstructured.NestedInt64(kcp.Object, "spec", "replicas"); found {
-				// Validate range to prevent integer overflow
-				if r < 0 || r > 2147483647 {
-					log.Info("Invalid replica count, using default", "replicas", r)
-				} else {
-					replicas = int32(r)
-				}
+	// Create maintenance session ConfigMap with status InProgress
+	if err := r.saveMaintenanceSession(ctx, cluster.Namespace, cpInfo.OpID, cpInfo.HostSystemID, MaintenanceStatusInProgress); err != nil {
+		log.Error(err, "failed to save maintenance session")
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	log.Info("Created maintenance session ConfigMap", "opID", cpInfo.OpID)
+
+	// Determine replica count and evacuation strategy
+	replicas := int32(3) // default
+	if kcp != nil {
+		if r, found, _ := unstructured.NestedInt64(kcp.Object, "spec", "replicas"); found {
+			// Validate range to prevent integer overflow
+			if r < 0 || r > 2147483647 {
+				log.Info("Invalid replica count, using default", "replicas", r)
+			} else {
+				replicas = int32(r)
 			}
 		}
+	}
 
-		// Step 7: Execute evacuation based on replica count
-		if replicas >= 3 {
-			// 3-CP: delete CP Machine; KCP will replace it
-			log.Info("Executing 3-CP evacuation strategy", "machine", cpInfo.Machine.Name)
-			if err := r.deleteCPMachine(ctx, cpInfo.Machine, log); err != nil {
-				log.Error(err, "failed to delete CP machine")
-				continue
-			}
-			log.Info("Successfully deleted CP machine", "machine", cpInfo.Machine.Name)
-		} else {
-			// 1-CP: template swap with maxSurge=1
-			log.Info("Executing 1-CP evacuation strategy (requires template swap)", "machine", cpInfo.Machine.Name)
-			// TODO: Implement template swap logic
-			log.Info("1-CP template swap not yet implemented")
-			continue
+	// Execute evacuation based on replica count
+	if replicas >= 3 {
+		// 3-CP: delete CP Machine; KCP will replace it
+		log.Info("Executing 3-CP evacuation strategy", "machine", cpInfo.Machine.Name)
+
+		// Delete the CP machine
+		if err := r.deleteCPMachine(ctx, cpInfo.Machine, log); err != nil {
+			log.Error(err, "failed to delete CP machine")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
+		log.Info("Successfully deleted CP machine", "machine", cpInfo.Machine.Name)
+	} else {
+		// 1-CP: template swap with maxSurge=1
+		log.Info("Executing 1-CP evacuation strategy (requires template swap)", "machine", cpInfo.Machine.Name)
+		// TODO: Implement template swap logic
+		log.Info("1-CP template swap not yet implemented")
 	}
 
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -254,7 +301,7 @@ func (r *VMEvacuationReconciler) findCPMachinesOnMaintenanceHosts(ctx context.Co
 			continue
 		}
 
-		// Check if this host has maintenance tags
+		// Check if this host has all 3 required maintenance tags
 		hasMaintenance := false
 		hasNoSchedule := false
 		opID := ""
@@ -271,7 +318,7 @@ func (r *VMEvacuationReconciler) findCPMachinesOnMaintenanceHosts(ctx context.Co
 			}
 		}
 
-		// If host has both maintenance and noschedule tags, and an opID, it's under maintenance
+		// Host is in maintenance mode ONLY when all 3 tags are present
 		if hasMaintenance && hasNoSchedule && opID != "" {
 			log.Info("Found CP machine on maintenance host",
 				"machine", machine.Name,
@@ -427,6 +474,67 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 			return nil
 		}
 		return errors.Wrap(err, "failed to delete machine")
+	}
+
+	return nil
+}
+
+// listMaintenanceSessions returns all active maintenance sessions in the namespace
+func (r *VMEvacuationReconciler) listMaintenanceSessions(ctx context.Context, namespace string) (map[string]string, error) {
+	cmList := &corev1.ConfigMapList{}
+	if err := r.List(ctx, cmList, client.InNamespace(namespace)); err != nil {
+		return nil, errors.Wrap(err, "failed to list ConfigMaps")
+	}
+
+	sessions := make(map[string]string) // opID -> status
+	for _, cm := range cmList.Items {
+		if strings.HasPrefix(cm.Name, VECMaintenanceConfigMapPrefix) {
+			opID := cm.Data[MaintenanceOpIDKey]
+			status := cm.Data[MaintenanceStatusKey]
+			if opID != "" && status == MaintenanceStatusInProgress {
+				sessions[opID] = status
+			}
+		}
+	}
+
+	return sessions, nil
+}
+
+// saveMaintenanceSession creates or updates the maintenance session ConfigMap
+func (r *VMEvacuationReconciler) saveMaintenanceSession(ctx context.Context, namespace, opID, hostSystemID, status string) error {
+	cmName := getMaintenanceConfigMapName(opID)
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cmName,
+			Namespace: namespace,
+		},
+		Data: map[string]string{
+			MaintenanceOpIDKey:         opID,
+			MaintenanceHostSystemIDKey: hostSystemID,
+			MaintenanceStatusKey:       status,
+		},
+	}
+
+	// Try to create, if exists, update
+	if err := r.Create(ctx, cm); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return errors.Wrap(err, "failed to create maintenance session ConfigMap")
+		}
+
+		// Update existing
+		existing := &corev1.ConfigMap{}
+		key := types.NamespacedName{
+			Namespace: namespace,
+			Name:      cmName,
+		}
+		if err := r.Get(ctx, key, existing); err != nil {
+			return errors.Wrap(err, "failed to get existing ConfigMap")
+		}
+
+		existing.Data = cm.Data
+		if err := r.Update(ctx, existing); err != nil {
+			return errors.Wrap(err, "failed to update maintenance session ConfigMap")
+		}
 	}
 
 	return nil
