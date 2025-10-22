@@ -59,6 +59,12 @@ var (
 	healthAddr           string
 	webhookPort          int
 	watchNamespace       string
+	clusterRole          string
+)
+
+const (
+	HCPClusterRoleValue = "hcp"
+	WLCClusterRoleValue = "wlc"
 )
 
 func init() {
@@ -79,6 +85,12 @@ func main() {
 	pflag.Parse()
 
 	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
+
+	// Validate cluster role if provided
+	if clusterRole != "" && clusterRole != HCPClusterRoleValue && clusterRole != WLCClusterRoleValue {
+		setupLog.Error(nil, "invalid cluster-role value", "provided", clusterRole, "valid_values", []string{HCPClusterRoleValue, WLCClusterRoleValue})
+		os.Exit(1)
+	}
 
 	if watchNamespace == "" {
 		setupLog.Info("No namespace specified, watching all namespaces")
@@ -170,6 +182,19 @@ func main() {
 			setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 			os.Exit(1)
 		}
+
+		// PCP-5336: Wire HMC controller when cluster-role is set to hcp
+		if clusterRole == HCPClusterRoleValue {
+			if err := (&controllers.HMCMaintenanceReconciler{
+				Client: mgr.GetClient(),
+				Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
+				Scheme: mgr.GetScheme(),
+			}).SetupWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "HMC")
+				os.Exit(1)
+			}
+			setupLog.Info("HMC controller enabled via --cluster-role=hcp")
+		}
 	}
 
 	if webhookPort != 0 {
@@ -214,6 +239,8 @@ func initFlags(fs *pflag.FlagSet) {
 	fs.StringVar(&watchNamespace, "namespace", "",
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
 	)
+	fs.StringVar(&clusterRole, "cluster-role", "",
+		"Cluster role mode for maintenance: hcp or wlc. When set to 'hcp', HMC controller is enabled.")
 
 	feature.MutableGates.AddFlag(fs)
 }
