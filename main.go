@@ -184,16 +184,17 @@ func main() {
 		}
 
 		// Register VM Evacuation Controller for WLC clusters
-		if clusterRole == "wlc" {
-			setupLog.Info("Cluster role is 'wlc', registering VM Evacuation Controller")
+		if clusterRole == WLCClusterRoleValue {
 			if err := (&controllers.VMEvacuationReconciler{
 				Client: mgr.GetClient(),
-				Log:    ctrl.Log.WithName("controllers").WithName("VMEvacuation"),
+				Log:    ctrl.Log.WithName("controllers").WithName("VEC"),
 				Scheme: mgr.GetScheme(),
 			}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
-				setupLog.Error(err, "unable to create controller", "controller", "VMEvacuation")
+				setupLog.Error(err, "unable to create controller", "controller", "VEC")
 				os.Exit(1)
 			}
+			setupLog.Info("VEC controller enabled via --cluster-role=wlc")
+		}
 		// PCP-5336: Wire HMC controller when cluster-role is set to hcp
 		if clusterRole == HCPClusterRoleValue {
 			if err := (&controllers.HMCMaintenanceReconciler{

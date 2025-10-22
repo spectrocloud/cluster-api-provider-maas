@@ -433,7 +433,7 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 // SetupWithManager sets up the controller with the Manager
 func (r *VMEvacuationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("vmevacuation").
+		Named("vec").
 		For(&infrav1beta1.MaasCluster{}).
 		WithOptions(options).
 		Complete(r)
