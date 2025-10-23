@@ -16,6 +16,7 @@ package maintenance
 import (
 	"context"
 	"net"
+	"os"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
 )
@@ -270,4 +271,23 @@ func convertIPAddresses(ips []net.IP) []string {
 		result = append(result, ip.String())
 	}
 	return result
+}
+
+// NewMAASClient creates a new MAAS client using environment variables
+func NewMAASClient() maasclient.ClientSetInterface {
+	endpoint := os.Getenv("MAAS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "http://localhost:5240/MAAS"
+	}
+
+	apiKey := os.Getenv("MAAS_API_KEY")
+	if apiKey == "" {
+		// In production, this should be handled more securely
+		// For now, we'll use a placeholder
+		apiKey = "placeholder-api-key"
+	}
+
+	client := maasclient.NewAuthenticatedClientSet(endpoint, apiKey)
+
+	return client
 }
