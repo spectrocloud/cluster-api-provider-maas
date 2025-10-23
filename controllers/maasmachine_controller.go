@@ -173,6 +173,14 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	maasMachine := machineScope.MaasMachine
 
+	// Check if the host evacuation finalizer is present - if so, block deletion
+	// This allows the HMC controller to control the deletion process
+	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		machineScope.Info("Host evacuation finalizer present, blocking deletion until HMC controller removes it",
+			"systemID", machineScope.GetInstanceID())
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
 	machineSvc := maasmachine.NewService(machineScope)
 
 	// Find existing instance
