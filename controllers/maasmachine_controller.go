@@ -175,7 +175,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	maasMachine := machineScope.MaasMachine
 
 	// Check if the host evacuation finalizer is present - if so, handle evacuation logic
-	if controllerutil.ContainsFinalizer(maasMachine, "maas.lxd.io/host-evacuation") {
+	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
 		machineScope.Info("Host evacuation finalizer present, checking evacuation gates")
 
 		// Create host maintenance service
@@ -407,12 +407,11 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// Add evacuation finalizer to host machines (not VMs) for maintenance safety
 	if maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == "" {
 		// This is a host machine, add evacuation finalizer if not present
-		if !controllerutil.ContainsFinalizer(maasMachine, "maas.lxd.io/host-evacuation") {
-			machineScope.Info("Adding host evacuation finalizer")
-			controllerutil.AddFinalizer(maasMachine, "maas.lxd.io/host-evacuation")
-			return ctrl.Result{}, nil
+		hmcService := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
+		if err := hmcService.AddEvacuationFinalizer(context.Background(), maasMachine, machineScope.Logger); err != nil {
+			machineScope.Error(err, "failed to add evacuation finalizer")
+			return ctrl.Result{}, err
 		}
-
 	}
 
 	if !machineScope.Cluster.Status.InfrastructureReady {
