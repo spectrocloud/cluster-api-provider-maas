@@ -170,7 +170,7 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 		// Check if VM has any ready-op-<uuid> tags
 		hasReadyTag := false
 		for _, tag := range vmDetails.Tags {
-			if len(tag) > len(maint.TagHostOpPrefix) && tag[:len(maint.TagHostOpPrefix)] == maint.TagHostOpPrefix {
+			if len(tag) > len(maint.TagVMReadyOpPrefix) && tag[:len(maint.TagVMReadyOpPrefix)] == maint.TagVMReadyOpPrefix {
 				hasReadyTag = true
 				break
 			}
