@@ -30,7 +30,6 @@ import (
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maint "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 const (
@@ -63,7 +62,7 @@ func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.R
 
 	// Initialize services if not already done
 	if r.tagService == nil {
-		maasClient := scope.NewMaasClient(nil)
+		maasClient := maint.NewMAASClient(r.Client, r.Namespace)
 		r.tagService = maint.NewTagService(maasClient)
 		r.inventoryService = maint.NewInventoryService(maasClient)
 		r.config = maint.DefaultHMCConfig()
@@ -186,7 +185,7 @@ func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, reque
 	}
 
 	// Tag host with maintenance markers using real MAAS client
-	maasClient := scope.NewMaasClient(nil)
+	maasClient := maint.NewMAASClient(r.Client, r.Namespace)
 	tags := maint.NewTagService(maasClient)
 	if err := maint.EnsureHostMaintenanceTags(tags, st.CurrentHost, st.OpID); err != nil {
 		r.Log.Error(err, "ensure host maintenance tags", "host", st.CurrentHost)

@@ -19,6 +19,9 @@ import (
 	"os"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // maasTagService implements the TagService interface using the MAAS client.
@@ -273,21 +276,61 @@ func convertIPAddresses(ips []net.IP) []string {
 	return result
 }
 
-// NewMAASClient creates a new MAAS client using environment variables
-func NewMAASClient() maasclient.ClientSetInterface {
-	endpoint := os.Getenv("MAAS_ENDPOINT")
+// NewMAASClient creates a new MAAS client using the capmaas-manager-bootstrap-credentials secret
+// Falls back to environment variables if the secret is not available
+func NewMAASClient(k8sClient client.Client, namespace string) maasclient.ClientSetInterface {
+	// Try to get MAAS credentials from the secret first
+	endpoint, apiKey := getCredentialsFromSecret(k8sClient, namespace)
+
+	// Fall back to environment variables if secret is not available
 	if endpoint == "" {
-		endpoint = "http://localhost:5240/MAAS"
+		endpoint = os.Getenv("MAAS_ENDPOINT")
+		if endpoint == "" {
+			endpoint = "http://localhost:5240/MAAS"
+		}
 	}
 
-	apiKey := os.Getenv("MAAS_API_KEY")
 	if apiKey == "" {
-		// In production, this should be handled more securely
-		// For now, we'll use a placeholder
-		apiKey = "placeholder-api-key"
+		apiKey = os.Getenv("MAAS_API_KEY")
+		if apiKey == "" {
+			// In production, this should be handled more securely
+			// For now, we'll use a placeholder
+			apiKey = "placeholder-api-key"
+		}
 	}
 
 	client := maasclient.NewAuthenticatedClientSet(endpoint, apiKey)
-
 	return client
+}
+
+// getCredentialsFromSecret retrieves MAAS credentials from the capmaas-manager-bootstrap-credentials secret
+func getCredentialsFromSecret(k8sClient client.Client, namespace string) (endpoint, apiKey string) {
+	if k8sClient == nil || namespace == "" {
+		return "", ""
+	}
+
+	secretName := "capmaas-manager-bootstrap-credentials"
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: namespace,
+		Name:      secretName,
+	}
+
+	// Try to get the secret
+	err := k8sClient.Get(context.Background(), key, secret)
+	if err != nil {
+		// Secret doesn't exist or can't be accessed, return empty values
+		return "", ""
+	}
+
+	// Get the credentials from the secret
+	endpoint = string(secret.Data["MAAS_ENDPOINT"])
+	apiKey = string(secret.Data["MAAS_API_KEY"])
+
+	// Validate the credentials
+	if endpoint == "" || apiKey == "" {
+		return "", ""
+	}
+
+	return endpoint, apiKey
 }
