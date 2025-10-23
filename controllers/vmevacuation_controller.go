@@ -408,7 +408,7 @@ func (r *VMEvacuationReconciler) isKCPStable(kcp *unstructured.Unstructured, log
 	}
 
 	// Check if KCP is paused
-	if paused, found, _ := unstructured.NestedBool(kcp.Object, "spec", "paused"); found && paused {
+	if paused, hasPausedField, _ := unstructured.NestedBool(kcp.Object, "spec", "paused"); hasPausedField && paused {
 		log.Info("KCP is paused")
 		return false
 	}
