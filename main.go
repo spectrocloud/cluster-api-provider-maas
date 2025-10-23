@@ -183,6 +183,18 @@ func main() {
 			os.Exit(1)
 		}
 
+		// Register VM Evacuation Controller for WLC clusters
+		if clusterRole == WLCClusterRoleValue {
+			if err := (&controllers.VMEvacuationReconciler{
+				Client: mgr.GetClient(),
+				Log:    ctrl.Log.WithName("controllers").WithName("VEC"),
+				Scheme: mgr.GetScheme(),
+			}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+				setupLog.Error(err, "unable to create controller", "controller", "VEC")
+				os.Exit(1)
+			}
+			setupLog.Info("VEC controller enabled via --cluster-role=wlc")
+		}
 		// PCP-5336: Wire HMC controller when cluster-role is set to hcp
 		if clusterRole == HCPClusterRoleValue {
 			if err := (&controllers.HMCMaintenanceReconciler{
@@ -240,7 +252,8 @@ func initFlags(fs *pflag.FlagSet) {
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
 	)
 	fs.StringVar(&clusterRole, "cluster-role", "",
-		"Cluster role mode for maintenance: hcp or wlc. When set to 'hcp', HMC controller is enabled.")
+		"Role of this cluster: 'hcp' (Host Control Plane) or 'wlc' (Workload Cluster). When set to 'wlc', enables VM evacuation controller.",
+	)
 
 	feature.MutableGates.AddFlag(fs)
 }
