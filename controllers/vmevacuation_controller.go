@@ -76,6 +76,7 @@ func getMaintenanceConfigMapName(opID string) string {
 
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachines,verbs=get;list;watch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasmachinetemplates,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=machines,verbs=get;list;watch;delete
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kubeadmcontrolplanes,verbs=get;list;watch;update;patch
@@ -215,9 +216,24 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 		log.Info("Successfully deleted CP machine", "machine", cpInfo.Machine.Name)
-	} else {
-		// 1-CP: template swap with maxSurge=1
-		log.Info("Executing 1-CP evacuation strategy (requires template swap)", "machine", cpInfo.Machine.Name)
+	} else if replicas == 1 {
+		// 1-CP: template swap with maxSurge=1 (new CP first, then old CP removed)
+		log.Info("Executing 1-CP evacuation strategy (template swap with maxSurge=1)", "machine", cpInfo.Machine.Name)
+
+		// Create new MaasMachineTemplate with different name
+		newTemplateName, err := r.createNewMaasMachineTemplate(ctx, kcp, log)
+		if err != nil {
+			log.Error(err, "failed to create new MaasMachineTemplate")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		log.Info("Created new MaasMachineTemplate", "template", newTemplateName)
+
+		// Update KCP to reference new template and set maxSurge=1
+		if err := r.swapKCPTemplateWithMaxSurge(ctx, kcp, newTemplateName, log); err != nil {
+			log.Error(err, "failed to swap KCP template")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		log.Info("Successfully swapped KCP template with maxSurge=1", "newTemplate", newTemplateName)
 	}
 
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -483,6 +499,83 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 		return errors.Wrap(err, "failed to delete machine")
 	}
 
+	return nil
+}
+
+// createNewMaasMachineTemplate clones the current MaasMachineTemplate with a new name
+func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Context, kcp *unstructured.Unstructured, log logr.Logger) (string, error) {
+	// Get current template reference from KCP
+	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "infrastructureRef")
+	if err != nil || !found {
+		return "", fmt.Errorf("failed to get machineTemplate.infrastructureRef from KCP")
+	}
+
+	currentTemplateName, ok := templateRef["name"].(string)
+	if !ok || currentTemplateName == "" {
+		return "", fmt.Errorf("invalid template name in KCP")
+	}
+
+	templateNamespace, ok := templateRef["namespace"].(string)
+	if !ok || templateNamespace == "" {
+		templateNamespace = kcp.GetNamespace()
+	}
+
+	// Get the current MaasMachineTemplate
+	currentTemplate := &infrav1beta1.MaasMachineTemplate{}
+	key := client.ObjectKey{
+		Namespace: templateNamespace,
+		Name:      currentTemplateName,
+	}
+
+	if err := r.Get(ctx, key, currentTemplate); err != nil {
+		return "", errors.Wrap(err, "failed to get current MaasMachineTemplate")
+	}
+
+	// Create new template with suffix
+	newTemplateName := fmt.Sprintf("%s-evac-%d", currentTemplateName, time.Now().Unix())
+	newTemplate := &infrav1beta1.MaasMachineTemplate{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      newTemplateName,
+			Namespace: templateNamespace,
+			Labels:    currentTemplate.Labels,
+		},
+		Spec: currentTemplate.Spec,
+	}
+
+	// Create the new template
+	if err := r.Create(ctx, newTemplate); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			return "", errors.Wrap(err, "failed to create new MaasMachineTemplate")
+		}
+		// Already exists, use it
+		log.Info("New MaasMachineTemplate already exists", "template", newTemplateName)
+	}
+
+	return newTemplateName, nil
+}
+
+// swapKCPTemplateWithMaxSurge updates KCP to reference new template and sets maxSurge=1
+func (r *VMEvacuationReconciler) swapKCPTemplateWithMaxSurge(ctx context.Context, kcp *unstructured.Unstructured, newTemplateName string, log logr.Logger) error {
+	if kcp == nil {
+		return fmt.Errorf("KCP is nil")
+	}
+
+	// Set new template name
+	if err := unstructured.SetNestedField(kcp.Object, newTemplateName, "spec", "machineTemplate", "infrastructureRef", "name"); err != nil {
+		return errors.Wrap(err, "failed to set new template name")
+	}
+
+	// Set maxSurge=1
+	if err := unstructured.SetNestedField(kcp.Object, int64(1), "spec", "rolloutStrategy", "rollingUpdate", "maxSurge"); err != nil {
+		return errors.Wrap(err, "failed to set maxSurge")
+	}
+
+	// Update KCP
+	if err := r.Update(ctx, kcp); err != nil {
+		return errors.Wrap(err, "failed to update KCP")
+	}
+
+	log.Info("Successfully swapped KCP template and set maxSurge=1", "newTemplate", newTemplateName)
 	return nil
 }
 
