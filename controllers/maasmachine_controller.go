@@ -174,12 +174,34 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	maasMachine := machineScope.MaasMachine
 
-	// Check if the host evacuation finalizer is present - if so, block deletion
-	// This allows the HMC controller to control the deletion process
-	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
-		machineScope.Info("Host evacuation finalizer present, blocking deletion until HMC controller removes it",
-			"systemID", machineScope.GetInstanceID())
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	// Check if the host evacuation finalizer is present - if so, handle evacuation logic
+	if controllerutil.ContainsFinalizer(maasMachine, "maas.lxd.io/host-evacuation") {
+		machineScope.Info("Host evacuation finalizer present, checking evacuation gates")
+
+		// Create host maintenance service
+		hmcService := NewHostMaintenanceService(r.Client, machineScope.MaasMachine.Namespace)
+
+		// Check evacuation gates
+		evacuationReady, err := hmcService.CheckEvacuationGates(context.Background(), maasMachine, machineScope.Logger)
+		if err != nil {
+			machineScope.Error(err, "failed to check evacuation gates")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+		}
+
+		if !evacuationReady {
+			machineScope.Info("Evacuation gates not met, blocking deletion",
+				"host", machineScope.GetInstanceID(),
+				"requeueAfter", 10*time.Second)
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+
+		// Evacuation gates are met, clear tags and remove finalizer
+		if err := hmcService.ClearMaintenanceTagsAndRemoveFinalizer(context.Background(), maasMachine, machineScope.Logger); err != nil {
+			machineScope.Error(err, "failed to clear maintenance tags and remove finalizer")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+		}
+
+		machineScope.Info("Evacuation completed, proceeding with normal deletion")
 	}
 
 	machineSvc := maasmachine.NewService(machineScope)
@@ -220,13 +242,6 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	// unregister the VM host before releasing the machine so upgrades/deletes pass cleanly.
 	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 		r.bestEffortUnregisterLXDHost(clusterScope, machineScope, m)
-	}
-
-	// Clean up maintenance tags before releasing the machine
-	// This ensures maintenance tags are removed during deletion
-	if err := r.cleanupMaintenanceTagsBeforeRelease(machineScope, clusterScope, m.ID); err != nil {
-		machineScope.Error(err, "failed to cleanup maintenance tags before release", "systemID", m.ID)
-		// Don't fail the deletion for tag cleanup errors
 	}
 
 	if err := r.tryReleaseWithVMHostHandling(context.Background(), machineScope, clusterScope, machineSvc, m); err != nil {
@@ -387,6 +402,17 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	if !controllerutil.ContainsFinalizer(maasMachine, infrav1beta1.MachineFinalizer) {
 		controllerutil.AddFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
 		return ctrl.Result{}, nil
+	}
+
+	// Add evacuation finalizer to host machines (not VMs) for maintenance safety
+	if maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == "" {
+		// This is a host machine, add evacuation finalizer if not present
+		if !controllerutil.ContainsFinalizer(maasMachine, "maas.lxd.io/host-evacuation") {
+			machineScope.Info("Adding host evacuation finalizer")
+			controllerutil.AddFinalizer(maasMachine, "maas.lxd.io/host-evacuation")
+			return ctrl.Result{}, nil
+		}
+
 	}
 
 	if !machineScope.Cluster.Status.InfrastructureReady {
@@ -787,51 +813,6 @@ func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *sc
 				// Continue with other tags even if one fails
 			} else {
 				machineScope.Info("Cleaned up VM ready operation tag", "tag", tag, "systemID", systemID)
-			}
-		}
-	}
-
-	return nil
-}
-
-// cleanupMaintenanceTagsBeforeRelease cleans up maintenance tags before machine release
-func (r *MaasMachineReconciler) cleanupMaintenanceTagsBeforeRelease(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, systemID string) error {
-	// Create MAAS client and services
-	maasClient := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
-	tagService := maintenance.NewTagService(maasClient)
-	inventoryService := maintenance.NewInventoryService(maasClient)
-
-	// Get current machine details to check existing tags
-	machine, err := inventoryService.GetHost(systemID)
-	if err != nil {
-		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
-		return err
-	}
-
-	// Define maintenance tags to clean up
-	maintenanceTags := []string{
-		maintenance.TagHostMaintenance,
-		maintenance.TagHostNoSchedule,
-	}
-
-	// Remove maintenance tags
-	for _, tag := range maintenanceTags {
-		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
-			machineScope.Error(err, "failed to remove maintenance tag", "tag", tag, "systemID", systemID)
-			// Continue with other tags even if one fails
-		} else {
-			machineScope.Info("Cleaned up maintenance tag", "tag", tag, "systemID", systemID)
-		}
-	}
-
-	// Remove any tags with TagHostOpPrefix (operation ID tags)
-	for _, tag := range machine.Tags {
-		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
-			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
-				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
-				// Continue with other tags even if one fails
-			} else {
-				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
 			}
 		}
 	}
