@@ -50,6 +50,7 @@ import (
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
@@ -219,6 +220,13 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	// unregister the VM host before releasing the machine so upgrades/deletes pass cleanly.
 	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
 		r.bestEffortUnregisterLXDHost(clusterScope, machineScope, m)
+	}
+
+	// Clean up maintenance tags before releasing the machine
+	// This ensures maintenance tags are removed during deletion
+	if err := r.cleanupMaintenanceTagsBeforeRelease(machineScope, clusterScope, m.ID); err != nil {
+		machineScope.Error(err, "failed to cleanup maintenance tags before release", "systemID", m.ID)
+		// Don't fail the deletion for tag cleanup errors
 	}
 
 	if err := r.tryReleaseWithVMHostHandling(context.Background(), machineScope, clusterScope, machineSvc, m); err != nil {
@@ -439,6 +447,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
+		}
+
+		// Clean up stale maintenance tags after successful deployment
+		// This ensures new machines start with a clean tag state
+		if err := r.cleanupStaleTagsAfterDeployment(machineScope, clusterScope, m.ID); err != nil {
+			machineScope.Error(err, "failed to cleanup stale tags after deployment", "systemID", m.ID)
+			// Don't fail the deployment for tag cleanup errors
 		}
 	}
 
@@ -708,4 +723,100 @@ func getNodeIP(addresses []clusterv1.MachineAddress) string {
 		}
 	}
 	return internal
+}
+
+// cleanupStaleTagsAfterDeployment cleans up stale maintenance tags after successful machine deployment
+func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, systemID string) error {
+	// Only cleanup tags for bare metal machines (not VMs)
+	// Check if this is a VM by looking at the Parent field in MaasMachine spec
+	if machineScope.MaasMachine.Spec.Parent != nil && *machineScope.MaasMachine.Spec.Parent != "" {
+		return nil // This is a VM, skip tag cleanup
+	}
+
+	// Create MAAS client and services
+	maasClient := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	tagService := maintenance.NewTagService(maasClient)
+	inventoryService := maintenance.NewInventoryService(maasClient)
+
+	// Get current machine details to check existing tags
+	machine, err := inventoryService.GetHost(systemID)
+	if err != nil {
+		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
+		return err
+	}
+
+	// Define maintenance tags to clean up
+	maintenanceTags := []string{
+		maintenance.TagHostMaintenance,
+		maintenance.TagHostNoSchedule,
+	}
+
+	// Remove any existing maintenance tags
+	for _, tag := range maintenanceTags {
+		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+			machineScope.Error(err, "failed to remove stale maintenance tag", "tag", tag, "systemID", systemID)
+			// Continue with other tags even if one fails
+		} else {
+			machineScope.Info("Cleaned up stale maintenance tag", "tag", tag, "systemID", systemID)
+		}
+	}
+
+	// Remove any tags with TagHostOpPrefix (operation ID tags)
+	for _, tag := range machine.Tags {
+		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
+			}
+		}
+	}
+
+	return nil
+}
+
+// cleanupMaintenanceTagsBeforeRelease cleans up maintenance tags before machine release
+func (r *MaasMachineReconciler) cleanupMaintenanceTagsBeforeRelease(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, systemID string) error {
+	// Create MAAS client and services
+	maasClient := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	tagService := maintenance.NewTagService(maasClient)
+	inventoryService := maintenance.NewInventoryService(maasClient)
+
+	// Get current machine details to check existing tags
+	machine, err := inventoryService.GetHost(systemID)
+	if err != nil {
+		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
+		return err
+	}
+
+	// Define maintenance tags to clean up
+	maintenanceTags := []string{
+		maintenance.TagHostMaintenance,
+		maintenance.TagHostNoSchedule,
+	}
+
+	// Remove maintenance tags
+	for _, tag := range maintenanceTags {
+		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+			machineScope.Error(err, "failed to remove maintenance tag", "tag", tag, "systemID", systemID)
+			// Continue with other tags even if one fails
+		} else {
+			machineScope.Info("Cleaned up maintenance tag", "tag", tag, "systemID", systemID)
+		}
+	}
+
+	// Remove any tags with TagHostOpPrefix (operation ID tags)
+	for _, tag := range machine.Tags {
+		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
+			}
+		}
+	}
+
+	return nil
 }
