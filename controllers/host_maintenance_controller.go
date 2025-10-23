@@ -38,6 +38,10 @@ const (
 
 	// ReconcileInterval is the interval for reconciling HMC operations
 	ReconcileInterval = 30 * time.Second
+
+	// EvacuationCheckInterval is the interval for checking evacuation gates
+	// Prioritizing WLC lifecycle over HCP cluster upgrade flow
+	EvacuationCheckInterval = 10 * time.Second
 )
 
 // HMCMaintenanceReconciler handles host maintenance operations including evacuation finalizers
@@ -51,9 +55,6 @@ type HMCMaintenanceReconciler struct {
 	// Services for MAAS operations
 	tagService       maint.TagService
 	inventoryService maint.InventoryService
-
-	// Configuration
-	config maint.HMCConfig
 }
 
 // Reconcile handles both ConfigMap triggers and MaasMachine finalizer operations
@@ -65,7 +66,6 @@ func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.R
 		maasClient := maint.NewMAASClient(r.Client, r.Namespace)
 		r.tagService = maint.NewTagService(maasClient)
 		r.inventoryService = maint.NewInventoryService(maasClient)
-		r.config = maint.DefaultHMCConfig()
 	}
 
 	// Check if this is a MaasMachine reconciliation
@@ -125,14 +125,14 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachineDelete(ctx context.Contex
 	evacuationReady, err := r.checkEvacuationGates(ctx, maasMachine, log)
 	if err != nil {
 		log.Error(err, "failed to check evacuation gates")
-		return ctrl.Result{RequeueAfter: r.config.EvacuationCheckInterval}, err
+		return ctrl.Result{RequeueAfter: EvacuationCheckInterval}, err
 	}
 
 	if !evacuationReady {
 		log.Info("Evacuation gates not met, blocking deletion",
 			"host", maasMachine.Spec.SystemID,
-			"requeueAfter", r.config.EvacuationCheckInterval)
-		return ctrl.Result{RequeueAfter: r.config.EvacuationCheckInterval}, nil
+			"requeueAfter", EvacuationCheckInterval)
+		return ctrl.Result{RequeueAfter: EvacuationCheckInterval}, nil
 	}
 
 	// Evacuation gates are met, proceed with cleanup
@@ -141,13 +141,13 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachineDelete(ctx context.Contex
 	// Clear maintenance tags
 	if err := r.clearMaintenanceTags(ctx, maasMachine, log); err != nil {
 		log.Error(err, "failed to clear maintenance tags")
-		return ctrl.Result{RequeueAfter: r.config.EvacuationCheckInterval}, err
+		return ctrl.Result{RequeueAfter: EvacuationCheckInterval}, err
 	}
 
 	// Deregister host (if needed)
 	if err := r.deregisterHost(ctx, maasMachine, log); err != nil {
 		log.Error(err, "failed to deregister host")
-		return ctrl.Result{RequeueAfter: r.config.EvacuationCheckInterval}, err
+		return ctrl.Result{RequeueAfter: EvacuationCheckInterval}, err
 	}
 
 	// Remove finalizer
