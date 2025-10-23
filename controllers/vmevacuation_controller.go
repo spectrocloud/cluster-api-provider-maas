@@ -142,9 +142,9 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
 
-		// Look for replacement CP VM that's been tagged with ready-op
-		if err := r.checkAndCompleteMaintenanceSession(ctx, maasClient, cluster, activeOpID, log); err != nil {
-			log.Error(err, "failed to check maintenance session completion", "opID", activeOpID)
+		// KCP is stable - tag replacement VM with ready-op and complete session
+		if err := r.tagReplacementVMAndCompleteSession(ctx, maasClient, cluster, activeOpID, log); err != nil {
+			log.Error(err, "failed to tag replacement VM and complete session", "opID", activeOpID)
 		}
 
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
@@ -548,130 +548,46 @@ func (r *VMEvacuationReconciler) saveMaintenanceSession(ctx context.Context, nam
 	return nil
 }
 
-// checkAndCompleteMaintenanceSession checks if replacement VM is ready and completes the session
-func (r *VMEvacuationReconciler) checkAndCompleteMaintenanceSession(ctx context.Context, maasClient maasclient.ClientSetInterface, cluster *clusterv1.Cluster, opID string, log logr.Logger) error {
-	// Find CP machines with maas-lxd-ready-op-<opID> tag
-	machineList := &clusterv1.MachineList{}
-	labels := map[string]string{
-		clusterv1.ClusterNameLabel:         cluster.Name,
-		clusterv1.MachineControlPlaneLabel: "",
+// tagReplacementVMAndCompleteSession tags the replacement VM with ready-op after KCP is stable
+func (r *VMEvacuationReconciler) tagReplacementVMAndCompleteSession(ctx context.Context, maasClient maasclient.ClientSetInterface, cluster *clusterv1.Cluster, opID string, log logr.Logger) error {
+	// Get the maintenance session ConfigMap
+	cm := &corev1.ConfigMap{}
+	cmKey := types.NamespacedName{
+		Namespace: cluster.Namespace,
+		Name:      getMaintenanceConfigMapName(opID),
 	}
 
-	if err := r.List(ctx, machineList, client.InNamespace(cluster.Namespace), client.MatchingLabels(labels)); err != nil {
-		return errors.Wrap(err, "failed to list machines")
+	if err := r.Get(ctx, cmKey, cm); err != nil {
+		return errors.Wrap(err, "failed to get maintenance session ConfigMap")
 	}
 
-	readyTag := maintenance.BuildVMReadyOpTag(opID)
-
-	for i := range machineList.Items {
-		machine := &machineList.Items[i]
-
-		// Skip if being deleted
-		if !machine.DeletionTimestamp.IsZero() {
-			continue
-		}
-
-		// Get the MaasMachine
-		if machine.Spec.InfrastructureRef.Name == "" {
-			continue
-		}
-
-		maasMachine := &infrav1beta1.MaasMachine{}
-		key := client.ObjectKey{
-			Namespace: machine.Spec.InfrastructureRef.Namespace,
-			Name:      machine.Spec.InfrastructureRef.Name,
-		}
-
-		if err := r.Get(ctx, key, maasMachine); err != nil {
-			continue
-		}
-
-		// Check if VM is provisioned
-		if maasMachine.Spec.ProviderID == nil || *maasMachine.Spec.ProviderID == "" {
-			continue
-		}
-
-		vmSystemID := extractSystemIDFromProviderID(*maasMachine.Spec.ProviderID)
-		if vmSystemID == "" {
-			continue
-		}
-
-		// Check if this VM has the ready-op tag
-		vmMachine, err := maasClient.Machines().Machine(vmSystemID).Get(ctx)
-		if err != nil {
-			continue
-		}
-
-		hasReadyTag := false
-		for _, tag := range vmMachine.Tags() {
-			if tag == readyTag {
-				hasReadyTag = true
-				break
-			}
-		}
-
-		if !hasReadyTag {
-			continue
-		}
-
-		// Found the replacement VM with ready-op tag
-		log.Info("Found replacement CP VM with ready-op tag", "machine", machine.Name, "systemID", vmSystemID, "opID", opID)
-
-		// Derive clusterId: extract from MaasCluster name or hash namespace
-		clusterId := r.deriveClusterID(cluster)
-		clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
-
-		// Tag the VM with maas-lxd-wlc-<clusterId>
-		tagsClient := maasClient.Tags()
-		if tagsClient != nil {
-			_ = tagsClient.Create(ctx, clusterTag)
-			if err := tagsClient.Assign(ctx, clusterTag, vmSystemID); err != nil {
-				log.Error(err, "failed to tag VM with cluster tag", "tag", clusterTag, "systemID", vmSystemID)
-			} else {
-				log.Info("Tagged replacement VM with cluster tag", "tag", clusterTag, "systemID", vmSystemID)
-			}
-		}
-
-		// Mark ConfigMap as completed
-		cm := &corev1.ConfigMap{}
-		cmKey := types.NamespacedName{
-			Namespace: cluster.Namespace,
-			Name:      getMaintenanceConfigMapName(opID),
-		}
-
-		if err := r.Get(ctx, cmKey, cm); err == nil {
-			if cm.Data == nil {
-				cm.Data = make(map[string]string)
-			}
-			cm.Data[maintenance.CmKeyStatus] = string(maintenance.StatusCompleted)
-			cm.Data["newVMSystemID"] = vmSystemID
-			if err := r.Update(ctx, cm); err != nil {
-				log.Error(err, "failed to mark session as completed", "opID", opID)
-			} else {
-				log.Info("Marked maintenance session as completed", "opID", opID)
-			}
-		}
-
+	// Check if newVMSystemID has been set by provisioning
+	newVMSystemID := cm.Data[maintenance.CmKeyNewVMSystemID]
+	if newVMSystemID == "" {
+		log.V(1).Info("Replacement VM not yet provisioned (newVMSystemID not set)", "opID", opID)
 		return nil
 	}
 
-	log.V(1).Info("No replacement VM with ready-op tag found yet", "opID", opID)
-	return nil
-}
+	log.Info("Found replacement VM in ConfigMap, tagging with ready-op", "opID", opID, "systemID", newVMSystemID)
 
-// deriveClusterID extracts cluster ID from MaasCluster name or hashes namespace
-func (r *VMEvacuationReconciler) deriveClusterID(cluster *clusterv1.Cluster) string {
-	// Try to extract UID from "cluster-<uid>" format
-	name := cluster.Name
-	if strings.HasPrefix(name, "cluster-") && len(name) > 8 {
-		uid := name[8:] // Extract after "cluster-"
-		if uid != "" {
-			return uid
-		}
+	// Tag the VM with maas-lxd-ready-op-<opID>
+	if err := maintenance.TagVMReadyOp(ctx, maasClient, newVMSystemID, opID); err != nil {
+		return errors.Wrap(err, "failed to tag replacement VM with ready-op")
 	}
 
-	// Fallback: use namespace
-	return cluster.Namespace
+	log.Info("Successfully tagged replacement VM with ready-op", "opID", opID, "systemID", newVMSystemID)
+
+	// Mark ConfigMap as completed
+	if cm.Data == nil {
+		cm.Data = make(map[string]string)
+	}
+	cm.Data[maintenance.CmKeyStatus] = string(maintenance.StatusCompleted)
+	if err := r.Update(ctx, cm); err != nil {
+		return errors.Wrap(err, "failed to mark session as completed")
+	}
+
+	log.Info("Marked maintenance session as completed", "opID", opID)
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager

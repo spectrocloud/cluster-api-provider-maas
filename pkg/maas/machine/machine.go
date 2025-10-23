@@ -625,7 +625,7 @@ func (s *Service) PowerOnMachine() error {
 	return err
 }
 
-// tagVMIfMaintenanceActive checks for active maintenance ConfigMaps and tags the VM with maas-lxd-ready-op-<opID>
+// tagVMIfMaintenanceActive checks for active maintenance ConfigMaps and tags the VM with cluster identity
 func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string) {
 	if systemID == "" || s.scope == nil || s.scope.ClusterScope == nil {
 		return
@@ -658,15 +658,22 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 			continue
 		}
 
-		s.scope.Info("Found active maintenance session, tagging VM", "opID", opID, "systemID", systemID)
+		s.scope.Info("Found active maintenance session, tagging VM with cluster identity", "opID", opID, "systemID", systemID)
 
-		// Tag the VM with maas-lxd-ready-op-<opID>
-		if err := maintenance.TagVMReadyOp(ctx, s.maasClient, systemID, opID); err != nil {
-			s.scope.Error(err, "Failed to tag VM with ready-op", "opID", opID, "systemID", systemID)
-			continue
+		// Derive clusterId: extract from cluster name or use namespace
+		clusterId := s.deriveClusterID()
+		clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
+
+		// Tag the VM with maas-lxd-wlc-<clusterId>
+		tagsClient := s.maasClient.Tags()
+		if tagsClient != nil {
+			_ = tagsClient.Create(ctx, clusterTag)
+			if err := tagsClient.Assign(ctx, clusterTag, systemID); err != nil {
+				s.scope.Error(err, "Failed to tag VM with cluster tag", "tag", clusterTag, "systemID", systemID)
+			} else {
+				s.scope.Info("Successfully tagged VM with cluster identity", "tag", clusterTag, "systemID", systemID)
+			}
 		}
-
-		s.scope.Info("Successfully tagged VM with ready-op", "opID", opID, "systemID", systemID)
 
 		// Update ConfigMap with the new VM systemID
 		if cm.Data == nil {
@@ -680,6 +687,25 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 		// Only process the first active session
 		break
 	}
+}
+
+// deriveClusterID extracts cluster ID from cluster name or uses namespace
+func (s *Service) deriveClusterID() string {
+	if s.scope == nil || s.scope.Cluster == nil {
+		return ""
+	}
+
+	// Try to extract UID from "cluster-<uid>" format
+	name := s.scope.Cluster.Name
+	if strings.HasPrefix(name, "cluster-") && len(name) > 8 {
+		uid := name[8:] // Extract after "cluster-"
+		if uid != "" {
+			return uid
+		}
+	}
+
+	// Fallback: use namespace
+	return s.scope.Cluster.Namespace
 }
 
 //// ReconcileDNS reconciles the load balancers for the given cluster.
