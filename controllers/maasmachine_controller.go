@@ -745,13 +745,14 @@ func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *sc
 		return err
 	}
 
-	// Define maintenance tags to clean up
+	// Define static maintenance tags to clean up
 	maintenanceTags := []string{
 		maintenance.TagHostMaintenance,
 		maintenance.TagHostNoSchedule,
+		maintenance.TagVMControlPlane, // VM control plane tag
 	}
 
-	// Remove any existing maintenance tags
+	// Remove any existing static maintenance tags
 	for _, tag := range maintenanceTags {
 		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
 			machineScope.Error(err, "failed to remove stale maintenance tag", "tag", tag, "systemID", systemID)
@@ -761,14 +762,31 @@ func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *sc
 		}
 	}
 
-	// Remove any tags with TagHostOpPrefix (operation ID tags)
+	// Remove any dynamic tags with prefixes (operation ID tags, VM cluster tags, VM ready tags)
 	for _, tag := range machine.Tags {
 		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
+			// Remove operation ID tags (maas-lxd-hcp-op-*)
 			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
 				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
 				// Continue with other tags even if one fails
 			} else {
 				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMClusterPrefix) {
+			// Remove VM cluster tags (maas-lxd-wlc-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM cluster tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM cluster tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMReadyOpPrefix) {
+			// Remove VM ready operation tags (maas-lxd-ready-op-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM ready operation tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM ready operation tag", "tag", tag, "systemID", systemID)
 			}
 		}
 	}
