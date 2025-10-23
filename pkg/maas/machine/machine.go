@@ -2,6 +2,8 @@ package machine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -658,15 +660,24 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 			continue
 		}
 
-		s.scope.Info("Found active maintenance session, tagging VM with cluster identity", "opID", opID, "systemID", systemID)
+		s.scope.Info("Found active maintenance session, tagging VM with CP and cluster identity", "opID", opID, "systemID", systemID)
 
 		// Derive clusterId: extract from cluster name or use namespace
 		clusterId := s.deriveClusterID()
 		clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
 
-		// Tag the VM with maas-lxd-wlc-<clusterId>
+		// Tag the VM with maas-lxd-wlc-cp and maas-lxd-wlc-<clusterId>
 		tagsClient := s.maasClient.Tags()
 		if tagsClient != nil {
+			// Tag as control-plane VM
+			_ = tagsClient.Create(ctx, maintenance.TagVMControlPlane)
+			if err := tagsClient.Assign(ctx, maintenance.TagVMControlPlane, systemID); err != nil {
+				s.scope.Error(err, "Failed to tag VM with CP tag", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
+			} else {
+				s.scope.Info("Successfully tagged VM as control-plane", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
+			}
+
+			// Tag with cluster identity
 			_ = tagsClient.Create(ctx, clusterTag)
 			if err := tagsClient.Assign(ctx, clusterTag, systemID); err != nil {
 				s.scope.Error(err, "Failed to tag VM with cluster tag", "tag", clusterTag, "systemID", systemID)
@@ -689,23 +700,29 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 	}
 }
 
-// deriveClusterID extracts cluster ID from cluster name or uses namespace
+// deriveClusterID extracts cluster ID from cluster name or hashes namespace
 func (s *Service) deriveClusterID() string {
 	if s.scope == nil || s.scope.Cluster == nil {
 		return ""
 	}
 
-	// Try to extract UID from "cluster-<uid>" format
-	name := s.scope.Cluster.Name
-	if strings.HasPrefix(name, "cluster-") && len(name) > 8 {
-		uid := name[8:] // Extract after "cluster-"
+	// Try to extract UID from "cluster-<uid>" format in namespace
+	namespace := s.scope.Cluster.Namespace
+	if strings.HasPrefix(namespace, "cluster-") && len(namespace) > 8 {
+		uid := namespace[8:] // Extract after "cluster-"
 		if uid != "" {
 			return uid
 		}
 	}
 
-	// Fallback: use namespace
-	return s.scope.Cluster.Namespace
+	// Fallback: hash the namespace to get a short identifier
+	hash := sha256.Sum256([]byte(namespace))
+	hashStr := hex.EncodeToString(hash[:])
+	// Take first 8 characters of hash for brevity
+	if len(hashStr) > 8 {
+		return hashStr[:8]
+	}
+	return hashStr
 }
 
 //// ReconcileDNS reconciles the load balancers for the given cluster.
