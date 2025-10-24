@@ -174,34 +174,11 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	maasMachine := machineScope.MaasMachine
 
-	// Check if the host evacuation finalizer is present - if so, handle evacuation logic
+	// Check if the host evacuation finalizer is present - if so, requeue for HMC controller
 	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
-		machineScope.Info("Host evacuation finalizer present, checking evacuation gates")
-
-		// Create host maintenance service
-		hmcService := NewHostMaintenanceService(r.Client, machineScope.MaasMachine.Namespace)
-
-		// Check evacuation gates
-		evacuationReady, err := hmcService.CheckEvacuationGates(context.Background(), maasMachine, machineScope.Logger)
-		if err != nil {
-			machineScope.Error(err, "failed to check evacuation gates")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-		}
-
-		if !evacuationReady {
-			machineScope.Info("Evacuation gates not met, blocking deletion",
-				"host", machineScope.GetInstanceID(),
-				"requeueAfter", 10*time.Second)
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-		}
-
-		// Evacuation gates are met, clear tags and remove finalizer
-		if err := hmcService.ClearMaintenanceTagsAndRemoveFinalizer(context.Background(), maasMachine, machineScope.Logger); err != nil {
-			machineScope.Error(err, "failed to clear maintenance tags and remove finalizer")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-		}
-
-		machineScope.Info("Evacuation completed, proceeding with normal deletion")
+		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
+			"systemID", machineScope.GetInstanceID())
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
 	machineSvc := maasmachine.NewService(machineScope)
@@ -474,6 +451,8 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 			return ctrl.Result{}, err
 		}
 
+		// HMC will not know when machine is Deployed.
+		// So MAAS Machine controller only will remove the stale tags.
 		// Clean up stale maintenance tags after successful deployment
 		// This ensures new machines start with a clean tag state
 		if err := r.cleanupStaleTagsAfterDeployment(machineScope, clusterScope, m.ID); err != nil {

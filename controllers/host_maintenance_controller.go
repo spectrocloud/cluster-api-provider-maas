@@ -16,6 +16,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -23,7 +24,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maint "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 )
 
@@ -36,12 +39,27 @@ type HMCMaintenanceReconciler struct {
 	Namespace string
 }
 
-// Reconcile handles ConfigMap triggers for maintenance operations
+// Reconcile handles both MaasMachine evacuation finalizers and ConfigMap triggers
 func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	r.Namespace = request.Namespace
 
-	// Handle ConfigMap reconciliation (external maintenance triggers)
-	return r.reconcileConfigMap(ctx, request)
+	// Try MaasMachine first
+	var maasMachine infrav1beta1.MaasMachine
+	if err := r.Get(ctx, request.NamespacedName, &maasMachine); err == nil {
+		// Successfully got MaasMachine, handle evacuation
+		return r.reconcileMaasMachine(ctx, &maasMachine)
+	}
+
+	// Try ConfigMap
+	var configMap corev1.ConfigMap
+	if err := r.Get(ctx, request.NamespacedName, &configMap); err == nil {
+		// Successfully got ConfigMap, handle maintenance triggers
+		return r.reconcileConfigMap(ctx, request)
+	}
+
+	// Neither resource found, ignore
+	r.Log.V(1).Info("No MaasMachine or ConfigMap found", "name", request.Name, "namespace", request.Namespace)
+	return ctrl.Result{}, nil
 }
 
 // reconcileConfigMap handles ConfigMap reconciliation (existing logic)
@@ -77,9 +95,57 @@ func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, reque
 	return ctrl.Result{}, nil
 }
 
+// reconcileMaasMachine handles MaasMachine reconciliation for evacuation finalizers
+func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maasMachine *infrav1beta1.MaasMachine) (ctrl.Result, error) {
+	log := r.Log.WithValues("maasmachine", maasMachine.Name)
+
+	// Only process host machines (not VMs) with evacuation finalizer
+	if maasMachine.Spec.Parent != nil && *maasMachine.Spec.Parent != "" {
+		return ctrl.Result{}, nil // This is a VM, skip
+	}
+
+	if !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		return ctrl.Result{}, nil // No evacuation finalizer, skip
+	}
+
+	// Only process deletion events
+	if maasMachine.DeletionTimestamp.IsZero() {
+		return ctrl.Result{}, nil // Not being deleted, skip
+	}
+
+	log.Info("Processing host evacuation for MaasMachine deletion")
+
+	// Create host maintenance service
+	hmcService := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
+
+	// Check evacuation gates
+	evacuationReady, err := hmcService.CheckEvacuationGates(ctx, maasMachine, log)
+	if err != nil {
+		log.Error(err, "failed to check evacuation gates")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	if !evacuationReady {
+		log.Info("Evacuation gates not met, blocking deletion",
+			"host", maasMachine.Spec.SystemID,
+			"requeueAfter", 10*time.Second)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
+	// Evacuation gates are met, clear tags and remove finalizer
+	if err := hmcService.ClearMaintenanceTagsAndRemoveFinalizer(ctx, maasMachine, log); err != nil {
+		log.Error(err, "failed to clear maintenance tags and remove finalizer")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	log.Info("Host evacuation completed successfully")
+	return ctrl.Result{}, nil
+}
+
 // SetupWithManager sets up the controller with the Manager
 func (r *HMCMaintenanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		For(&infrav1beta1.MaasMachine{}).
 		For(&corev1.ConfigMap{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
