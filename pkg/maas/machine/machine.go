@@ -30,6 +30,12 @@ var (
 	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
 )
 
+const (
+	clusterNamespacePrefix    = "cluster-"
+	clusterNamespacePrefixLen = len(clusterNamespacePrefix)
+	hashIDLength              = 8 // Length of hash-based cluster ID
+)
+
 type Service struct {
 	scope      *scope.MachineScope
 	maasClient maasclient.ClientSetInterface
@@ -669,7 +675,7 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 		// Tag the VM with maas-lxd-wlc-cp and maas-lxd-wlc-<clusterId>
 		tagsClient := s.maasClient.Tags()
 		if tagsClient != nil {
-			// Tag as control-plane VM
+			// Tag as control-plane VM, error is ignored as tag already exists
 			_ = tagsClient.Create(ctx, maintenance.TagVMControlPlane)
 			if err := tagsClient.Assign(ctx, maintenance.TagVMControlPlane, systemID); err != nil {
 				s.scope.Error(err, "Failed to tag VM with CP tag", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
@@ -677,7 +683,7 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 				s.scope.Info("Successfully tagged VM as control-plane", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
 			}
 
-			// Tag with cluster identity
+			// Tag with cluster identity, error is ignored as tag already exists
 			_ = tagsClient.Create(ctx, clusterTag)
 			if err := tagsClient.Assign(ctx, clusterTag, systemID); err != nil {
 				s.scope.Error(err, "Failed to tag VM with cluster tag", "tag", clusterTag, "systemID", systemID)
@@ -708,8 +714,8 @@ func (s *Service) deriveClusterID() string {
 
 	// Try to extract UID from "cluster-<uid>" format in namespace
 	namespace := s.scope.Cluster.Namespace
-	if strings.HasPrefix(namespace, "cluster-") && len(namespace) > 8 {
-		uid := namespace[8:] // Extract after "cluster-"
+	if strings.HasPrefix(namespace, clusterNamespacePrefix) && len(namespace) > clusterNamespacePrefixLen {
+		uid := namespace[clusterNamespacePrefixLen:] // Extract after "cluster-"
 		if uid != "" {
 			return uid
 		}
@@ -718,9 +724,9 @@ func (s *Service) deriveClusterID() string {
 	// Fallback: hash the namespace to get a short identifier
 	hash := sha256.Sum256([]byte(namespace))
 	hashStr := hex.EncodeToString(hash[:])
-	// Take first 8 characters of hash for brevity
-	if len(hashStr) > 8 {
-		return hashStr[:8]
+	// Take first hashIDLength characters of hash for brevity
+	if len(hashStr) > hashIDLength {
+		return hashStr[:hashIDLength]
 	}
 	return hashStr
 }

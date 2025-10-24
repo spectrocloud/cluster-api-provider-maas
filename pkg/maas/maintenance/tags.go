@@ -118,6 +118,7 @@ func TagVMReadyOp(ctx context.Context, client maasclient.ClientSetInterface, sys
 	if ts == nil {
 		return nil
 	}
+	// Ignore error from Create: tag may already exist, which is safe and expected.
 	_ = ts.Create(ctx, tag)
 	return ts.Assign(ctx, tag, systemID)
 }
