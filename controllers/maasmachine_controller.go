@@ -381,16 +381,6 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
-	// Add evacuation finalizer to host machines (not VMs) for maintenance safety
-	if maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == "" {
-		// This is a host machine, add evacuation finalizer if not present
-		hmcService := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
-		if err := hmcService.AddEvacuationFinalizer(context.Background(), maasMachine, machineScope.Logger); err != nil {
-			machineScope.Error(err, "failed to add evacuation finalizer")
-			return ctrl.Result{}, err
-		}
-	}
-
 	if !machineScope.Cluster.Status.InfrastructureReady {
 		machineScope.Info("Cluster infrastructure is not ready yet")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForClusterInfrastructureReason, clusterv1.ConditionSeverityInfo, "")

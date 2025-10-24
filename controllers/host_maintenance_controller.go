@@ -20,7 +20,10 @@ import (
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -99,18 +102,58 @@ func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, reque
 func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maasMachine *infrav1beta1.MaasMachine) (ctrl.Result, error) {
 	log := r.Log.WithValues("maasmachine", maasMachine.Name)
 
-	// Only process host machines (not VMs) with evacuation finalizer
+	// Only process host machines (not VMs)
 	if maasMachine.Spec.Parent != nil && *maasMachine.Spec.Parent != "" {
 		return ctrl.Result{}, nil // This is a VM, skip
 	}
 
-	if !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
-		return ctrl.Result{}, nil // No evacuation finalizer, skip
+	// Get the owner CAPI Machine
+	var capiMachine clusterv1.Machine
+	ownerRef := maasMachine.GetOwnerReferences()
+	if len(ownerRef) == 0 {
+		log.V(1).Info("MaasMachine has no owner references")
+		return ctrl.Result{}, nil
 	}
 
-	// Only process deletion events
-	if maasMachine.DeletionTimestamp.IsZero() {
-		return ctrl.Result{}, nil // Not being deleted, skip
+	// Find the Machine owner reference
+	var machineOwnerRef *metav1.OwnerReference
+	for _, ref := range ownerRef {
+		if ref.Kind == "Machine" && ref.APIVersion == clusterv1.GroupVersion.String() {
+			machineOwnerRef = &ref
+			break
+		}
+	}
+
+	if machineOwnerRef == nil {
+		log.V(1).Info("MaasMachine has no Machine owner reference")
+		return ctrl.Result{}, nil
+	}
+
+	// Get the CAPI Machine
+	machineKey := types.NamespacedName{
+		Name:      machineOwnerRef.Name,
+		Namespace: maasMachine.Namespace,
+	}
+	if err := r.Get(ctx, machineKey, &capiMachine); err != nil {
+		log.Error(err, "failed to get owner CAPI Machine", "machine", machineOwnerRef.Name)
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Check if CAPI Machine is NOT being deleted
+	if capiMachine.DeletionTimestamp.IsZero() {
+		// CAPI Machine is not being deleted, simply return
+		return ctrl.Result{}, nil
+	}
+
+	// CAPI Machine is being deleted, add evacuation finalizer if not present
+	if !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		log.Info("Adding evacuation finalizer to MaasMachine")
+		controllerutil.AddFinalizer(maasMachine, HostEvacuationFinalizer)
+		if err := r.Update(ctx, maasMachine); err != nil {
+			log.Error(err, "failed to add evacuation finalizer")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	log.Info("Processing host evacuation for MaasMachine deletion")
