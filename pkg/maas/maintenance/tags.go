@@ -14,7 +14,10 @@ limitations under the License.
 package maintenance
 
 import (
+	"context"
 	"strings"
+
+	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
 const (
@@ -82,4 +85,40 @@ func SanitizeID(id string) string {
 // Example: maas-lxd-ready-<clusterId>-op-<opID>
 func BuildReadyHostTag(clusterID, opID string) string {
 	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-op-" + opID
+}
+
+// BuildVMReadyOpTag builds the VM-level readiness tag for the given opID.
+// Example: maas-lxd-ready-op-<opID>
+func BuildVMReadyOpTag(opID string) string {
+	return TagVMReadyOpPrefix + opID
+}
+
+// GetHostOpID reads MAAS host tags and returns the active maintenance opID if present.
+// It looks for tags with prefix maas-lxd-hcp-op-<uuid>.
+func GetHostOpID(ctx context.Context, client maasclient.ClientSetInterface, hostSystemID string) (string, bool, error) {
+	if client == nil || hostSystemID == "" {
+		return "", false, nil
+	}
+	m, err := client.Machines().Machine(hostSystemID).Get(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	opID, ok := ParseOpTag(m.Tags())
+	return opID, ok, nil
+}
+
+// TagVMReadyOp ensures the VM is tagged with maas-lxd-ready-op-<opID>.
+// It is idempotent and best-effort: creates the tag if missing, then assigns it.
+func TagVMReadyOp(ctx context.Context, client maasclient.ClientSetInterface, systemID, opID string) error {
+	if client == nil || systemID == "" || opID == "" {
+		return nil
+	}
+	tag := BuildVMReadyOpTag(opID)
+	ts := client.Tags()
+	if ts == nil {
+		return nil
+	}
+	// Ignore error from Create: tag may already exist, which is safe and expected.
+	_ = ts.Create(ctx, tag)
+	return ts.Assign(ctx, tag, systemID)
 }

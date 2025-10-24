@@ -28,15 +28,16 @@ import (
 
 const (
 	// Keys used in the session ConfigMap data
-	cmKeyOpID        = "opId"
-	cmKeyStatus      = "status"
-	cmKeyStartedAt   = "startedAt"
-	cmKeyCurrentHost = "currentHost"
-	cmKeyProgress    = "progress"
+	CmKeyOpID        = "opId"
+	CmKeyStatus      = "status"
+	CmKeyStartedAt   = "startedAt"
+	CmKeyCurrentHost = "currentHost"
+	CmKeyProgress    = "progress"
+	CmKeyNewVMSystemID = "newVMSystemID"
 
 	// Optional trigger keys to initiate a session
-	cmKeyTriggerStart = "start"
-	cmKeyTriggerHost  = "hostSystemID"
+	CmKeyTriggerStart = "start"
+	CmKeyTriggerHost  = "hostSystemID"
 )
 
 // LoadSession loads the session ConfigMap and returns parsed state if present.
@@ -54,10 +55,10 @@ func LoadSession(ctx context.Context, c client.Client, namespace string) (State,
 	if cm.Data == nil {
 		return st, cm, nil
 	}
-	st.OpID = cm.Data[cmKeyOpID]
-	st.Status = Status(cm.Data[cmKeyStatus])
-	st.CurrentHost = cm.Data[cmKeyCurrentHost]
-	if ts := cm.Data[cmKeyStartedAt]; ts != "" {
+	st.OpID = cm.Data[CmKeyOpID]
+	st.Status = Status(cm.Data[CmKeyStatus])
+	st.CurrentHost = cm.Data[CmKeyCurrentHost]
+	if ts := cm.Data[CmKeyStartedAt]; ts != "" {
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			st.StartedAt = t
 		}
@@ -78,12 +79,12 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 	if cm.Data == nil {
 		cm.Data = map[string]string{}
 	}
-	cm.Data[cmKeyOpID] = st.OpID
-	cm.Data[cmKeyStatus] = string(st.Status)
-	cm.Data[cmKeyCurrentHost] = st.CurrentHost
-	cm.Data[cmKeyStartedAt] = st.StartedAt.UTC().Format(time.RFC3339)
-	if cm.Data[cmKeyProgress] == "" {
-		cm.Data[cmKeyProgress] = "{}"
+	cm.Data[CmKeyOpID] = st.OpID
+	cm.Data[CmKeyStatus] = string(st.Status)
+	cm.Data[CmKeyCurrentHost] = st.CurrentHost
+	cm.Data[CmKeyStartedAt] = st.StartedAt.UTC().Format(time.RFC3339)
+	if cm.Data[CmKeyProgress] == "" {
+		cm.Data[CmKeyProgress] = "{}"
 	}
 	if cm.UID == "" {
 		return c.Create(ctx, cm)
@@ -119,8 +120,8 @@ func ShouldStartFromTrigger(cm *corev1.ConfigMap) (bool, string) {
 	if cm == nil || cm.Data == nil {
 		return false, ""
 	}
-	if cm.Data[cmKeyTriggerStart] == "true" {
-		return true, cm.Data[cmKeyTriggerHost]
+	if cm.Data[CmKeyTriggerStart] == "true" {
+		return true, cm.Data[CmKeyTriggerHost]
 	}
 	return false, ""
 }
@@ -134,6 +135,6 @@ func UpdateProgress(cm *corev1.ConfigMap, progress map[string]string) {
 		cm.Data = map[string]string{}
 	}
 	if b, err := json.Marshal(progress); err == nil {
-		cm.Data[cmKeyProgress] = string(b)
+		cm.Data[CmKeyProgress] = string(b)
 	}
 }
