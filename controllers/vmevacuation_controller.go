@@ -32,8 +32,11 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -531,8 +534,8 @@ func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Contex
 		return "", errors.Wrap(err, "failed to get current MaasMachineTemplate")
 	}
 
-	// Create new template with suffix
-	newTemplateName := fmt.Sprintf("%s-evac-%d", currentTemplateName, time.Now().Unix())
+	// Create new template with UUID suffix to avoid collisions
+	newTemplateName := fmt.Sprintf("%s-evac-%s", currentTemplateName, uuid.New().String()[:8])
 	newTemplate := &infrav1beta1.MaasMachineTemplate{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      newTemplateName,
@@ -547,8 +550,22 @@ func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Contex
 		if !apierrors.IsAlreadyExists(err) {
 			return "", errors.Wrap(err, "failed to create new MaasMachineTemplate")
 		}
-		// Already exists, use it
-		log.Info("New MaasMachineTemplate already exists", "template", newTemplateName)
+		// Already exists, validate that it has the correct spec
+		existingTemplate := &infrav1beta1.MaasMachineTemplate{}
+		existingKey := client.ObjectKey{
+			Namespace: templateNamespace,
+			Name:      newTemplateName,
+		}
+		if err := r.Get(ctx, existingKey, existingTemplate); err != nil {
+			return "", errors.Wrap(err, "failed to get existing MaasMachineTemplate for validation")
+		}
+
+		// Compare specs to ensure they match
+		if !reflect.DeepEqual(existingTemplate.Spec, currentTemplate.Spec) {
+			return "", fmt.Errorf("existing MaasMachineTemplate %s has different spec than expected, this could lead to unexpected behavior", newTemplateName)
+		}
+
+		log.Info("New MaasMachineTemplate already exists with correct spec", "template", newTemplateName)
 	}
 
 	return newTemplateName, nil
