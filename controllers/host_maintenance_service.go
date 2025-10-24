@@ -132,23 +132,21 @@ func (s *HostMaintenanceService) isHostMachine(maasMachine *infrav1beta1.MaasMac
 	return maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == ""
 }
 
-// isHostEmpty checks if the host has no running VMs
+// isHostEmpty checks if the host has no VMs
 func (s *HostMaintenanceService) isHostEmpty(ctx context.Context, hostSystemID string, log logr.Logger) (bool, error) {
 	vms, err := s.inventoryService.ListHostVMs(hostSystemID)
 	if err != nil {
 		return false, fmt.Errorf("failed to list host VMs: %w", err)
 	}
 
-	// Check if any VMs are in running state
-	for _, vm := range vms {
-		if vm.PowerState == "on" || vm.PowerState == "running" {
-			log.Info("Host has running VM", "host", hostSystemID, "vm", vm.SystemID, "powerState", vm.PowerState)
-			return false, nil
-		}
+	// Simple check: if VMs list is empty, host is empty
+	if len(vms) == 0 {
+		log.Info("Host is empty (no VMs)", "host", hostSystemID)
+		return true, nil
 	}
 
-	log.Info("Host is empty", "host", hostSystemID, "vmCount", len(vms))
-	return true, nil
+	log.Info("Host has VMs", "host", hostSystemID, "vmCount", len(vms))
+	return false, nil
 }
 
 // checkWLCReadyTags checks if all WLC clusters have ready-op-<uuid> tags
