@@ -127,6 +127,7 @@ func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, erro
 			HostSystemID: hostSystemID, // We know this from the input
 			Tags:         detailedMachine.Tags(),
 			Zone:         detailedMachine.ZoneName(),
+			ResourcePool: detailedMachine.ResourcePoolName(),
 			FQDN:         detailedMachine.FQDN(),
 			PowerState:   detailedMachine.PowerState(),
 			PowerType:    detailedMachine.PowerType(),
@@ -136,6 +137,48 @@ func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, erro
 	}
 
 	return machinesForMaintenance, nil
+}
+
+// ListAllVMs lists all VMs in the MAAS inventory (machines with power_type="lxd")
+func (s *maasInventoryService) ListAllVMs() ([]Machine, error) {
+	ctx := context.Background()
+
+	// List all machines in MAAS
+	allMachines, err := s.client.Machines().List(ctx, maasclient.ParamsBuilder())
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter for VMs (power_type="lxd") and convert to maintenance.Machine objects
+	var vms []Machine
+	for _, maasMachine := range allMachines {
+		// Get detailed machine info to access all fields including power type
+		detailedMachine, err := maasMachine.Get(ctx)
+		if err != nil {
+			// Skip machines we can't fetch details for
+			continue
+		}
+
+		// Only include LXD VMs
+		if detailedMachine.PowerType() != "lxd" {
+			continue
+		}
+
+		vms = append(vms, Machine{
+			SystemID:     detailedMachine.SystemID(),
+			HostSystemID: detailedMachine.Parent(), // Parent system_id for LXD VMs
+			Tags:         detailedMachine.Tags(),
+			Zone:         detailedMachine.ZoneName(),
+			ResourcePool: detailedMachine.ResourcePoolName(),
+			FQDN:         detailedMachine.FQDN(),
+			PowerState:   detailedMachine.PowerState(),
+			PowerType:    detailedMachine.PowerType(),
+			Hostname:     detailedMachine.Hostname(),
+			IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
+		})
+	}
+
+	return vms, nil
 }
 
 // ResolveSystemIDByHostname finds the system ID of a machine by its hostname.
@@ -183,6 +226,7 @@ func (s *maasInventoryService) GetMachine(systemID string) (Machine, error) {
 		HostSystemID: detailedMachine.Parent(), // Automatically populated for LXD VMs
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),
@@ -210,6 +254,7 @@ func (s *maasInventoryService) GetHost(systemID string) (Machine, error) {
 		HostSystemID: "", // Hosts don't have a parent host
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),
@@ -238,6 +283,7 @@ func (s *maasInventoryService) GetVM(systemID string) (Machine, error) {
 		HostSystemID: detailedMachine.Parent(), // Parent system_id for LXD VMs
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),

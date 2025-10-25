@@ -149,38 +149,137 @@ func (s *HostMaintenanceService) isHostEmpty(ctx context.Context, hostSystemID s
 	return false, nil
 }
 
-// checkWLCReadyTags checks if all WLC clusters have ready-op-<uuid> tags
+// checkWLCReadyTags checks if WLC evacuation is ready by looking for replacement VMs
+// Logic: Replacement VMs will be created on different hosts in the same resource pool and zone.
+// We need to check all VMs in the inventory with the same resource pool and zone, filtering for
+// CP VMs with cluster tags and ready-op tags.
 func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSystemID string, log logr.Logger) (bool, error) {
-	// Get all VMs on the host
-	vms, err := s.inventoryService.ListHostVMs(hostSystemID)
+	// Get the current host details to know its resource pool and zone
+	hostDetails, err := s.inventoryService.GetHost(hostSystemID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get host details: %w", err)
+	}
+
+	log.Info("Checking for replacement VMs in same resource pool and zone",
+		"host", hostSystemID,
+		"resourcePool", hostDetails.ResourcePool,
+		"zone", hostDetails.Zone)
+
+	// Get all VMs currently on the host being evacuated
+	vmsOnCurrentHost, err := s.inventoryService.ListHostVMs(hostSystemID)
 	if err != nil {
 		return false, fmt.Errorf("failed to list host VMs: %w", err)
 	}
 
-	// Check each VM for ready-op-<uuid> tags
-	for _, vm := range vms {
-		vmDetails, err := s.inventoryService.GetVM(vm.SystemID)
-		if err != nil {
-			log.Error(err, "failed to get VM details", "vm", vm.SystemID)
-			continue
+	// If host is empty, evacuation can proceed
+	if len(vmsOnCurrentHost) == 0 {
+		log.Info("Host is empty, evacuation can proceed", "host", hostSystemID)
+		return true, nil
+	}
+
+	// Identify CP VMs with cluster tags on the current host
+	// These are the VMs that need replacements
+	type vmToReplace struct {
+		systemID   string
+		clusterTag string // maas-lxd-wlc-<cluster-id>
+	}
+	var vmsNeedingReplacement []vmToReplace
+
+	for _, vm := range vmsOnCurrentHost {
+		// Check if this is a CP VM
+		isCPVM := false
+		var clusterTag string
+
+		for _, tag := range vm.Tags {
+			if tag == maint.TagVMControlPlane {
+				isCPVM = true
+			}
+			// Look for cluster tag (maas-lxd-wlc-*)
+			if len(tag) > len(maint.TagVMClusterPrefix) && tag[:len(maint.TagVMClusterPrefix)] == maint.TagVMClusterPrefix {
+				clusterTag = tag
+			}
 		}
 
-		// Check if VM has any ready-op-<uuid> tags
-		hasReadyTag := false
-		for _, tag := range vmDetails.Tags {
-			if len(tag) > len(maint.TagVMReadyOpPrefix) && tag[:len(maint.TagVMReadyOpPrefix)] == maint.TagVMReadyOpPrefix {
-				hasReadyTag = true
+		// If it's a CP VM with a cluster tag, it needs a replacement
+		if isCPVM && clusterTag != "" {
+			vmsNeedingReplacement = append(vmsNeedingReplacement, vmToReplace{
+				systemID:   vm.SystemID,
+				clusterTag: clusterTag,
+			})
+			log.Info("Found CP VM needing replacement", "vm", vm.SystemID, "clusterTag", clusterTag)
+		}
+	}
+
+	// If no CP VMs need replacement, evacuation can proceed
+	if len(vmsNeedingReplacement) == 0 {
+		log.Info("No CP VMs need replacement, evacuation can proceed", "host", hostSystemID)
+		return true, nil
+	}
+
+	// Get all VMs in the inventory
+	allVMs, err := s.inventoryService.ListAllVMs()
+	if err != nil {
+		return false, fmt.Errorf("failed to list all VMs: %w", err)
+	}
+
+	// For each VM needing replacement, check if there's a replacement VM in the same
+	// resource pool and zone with the same cluster tag and a ready-op tag
+	for _, vmToRepl := range vmsNeedingReplacement {
+		foundReplacement := false
+
+		for _, candidateVM := range allVMs {
+			// Skip VMs not in the same resource pool and zone
+			if candidateVM.ResourcePool != hostDetails.ResourcePool || candidateVM.Zone != hostDetails.Zone {
+				continue
+			}
+
+			// Skip the VM being replaced itself
+			if candidateVM.SystemID == vmToRepl.systemID {
+				continue
+			}
+
+			// Check if this candidate has the CP tag and same cluster tag
+			hasCPTag := false
+			hasClusterTag := false
+			hasReadyOpTag := false
+
+			for _, tag := range candidateVM.Tags {
+				if tag == maint.TagVMControlPlane {
+					hasCPTag = true
+				}
+				if tag == vmToRepl.clusterTag {
+					hasClusterTag = true
+				}
+				// Check for ready-op-<uuid> tag
+				if len(tag) > len(maint.TagVMReadyOpPrefix) && tag[:len(maint.TagVMReadyOpPrefix)] == maint.TagVMReadyOpPrefix {
+					hasReadyOpTag = true
+				}
+			}
+
+			// If this VM has all required tags, it's a valid replacement
+			if hasCPTag && hasClusterTag && hasReadyOpTag {
+				foundReplacement = true
+				log.Info("Found replacement VM",
+					"originalVM", vmToRepl.systemID,
+					"replacementVM", candidateVM.SystemID,
+					"clusterTag", vmToRepl.clusterTag,
+					"resourcePool", candidateVM.ResourcePool,
+					"zone", candidateVM.Zone)
 				break
 			}
 		}
 
-		if !hasReadyTag {
-			log.Info("VM missing ready-op tag", "vm", vm.SystemID, "tags", vmDetails.Tags)
+		if !foundReplacement {
+			log.Info("No replacement VM found yet",
+				"vmNeedingReplacement", vmToRepl.systemID,
+				"clusterTag", vmToRepl.clusterTag,
+				"requiredResourcePool", hostDetails.ResourcePool,
+				"requiredZone", hostDetails.Zone)
 			return false, nil
 		}
 	}
 
-	log.Info("All VMs have ready-op tags", "host", hostSystemID)
+	log.Info("All CP VMs have replacement VMs ready", "host", hostSystemID)
 	return true, nil
 }
 
