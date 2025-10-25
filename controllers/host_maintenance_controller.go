@@ -16,6 +16,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -65,26 +66,46 @@ func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.R
 	return ctrl.Result{}, nil
 }
 
-// reconcileConfigMap handles ConfigMap reconciliation (existing logic)
+// reconcileConfigMap handles ConfigMap reconciliation (fallback scenario)
+// This is triggered when:
+// 1. External operator manually creates/updates the hcp-maintenance-session ConfigMap with trigger fields
+// 2. Session needs to be monitored/managed independently of MaasMachine lifecycle
 func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
+	// Only process the maintenance session ConfigMap
+	if request.Name != maint.SessionCMName {
+		return ctrl.Result{}, nil
+	}
+
 	// Load or create session
 	st, cm, err := maint.LoadSession(ctx, r.Client, r.Namespace)
 	if err != nil {
 		r.Log.Error(err, "load session")
 		return ctrl.Result{}, err
 	}
-	// Optional external trigger via CM
+
+	// Optional external trigger via CM (manual operator intervention)
 	if start, host := maint.ShouldStartFromTrigger(cm); start {
+		r.Log.Info("External trigger detected in ConfigMap", "host", host)
 		st, err = maint.StartSession(ctx, r.Client, r.Namespace, host)
 		if err != nil {
 			r.Log.Error(err, "start session")
 			return ctrl.Result{}, err
 		}
-		r.Log.Info("HMC session started from trigger", "opId", st.OpID, "host", host)
+		r.Log.Info("HMC session started from external trigger", "opId", st.OpID, "host", host)
 	}
+
 	// No active session: nothing to do
 	if st.Status != maint.StatusActive || st.CurrentHost == "" || st.OpID == "" {
+		r.Log.V(1).Info("No active session or missing required fields",
+			"status", st.Status, "host", st.CurrentHost, "opId", st.OpID)
 		return ctrl.Result{}, nil
+	}
+
+	// Check if session has exceeded max active sessions (should be 1)
+	if st.ActiveSessions > 1 {
+		r.Log.Error(nil, "Multiple active sessions detected, aborting",
+			"activeSessions", st.ActiveSessions)
+		return ctrl.Result{}, fmt.Errorf("multiple active sessions detected: %d", st.ActiveSessions)
 	}
 
 	// Tag host with maintenance markers using real MAAS client
@@ -94,7 +115,9 @@ func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, reque
 		r.Log.Error(err, "ensure host maintenance tags", "host", st.CurrentHost)
 		return ctrl.Result{}, err
 	}
-	r.Log.Info("host maintenance tags ensured", "host", st.CurrentHost, "opId", st.OpID)
+	r.Log.Info("host maintenance tags ensured from ConfigMap reconciliation",
+		"host", st.CurrentHost, "opId", st.OpID, "activeSessions", st.ActiveSessions)
+
 	return ctrl.Result{}, nil
 }
 
@@ -153,10 +176,53 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 			log.Error(err, "failed to add evacuation finalizer")
 			return ctrl.Result{}, err
 		}
+
+		// Start maintenance session if not already active
+		if maasMachine.Spec.SystemID != nil {
+			st, err := maint.StartSession(ctx, r.Client, maasMachine.Namespace, *maasMachine.Spec.SystemID)
+			if err != nil {
+				log.Error(err, "failed to start maintenance session")
+				return ctrl.Result{}, err
+			}
+			log.Info("Maintenance session started", "opId", st.OpID, "host", st.CurrentHost)
+		}
+
 		return ctrl.Result{}, nil
 	}
 
 	log.Info("Processing host evacuation for MaasMachine deletion")
+
+	// Get system ID
+	if maasMachine.Spec.SystemID == nil {
+		log.Error(nil, "MaasMachine has no systemID")
+		return ctrl.Result{}, fmt.Errorf("maasMachine has no systemID")
+	}
+	hostSystemID := *maasMachine.Spec.SystemID
+
+	// Load current session to get opID (should already exist from finalizer addition)
+	st, _, err := maint.LoadSession(ctx, r.Client, maasMachine.Namespace)
+	if err != nil {
+		log.Error(err, "failed to load maintenance session")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	// Session should exist from finalizer addition step
+	if st.OpID == "" || st.Status != maint.StatusActive {
+		log.Error(nil, "No active session found, this should not happen",
+			"opId", st.OpID, "status", st.Status)
+		return ctrl.Result{RequeueAfter: 10 * time.Second},
+			fmt.Errorf("no active maintenance session found")
+	}
+
+	// Ensure maintenance tags are present
+	maasClient := maint.NewMAASClient(r.Client, maasMachine.Namespace)
+	tagService := maint.NewTagService(maasClient)
+
+	if err := maint.EnsureHostMaintenanceTags(tagService, hostSystemID, st.OpID); err != nil {
+		log.Error(err, "failed to ensure maintenance tags")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+	log.Info("Maintenance tags ensured", "host", hostSystemID, "opId", st.OpID)
 
 	// Create host maintenance service
 	hmcService := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
@@ -170,7 +236,7 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 
 	if !evacuationReady {
 		log.Info("Evacuation gates not met, blocking deletion",
-			"host", maasMachine.Spec.SystemID,
+			"host", hostSystemID,
 			"requeueAfter", 10*time.Second)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
@@ -179,6 +245,12 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	if err := hmcService.ClearMaintenanceTagsAndRemoveFinalizer(ctx, maasMachine, log); err != nil {
 		log.Error(err, "failed to clear maintenance tags and remove finalizer")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	// Complete the maintenance session
+	if err := maint.CompleteSession(ctx, r.Client, maasMachine.Namespace); err != nil {
+		log.Error(err, "failed to complete maintenance session")
+		// Don't block on session completion failure
 	}
 
 	log.Info("Host evacuation completed successfully")

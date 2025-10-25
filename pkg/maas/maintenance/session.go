@@ -16,6 +16,7 @@ package maintenance
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,11 +29,14 @@ import (
 
 const (
 	// Keys used in the session ConfigMap data
-	cmKeyOpID        = "opId"
-	cmKeyStatus      = "status"
-	cmKeyStartedAt   = "startedAt"
-	cmKeyCurrentHost = "currentHost"
-	cmKeyProgress    = "progress"
+	cmKeyOpID                       = "opId"
+	cmKeyStatus                     = "status"
+	cmKeyStartedAt                  = "startedAt"
+	cmKeyCurrentHost                = "currentHost"
+	cmKeyProgress                   = "progress"
+	cmKeyActiveSessions             = "activeSessions"             // Max 1 or 0
+	cmKeyAffectedWLCClusters        = "affectedWLCClusters"        // JSON array of cluster IDs
+	cmKeyPendingReadyVMReplacements = "pendingReadyVMReplacements" // JSON array of VM system IDs
 
 	// Optional trigger keys to initiate a session
 	cmKeyTriggerStart = "start"
@@ -40,8 +44,8 @@ const (
 )
 
 // LoadSession loads the session ConfigMap and returns parsed state if present.
+// If the ConfigMap doesn't exist, it returns an empty state with nil ConfigMap and no error.
 func LoadSession(ctx context.Context, c client.Client, namespace string) (State, *corev1.ConfigMap, error) {
-
 	key := types.NamespacedName{Namespace: namespace, Name: SessionCMName}
 	cm := &corev1.ConfigMap{}
 	if err := c.Get(ctx, key, cm); err != nil {
@@ -57,15 +61,43 @@ func LoadSession(ctx context.Context, c client.Client, namespace string) (State,
 	st.OpID = cm.Data[cmKeyOpID]
 	st.Status = Status(cm.Data[cmKeyStatus])
 	st.CurrentHost = cm.Data[cmKeyCurrentHost]
+
+	// Parse timestamp
 	if ts := cm.Data[cmKeyStartedAt]; ts != "" {
 		if t, err := time.Parse(time.RFC3339, ts); err == nil {
 			st.StartedAt = t
 		}
 	}
+
+	// Parse active sessions count
+	if activeSessions := cm.Data[cmKeyActiveSessions]; activeSessions != "" {
+		var count int
+		if _, err := fmt.Sscanf(activeSessions, "%d", &count); err == nil {
+			st.ActiveSessions = count
+		}
+	}
+
+	// Parse affected WLC clusters
+	if affectedClusters := cm.Data[cmKeyAffectedWLCClusters]; affectedClusters != "" {
+		var clusters []string
+		if err := json.Unmarshal([]byte(affectedClusters), &clusters); err == nil {
+			st.AffectedWLCClusters = clusters
+		}
+	}
+
+	// Parse pending ready VM replacements
+	if pendingVMs := cm.Data[cmKeyPendingReadyVMReplacements]; pendingVMs != "" {
+		var vms []string
+		if err := json.Unmarshal([]byte(pendingVMs), &vms); err == nil {
+			st.PendingReadyVMReplacements = vms
+		}
+	}
+
 	return st, cm, nil
 }
 
 // SaveSession writes the given state back to the session ConfigMap.
+// Creates the ConfigMap if it doesn't exist.
 func SaveSession(ctx context.Context, c client.Client, namespace string, st State) error {
 	key := types.NamespacedName{Namespace: namespace, Name: SessionCMName}
 	cm := &corev1.ConfigMap{}
@@ -78,13 +110,40 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 	if cm.Data == nil {
 		cm.Data = map[string]string{}
 	}
+
+	// Save basic fields
 	cm.Data[cmKeyOpID] = st.OpID
 	cm.Data[cmKeyStatus] = string(st.Status)
 	cm.Data[cmKeyCurrentHost] = st.CurrentHost
 	cm.Data[cmKeyStartedAt] = st.StartedAt.UTC().Format(time.RFC3339)
+
+	// Save active sessions count
+	cm.Data[cmKeyActiveSessions] = fmt.Sprintf("%d", st.ActiveSessions)
+
+	// Save affected WLC clusters as JSON
+	if len(st.AffectedWLCClusters) > 0 {
+		if clustersJSON, err := json.Marshal(st.AffectedWLCClusters); err == nil {
+			cm.Data[cmKeyAffectedWLCClusters] = string(clustersJSON)
+		}
+	} else {
+		cm.Data[cmKeyAffectedWLCClusters] = "[]"
+	}
+
+	// Save pending ready VM replacements as JSON
+	if len(st.PendingReadyVMReplacements) > 0 {
+		if vmsJSON, err := json.Marshal(st.PendingReadyVMReplacements); err == nil {
+			cm.Data[cmKeyPendingReadyVMReplacements] = string(vmsJSON)
+		}
+	} else {
+		cm.Data[cmKeyPendingReadyVMReplacements] = "[]"
+	}
+
+	// Ensure progress field exists
 	if cm.Data[cmKeyProgress] == "" {
 		cm.Data[cmKeyProgress] = "{}"
 	}
+
+	// Create or update
 	if cm.UID == "" {
 		return c.Create(ctx, cm)
 	}
@@ -92,26 +151,44 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 }
 
 // StartSession initializes a new session if none Active is present. It will
-// generate a fresh opId and set status Active.
+// generate a fresh opId and set status Active with ActiveSessions = 1.
 func StartSession(ctx context.Context, c client.Client, namespace, currentHost string) (State, error) {
 	st, cm, err := LoadSession(ctx, c, namespace)
 	if err != nil {
 		return State{}, err
 	}
-	if cm != nil && st.Status == StatusActive {
+	// If there's already an active session, return it
+	if cm != nil && st.Status == StatusActive && st.ActiveSessions == 1 {
 		return st, nil
 	}
 	newID := string(k8suuid.NewUUID())
 	st = State{
-		OpID:        newID,
-		Status:      StatusActive,
-		StartedAt:   time.Now().UTC(),
-		CurrentHost: currentHost,
+		OpID:                       newID,
+		Status:                     StatusActive,
+		StartedAt:                  time.Now().UTC(),
+		CurrentHost:                currentHost,
+		ActiveSessions:             1, // Mark session as active
+		AffectedWLCClusters:        []string{},
+		PendingReadyVMReplacements: []string{},
 	}
 	if err := SaveSession(ctx, c, namespace, st); err != nil {
 		return State{}, err
 	}
 	return st, nil
+}
+
+// CompleteSession marks the current session as completed and sets ActiveSessions to 0.
+func CompleteSession(ctx context.Context, c client.Client, namespace string) error {
+	st, _, err := LoadSession(ctx, c, namespace)
+	if err != nil {
+		return err
+	}
+	if st.Status == StatusCompleted {
+		return nil // Already completed
+	}
+	st.Status = StatusCompleted
+	st.ActiveSessions = 0
+	return SaveSession(ctx, c, namespace, st)
 }
 
 // ShouldStartFromTrigger inspects optional trigger fields in the session CM.

@@ -29,10 +29,13 @@ const (
 
 // State captures persisted fields for the current maintenance session.
 type State struct {
-	OpID        string
-	Status      Status
-	StartedAt   time.Time
-	CurrentHost string
+	OpID                       string
+	Status                     Status
+	StartedAt                  time.Time
+	CurrentHost                string
+	ActiveSessions             int      // Max 1 or 0
+	AffectedWLCClusters        []string // List of WLC cluster IDs affected by this maintenance
+	PendingReadyVMReplacements []string // List of VM system IDs pending ready-op tags
 }
 
 // MAAS API-facing interfaces and light types.
