@@ -51,6 +51,7 @@ import (
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
+	maint "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
@@ -175,7 +176,7 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	maasMachine := machineScope.MaasMachine
 
 	// Check if the host evacuation finalizer is present - if so, requeue for HMC controller
-	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+	if controllerutil.ContainsFinalizer(maasMachine, maint.HostEvacuationFinalizer) {
 		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
 			"systemID", machineScope.GetInstanceID())
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil

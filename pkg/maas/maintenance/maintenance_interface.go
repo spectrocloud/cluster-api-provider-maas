@@ -64,6 +64,10 @@ type InventoryService interface {
 	GetVM(systemID string) (Machine, error)
 	// GetVMHostForVM resolves the host system ID for a given VM system ID.
 	GetVMHostForVM(vmSystemID string) (hostSystemID string, err error)
+	// FindCPReadyVMForCluster checks if there exists a CP VM for the given cluster
+	// that has the ready-op-<opID> tag and is scheduled on a host different than excludeHostID.
+	// Returns true and the VM systemID if found.
+	FindCPReadyVMForCluster(clusterID, opID, excludeHostID string) (bool, string, error)
 }
 
 // Machine is a minimal view of a MAAS machine/VM for maintenance flows.

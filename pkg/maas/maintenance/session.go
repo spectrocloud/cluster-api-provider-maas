@@ -30,9 +30,12 @@ const (
 	// Keys used in the session ConfigMap data
 	cmKeyOpID        = "opId"
 	cmKeyStatus      = "status"
-	cmKeyStartedAt   = "startedAt"
-	cmKeyCurrentHost = "currentHost"
+	cmKeyStartedAt   = "sessionStartTime"
+	cmKeyCurrentHost = "systemID"
 	cmKeyProgress    = "progress"
+	cmKeyActive      = "active"
+	cmKeyAffected    = "affectedWLCClusters"
+	cmKeyPending     = "pendingReadyVMReplacements"
 
 	// Optional trigger keys to initiate a session
 	cmKeyTriggerStart = "start"
@@ -82,6 +85,13 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 	cm.Data[cmKeyStatus] = string(st.Status)
 	cm.Data[cmKeyCurrentHost] = st.CurrentHost
 	cm.Data[cmKeyStartedAt] = st.StartedAt.UTC().Format(time.RFC3339)
+	cm.Data[cmKeyActive] = "true"
+	if cm.Data[cmKeyAffected] == "" {
+		cm.Data[cmKeyAffected] = "[]"
+	}
+	if cm.Data[cmKeyPending] == "" {
+		cm.Data[cmKeyPending] = "[]"
+	}
 	if cm.Data[cmKeyProgress] == "" {
 		cm.Data[cmKeyProgress] = "{}"
 	}

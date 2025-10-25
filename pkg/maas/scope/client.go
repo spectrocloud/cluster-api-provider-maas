@@ -17,8 +17,14 @@ limitations under the License.
 package scope
 
 import (
-	"github.com/spectrocloud/maas-client-go/maasclient"
+	"context"
+	"fmt"
 	"os"
+
+	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // NewMaasClient creates a new MaaS client for a given session
@@ -37,4 +43,20 @@ func NewMaasClient(_ *ClusterScope) maasclient.ClientSetInterface {
 
 	maasClient := maasclient.NewAuthenticatedClientSet(maasEndpoint, maasAPIKey)
 	return maasClient
+}
+
+// NewMaasClientFromSecret constructs a MAAS client using a Secret in the given namespace.
+// Secret is expected to contain keys: "endpoint" and "apiKey".
+func NewMaasClientFromSecret(ctx context.Context, c client.Client, namespace, secretName string) (maasclient.ClientSetInterface, error) {
+	key := types.NamespacedName{Namespace: namespace, Name: secretName}
+	var sec corev1.Secret
+	if err := c.Get(ctx, key, &sec); err != nil {
+		return nil, err
+	}
+	endpoint := string(sec.Data["endpoint"])
+	apiKey := string(sec.Data["apiKey"])
+	if endpoint == "" || apiKey == "" {
+		return nil, fmt.Errorf("maas secret %s/%s missing endpoint or apiKey", namespace, secretName)
+	}
+	return maasclient.NewAuthenticatedClientSet(endpoint, apiKey), nil
 }

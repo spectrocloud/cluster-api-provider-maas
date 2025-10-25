@@ -78,8 +78,37 @@ func SanitizeID(id string) string {
 	return s
 }
 
-// BuildReadyHostTag builds the per-WLC readiness host tag for the given session.
-// Example: maas-lxd-ready-<clusterId>-op-<opID>
-func BuildReadyHostTag(clusterID, opID string) string {
-	return TagVMReadyOpPrefix + SanitizeID(clusterID) + "-op-" + opID
+// BuildReadyOpTag builds the readiness tag for the given session opID on CP VMs.
+// Example: maas-lxd-ready-op-<opID>
+func BuildReadyOpTag(opID string) string { return TagVMReadyOpPrefix + opID }
+
+// IsControlPlaneVM returns true if tags include the CP marker.
+func IsControlPlaneVM(tags []string) bool {
+	for _, t := range tags {
+		if t == TagVMControlPlane {
+			return true
+		}
+	}
+	return false
+}
+
+// ClusterIDFromTags extracts the cluster identifier from tags (maas-lxd-wlc-<clusterId>).
+func ClusterIDFromTags(tags []string) (string, bool) {
+	for _, t := range tags {
+		if strings.HasPrefix(t, TagVMClusterPrefix) && len(t) > len(TagVMClusterPrefix) {
+			return t[len(TagVMClusterPrefix):], true
+		}
+	}
+	return "", false
+}
+
+// HasReadyOpTag returns true when the VM has maas-lxd-ready-op-<opID> tag.
+func HasReadyOpTag(tags []string, opID string) bool {
+	ready := BuildReadyOpTag(opID)
+	for _, t := range tags {
+		if t == ready {
+			return true
+		}
+	}
+	return false
 }
