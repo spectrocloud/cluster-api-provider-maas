@@ -54,6 +54,31 @@ func NewInventoryService(client maasclient.ClientSetInterface) InventoryService 
 	}
 }
 
+// FindCPReadyVMForCluster returns true if a CP VM with ready-op-<opID> exists
+// for the given cluster on a host other than excludeHostID.
+func (s *maasInventoryService) FindCPReadyVMForCluster(clusterID, opID, excludeHostID string) (bool, string, error) {
+	ctx := context.Background()
+	params := maasclient.ParamsBuilder().
+		Set(maasclient.TagKey, TagVMControlPlane).
+		Set(maasclient.TagKey, TagVMClusterPrefix+SanitizeID(clusterID)).
+		Set(maasclient.TagKey, BuildReadyOpTag(opID))
+	vms, err := s.client.Machines().List(ctx, params)
+	if err != nil {
+		return false, "", err
+	}
+	for _, m := range vms {
+		dm, err := m.Get(ctx)
+		if err != nil {
+			continue
+		}
+		host := dm.Parent()
+		if host != "" && host != excludeHostID {
+			return true, dm.SystemID(), nil
+		}
+	}
+	return false, "", nil
+}
+
 // EnsureTagInInventory ensures a tag exists in MAAS inventory (idempotent).
 // If the tag already exists, this is a no-op. If it doesn't exist, it creates it.
 func (s *maasTagService) EnsureTagInInventory(name string) error {

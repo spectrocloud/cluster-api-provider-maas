@@ -82,6 +82,10 @@ func SanitizeID(id string) string {
 // Example: maas-lxd-ready-op-<opID>
 func BuildReadyOpTag(opID string) string { return TagVMReadyOpPrefix + opID }
 
+// BuildReadyHostTag is a backward-compatible helper for host-level ready tags.
+// Current design uses only opID in the ready tag; clusterID is ignored.
+func BuildReadyHostTag(_ string, opID string) string { return BuildReadyOpTag(opID) }
+
 // IsControlPlaneVM returns true if tags include the CP marker.
 func IsControlPlaneVM(tags []string) bool {
 	for _, t := range tags {
