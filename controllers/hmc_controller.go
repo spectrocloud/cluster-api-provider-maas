@@ -197,10 +197,10 @@ func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				// 	continue
 				// }
 				// if len(vms) == 0 {
-					// Clear maintenance and noschedule tags
-					_ = tags.RemoveTagFromHost(sid, maint.TagHostNoSchedule)
-					_ = tags.RemoveTagFromHost(sid, maint.TagHostMaintenance)
-					r.Log.Info("stale maintenance tags cleared on empty host", "host", sid)
+				// Clear maintenance and noschedule tags
+				_ = tags.RemoveTagFromHost(sid, maint.TagHostNoSchedule)
+				_ = tags.RemoveTagFromHost(sid, maint.TagHostMaintenance)
+				r.Log.Info("stale maintenance tags cleared on empty host", "host", sid)
 				// }
 			}
 		}
@@ -229,6 +229,7 @@ func (r *HMCMaintenanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("hmc-controller")
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1beta1.MaasMachine{}).
+		For(&corev1.ConfigMap{}).
 		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
 		Complete(r)
 }
