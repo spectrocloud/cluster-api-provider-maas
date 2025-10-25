@@ -154,6 +154,13 @@ func (s *HostMaintenanceService) isHostEmpty(ctx context.Context, hostSystemID s
 // We need to check all VMs in the inventory with the same resource pool and zone, filtering for
 // CP VMs with cluster tags and ready-op tags.
 func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSystemID string, log logr.Logger) (bool, error) {
+	// Load session to get opID and track affected clusters
+	session, _, err := maint.LoadSession(ctx, s.client, s.namespace)
+	if err != nil {
+		log.Error(err, "failed to load session, continuing without session data")
+		// Continue without session data - not critical
+	}
+
 	// Get the current host details to know its resource pool and zone
 	hostDetails, err := s.inventoryService.GetHost(hostSystemID)
 	if err != nil {
@@ -163,7 +170,9 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 	log.Info("Checking for replacement VMs in same resource pool and zone",
 		"host", hostSystemID,
 		"resourcePool", hostDetails.ResourcePool,
-		"zone", hostDetails.Zone)
+		"zone", hostDetails.Zone,
+		"sessionOpID", session.OpID,
+		"sessionActiveSince", session.StartedAt)
 
 	// Get all VMs currently on the host being evacuated
 	vmsOnCurrentHost, err := s.inventoryService.ListHostVMs(hostSystemID)
@@ -216,11 +225,40 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 		return true, nil
 	}
 
+	// Track affected clusters and pending VMs for session update
+	affectedClusters := make(map[string]bool)
+	pendingVMs := []string{}
+	for _, vm := range vmsNeedingReplacement {
+		affectedClusters[vm.clusterTag] = true
+		pendingVMs = append(pendingVMs, vm.systemID)
+	}
+
+	// Update session with affected clusters and pending VMs
+	if session.OpID != "" {
+		session.AffectedWLCClusters = make([]string, 0, len(affectedClusters))
+		for cluster := range affectedClusters {
+			session.AffectedWLCClusters = append(session.AffectedWLCClusters, cluster)
+		}
+		session.PendingReadyVMReplacements = pendingVMs
+		if err := maint.SaveSession(ctx, s.client, s.namespace, session); err != nil {
+			log.Error(err, "failed to update session with affected clusters")
+			// Continue - not critical
+		} else {
+			log.Info("Updated session with evacuation tracking data",
+				"affectedClusters", session.AffectedWLCClusters,
+				"pendingVMCount", len(pendingVMs))
+		}
+	}
+
 	// Get all VMs in the inventory
 	allVMs, err := s.inventoryService.ListAllVMs()
 	if err != nil {
 		return false, fmt.Errorf("failed to list all VMs: %w", err)
 	}
+
+	// Track replacement progress
+	replacementsFound := 0
+	replacementDetails := []string{}
 
 	// For each VM needing replacement, check if there's a replacement VM in the same
 	// resource pool and zone with the same cluster tag and a ready-op tag
@@ -259,27 +297,47 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 			// If this VM has all required tags, it's a valid replacement
 			if hasCPTag && hasClusterTag && hasReadyOpTag {
 				foundReplacement = true
+				replacementsFound++
+				replacementDetails = append(replacementDetails,
+					fmt.Sprintf("%s→%s(%s)", vmToRepl.systemID, candidateVM.SystemID, vmToRepl.clusterTag))
 				log.Info("Found replacement VM",
 					"originalVM", vmToRepl.systemID,
 					"replacementVM", candidateVM.SystemID,
 					"clusterTag", vmToRepl.clusterTag,
 					"resourcePool", candidateVM.ResourcePool,
-					"zone", candidateVM.Zone)
+					"zone", candidateVM.Zone,
+					"sessionOpID", session.OpID,
+					"progress", fmt.Sprintf("%d/%d", replacementsFound, len(vmsNeedingReplacement)))
 				break
 			}
 		}
 
 		if !foundReplacement {
-			log.Info("No replacement VM found yet",
+			// Calculate time elapsed since session start for timeout tracking
+			timeElapsed := time.Since(session.StartedAt)
+			log.Info("No replacement VM found yet - evacuation blocked",
 				"vmNeedingReplacement", vmToRepl.systemID,
 				"clusterTag", vmToRepl.clusterTag,
 				"requiredResourcePool", hostDetails.ResourcePool,
-				"requiredZone", hostDetails.Zone)
+				"requiredZone", hostDetails.Zone,
+				"sessionOpID", session.OpID,
+				"timeElapsed", timeElapsed,
+				"progress", fmt.Sprintf("%d/%d replacements found", replacementsFound, len(vmsNeedingReplacement)),
+				"affectedClusters", session.AffectedWLCClusters)
 			return false, nil
 		}
 	}
 
-	log.Info("All CP VMs have replacement VMs ready", "host", hostSystemID)
+	// All replacements found - log comprehensive success summary
+	log.Info("✅ All CP VMs have replacement VMs ready - evacuation can proceed",
+		"host", hostSystemID,
+		"sessionOpID", session.OpID,
+		"totalReplacements", replacementsFound,
+		"replacementDetails", replacementDetails,
+		"affectedClusters", session.AffectedWLCClusters,
+		"timeElapsed", time.Since(session.StartedAt),
+		"resourcePool", hostDetails.ResourcePool,
+		"zone", hostDetails.Zone)
 	return true, nil
 }
 
