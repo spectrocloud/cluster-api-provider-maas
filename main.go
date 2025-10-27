@@ -201,7 +201,7 @@ func main() {
 				Client: mgr.GetClient(),
 				Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
 				Scheme: mgr.GetScheme(),
-			}).SetupWithManager(mgr); err != nil {
+			}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
 				setupLog.Error(err, "unable to create controller", "controller", "HMC")
 				os.Exit(1)
 			}

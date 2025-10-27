@@ -29,6 +29,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maint "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
@@ -41,6 +45,8 @@ type HMCMaintenanceReconciler struct {
 	Scheme *runtime.Scheme
 	// Namespace is the controller namespace (namespaced deployment)
 	Namespace string
+	// GenericEventChannel allows external triggers to enqueue reconcile requests
+	GenericEventChannel chan event.GenericEvent
 }
 
 // Reconcile handles both MaasMachine evacuation finalizers and ConfigMap triggers
@@ -269,11 +275,37 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager
-func (r *HMCMaintenanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+func (r *HMCMaintenanceReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
+	recover := true
+	options.RecoverPanic = &recover
+
+	if r.GenericEventChannel == nil {
+		r.GenericEventChannel = make(chan event.GenericEvent)
+	}
+
+	c, err := ctrl.NewControllerManagedBy(mgr).
+		Named("hmc").
 		For(&infrav1beta1.MaasMachine{}).
-		For(&corev1.ConfigMap{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 1}).
-		Complete(r)
+		Watches(
+			&corev1.ConfigMap{},
+			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+				if obj.GetName() == maint.SessionCMName {
+					return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}}}
+				}
+				return nil
+			}),
+		).
+		WithOptions(options).
+		Build(r)
+	if err != nil {
+		return err
+	}
+
+	if err := c.Watch(
+		source.Channel(r.GenericEventChannel, &handler.EnqueueRequestForObject{}),
+	); err != nil {
+		return err
+	}
+
+	return err
 }
