@@ -732,11 +732,17 @@ func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *sc
 	tagService := maintenance.NewTagService(maasClient)
 	inventoryService := maintenance.NewInventoryService(maasClient)
 
-	// Get current machine details to check existing tags
+	// Get current machine details to check existing tags and power type
 	machine, err := inventoryService.GetHost(systemID)
 	if err != nil {
 		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
 		return err
+	}
+
+	// Double-check: Skip if this is a VM based on PowerType (lxd VMs)
+	if machine.PowerType == "lxd" {
+		machineScope.Info("Skipping tag cleanup for LXD VM", "systemID", systemID, "powerType", machine.PowerType)
+		return nil
 	}
 
 	// Define static maintenance tags to clean up
