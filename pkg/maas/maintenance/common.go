@@ -327,59 +327,63 @@ func convertIPAddresses(ips []net.IP) []string {
 // Falls back to environment variables if the secret is not available
 // Returns error if credentials cannot be found
 func NewMAASClient(k8sClient client.Client, namespace string) (maasclient.ClientSetInterface, error) {
-	// Try to get MAAS credentials from the secret first
-	endpoint, apiKey := getCredentialsFromSecret(k8sClient, namespace)
-
-	// Fall back to environment variables if secret is not available
-	if endpoint == "" {
-		endpoint = os.Getenv("MAAS_ENDPOINT")
-	}
-
-	if apiKey == "" {
-		apiKey = os.Getenv("MAAS_API_KEY")
-	}
-
-	// Validate that we have both required credentials
-	if endpoint == "" {
-		return nil, fmt.Errorf("MAAS endpoint not found: check capmaas-manager-bootstrap-credentials secret or MAAS_ENDPOINT environment variable")
-	}
-
-	if apiKey == "" {
-		return nil, fmt.Errorf("MAAS API key not found: check capmaas-manager-bootstrap-credentials secret or MAAS_API_KEY environment variable")
+	// Get MAAS credentials using the same logic as ClusterScope.GetMaasClientIdentity
+	endpoint, apiKey, err := GetMAASCredentials(k8sClient, namespace)
+	if err != nil {
+		return nil, err
 	}
 
 	client := maasclient.NewAuthenticatedClientSet(endpoint, apiKey)
 	return client, nil
 }
 
-// getCredentialsFromSecret retrieves MAAS credentials from the capmaas-manager-bootstrap-credentials secret
-func getCredentialsFromSecret(k8sClient client.Client, namespace string) (endpoint, apiKey string) {
-	if k8sClient == nil || namespace == "" {
-		return "", ""
-	}
-
+// GetMAASCredentials retrieves MAAS credentials from the capmaas-manager-bootstrap-credentials secret
+// Falls back to environment variables if the secret is not available
+// This function implements the same logic as ClusterScope.GetMaasClientIdentity but as a standalone function
+func GetMAASCredentials(k8sClient client.Client, namespace string) (endpoint, apiKey string, err error) {
+	// Secret containing MAAS endpoint/token created by Palette bootstrapper
 	secretName := "capmaas-manager-bootstrap-credentials"
-	secret := &corev1.Secret{}
-	key := types.NamespacedName{
-		Namespace: namespace,
-		Name:      secretName,
+
+	// Try to get credentials from secret first
+	if k8sClient != nil && namespace != "" {
+		secret := &corev1.Secret{}
+		key := types.NamespacedName{
+			Namespace: namespace,
+			Name:      secretName,
+		}
+
+		// Try to get the secret
+		if err := k8sClient.Get(context.Background(), key, secret); err == nil {
+			// Get the credentials from the secret
+			endpoint = string(secret.Data["MAAS_ENDPOINT"])
+			apiKey = string(secret.Data["MAAS_API_KEY"])
+
+			// If both credentials are valid, return them
+			if endpoint != "" && apiKey != "" {
+				return endpoint, apiKey, nil
+			}
+		}
 	}
 
-	// Try to get the secret
-	err := k8sClient.Get(context.Background(), key, secret)
-	if err != nil {
-		// Secret doesn't exist or can't be accessed, return empty values
-		return "", ""
+	// Fall back to environment variables
+	endpoint = os.Getenv("MAAS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = os.Getenv("MAAS_API_URL") // Alternative env var name
 	}
 
-	// Get the credentials from the secret
-	endpoint = string(secret.Data["MAAS_ENDPOINT"])
-	apiKey = string(secret.Data["MAAS_API_KEY"])
-
-	// Validate the credentials
-	if endpoint == "" || apiKey == "" {
-		return "", ""
+	apiKey = os.Getenv("MAAS_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("MAAS_API_TOKEN") // Alternative env var name
 	}
 
-	return endpoint, apiKey
+	// Validate that we have both required credentials
+	if endpoint == "" {
+		return "", "", fmt.Errorf("MAAS endpoint not found: check capmaas-manager-bootstrap-credentials secret (MAAS_ENDPOINT) or MAAS_ENDPOINT/MAAS_API_URL environment variable")
+	}
+
+	if apiKey == "" {
+		return "", "", fmt.Errorf("MAAS API key not found: check capmaas-manager-bootstrap-credentials secret (MAAS_API_KEY) or MAAS_API_KEY/MAAS_API_TOKEN environment variable")
+	}
+
+	return endpoint, apiKey, nil
 }
