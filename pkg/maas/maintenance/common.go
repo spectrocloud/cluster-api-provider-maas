@@ -103,29 +103,41 @@ func (s *maasTagService) RemoveTagFromHost(systemID, tag string) error {
 }
 
 // ListHostVMs lists all VMs running on the specified host.
+// Since MAAS doesn't have a direct API to list VMs by host, we list all machines
+// and filter by parent system ID (for LXD VMs).
 func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, error) {
 	ctx := context.Background()
 
-	// Get the VMHost and list its machines
-	vmHost := s.client.VMHosts().VMHost(hostSystemID)
-	maasClientMachines, err := vmHost.Machines().List(ctx)
+	// List all machines in MAAS
+	allMachines, err := s.client.Machines().List(ctx, maasclient.ParamsBuilder())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list all machines: %w", err)
 	}
 
-	// Convert MAAS Client Machines to maintenance.Machine objects
+	// Filter for VMs on this specific host
 	var machinesForMaintenance []Machine
-	for _, maasMachine := range maasClientMachines {
-		// Get detailed machine info to access all fields
+	for _, maasMachine := range allMachines {
+		// Get detailed machine info to access parent and other fields
 		detailedMachine, err := maasMachine.Get(ctx)
 		if err != nil {
 			// Skip machines we can't fetch details for
 			continue
 		}
 
+		// Check if this is an LXD VM on the specified host
+		if detailedMachine.PowerType() != "lxd" {
+			continue // Not an LXD VM
+		}
+
+		parentSystemID := detailedMachine.Parent()
+		if parentSystemID != hostSystemID {
+			continue // VM is on a different host
+		}
+
+		// This VM is on our host, add it to the list
 		machinesForMaintenance = append(machinesForMaintenance, Machine{
 			SystemID:     detailedMachine.SystemID(),
-			HostSystemID: hostSystemID, // We know this from the input
+			HostSystemID: parentSystemID,
 			Tags:         detailedMachine.Tags(),
 			Zone:         detailedMachine.ZoneName(),
 			ResourcePool: detailedMachine.ResourcePoolName(),

@@ -186,6 +186,17 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 
 	// If host is empty, evacuation can proceed
 	if len(vmsOnCurrentHost) == 0 {
+		// Update session to indicate no VMs to evacuate
+		if session.OpID != "" {
+			session.AffectedWLCClusters = []string{}
+			session.PendingReadyVMReplacements = []string{}
+			if err := maint.SaveSession(ctx, s.client, s.namespace, session); err != nil {
+				log.Error(err, "failed to update session for empty host")
+				// Continue - not critical
+			} else {
+				log.Info("Updated session: host is empty, no VMs to evacuate", "host", hostSystemID)
+			}
+		}
 		log.Info("Host is empty, evacuation can proceed", "host", hostSystemID)
 		return true, nil
 	}
@@ -225,6 +236,17 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 
 	// If no CP VMs need replacement, evacuation can proceed
 	if len(vmsNeedingReplacement) == 0 {
+		// Update session to indicate no CP VMs to evacuate
+		if session.OpID != "" {
+			session.AffectedWLCClusters = []string{}
+			session.PendingReadyVMReplacements = []string{}
+			if err := maint.SaveSession(ctx, s.client, s.namespace, session); err != nil {
+				log.Error(err, "failed to update session for no CP VMs")
+				// Continue - not critical
+			} else {
+				log.Info("Updated session: no CP VMs need replacement", "host", hostSystemID, "totalVMs", len(vmsOnCurrentHost))
+			}
+		}
 		log.Info("No CP VMs need replacement, evacuation can proceed", "host", hostSystemID)
 		return true, nil
 	}
