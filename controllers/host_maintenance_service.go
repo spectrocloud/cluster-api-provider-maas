@@ -17,6 +17,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -204,7 +205,7 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 				isCPVM = true
 			}
 			// Look for cluster tag (maas-lxd-wlc-*)
-			if len(tag) > len(maint.TagVMClusterPrefix) && tag[:len(maint.TagVMClusterPrefix)] == maint.TagVMClusterPrefix {
+			if strings.HasPrefix(tag, maint.TagVMClusterPrefix) {
 				clusterTag = tag
 			}
 		}
@@ -289,7 +290,7 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 					hasClusterTag = true
 				}
 				// Check for ready-op-<uuid> tag
-				if len(tag) > len(maint.TagVMReadyOpPrefix) && tag[:len(maint.TagVMReadyOpPrefix)] == maint.TagVMReadyOpPrefix {
+				if strings.HasPrefix(tag, maint.TagVMReadyOpPrefix) {
 					hasReadyOpTag = true
 				}
 			}
@@ -366,7 +367,7 @@ func (s *HostMaintenanceService) clearMaintenanceTags(ctx context.Context, hostS
 
 	// Clear dynamic operation ID tags (maas.lxd-hcp-op-*)
 	for _, tag := range hostDetails.Tags {
-		if len(tag) > len(maint.TagHostOpPrefix) && tag[:len(maint.TagHostOpPrefix)] == maint.TagHostOpPrefix {
+		if strings.HasPrefix(tag, maint.TagHostOpPrefix) {
 			if err := s.tagService.RemoveTagFromHost(hostSystemID, tag); err != nil {
 				log.Error(err, "failed to remove operation ID tag", "tag", tag, "host", hostSystemID)
 				return err
