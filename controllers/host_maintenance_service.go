@@ -43,14 +43,17 @@ type HostMaintenanceService struct {
 }
 
 // NewHostMaintenanceService creates a new host maintenance service
-func NewHostMaintenanceService(k8sClient client.Client, namespace string) *HostMaintenanceService {
-	maasClient := maint.NewMAASClient(k8sClient, namespace)
+func NewHostMaintenanceService(k8sClient client.Client, namespace string) (*HostMaintenanceService, error) {
+	maasClient, err := maint.NewMAASClient(k8sClient, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create MAAS client: %w", err)
+	}
 	return &HostMaintenanceService{
 		client:           k8sClient,
 		namespace:        namespace,
 		tagService:       maint.NewTagService(maasClient),
 		inventoryService: maint.NewInventoryService(maasClient),
-	}
+	}, nil
 }
 
 // AddEvacuationFinalizer adds the evacuation finalizer to a host machine

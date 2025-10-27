@@ -109,7 +109,11 @@ func (r *HMCMaintenanceReconciler) reconcileConfigMap(ctx context.Context, reque
 	}
 
 	// Tag host with maintenance markers using real MAAS client
-	maasClient := maint.NewMAASClient(r.Client, r.Namespace)
+	maasClient, err := maint.NewMAASClient(r.Client, r.Namespace)
+	if err != nil {
+		r.Log.Error(err, "failed to create MAAS client")
+		return ctrl.Result{}, err
+	}
 	tags := maint.NewTagService(maasClient)
 	if err := maint.EnsureHostMaintenanceTags(tags, st.CurrentHost, st.OpID); err != nil {
 		r.Log.Error(err, "ensure host maintenance tags", "host", st.CurrentHost)
@@ -215,7 +219,11 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	}
 
 	// Ensure maintenance tags are present
-	maasClient := maint.NewMAASClient(r.Client, maasMachine.Namespace)
+	maasClient, err := maint.NewMAASClient(r.Client, maasMachine.Namespace)
+	if err != nil {
+		log.Error(err, "failed to create MAAS client")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
 	tagService := maint.NewTagService(maasClient)
 
 	if err := maint.EnsureHostMaintenanceTags(tagService, hostSystemID, st.OpID); err != nil {
@@ -225,7 +233,11 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	log.Info("Maintenance tags ensured", "host", hostSystemID, "opId", st.OpID)
 
 	// Create host maintenance service
-	hmcService := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
+	hmcService, err := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
+	if err != nil {
+		log.Error(err, "failed to create host maintenance service")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
 
 	// Check evacuation gates
 	evacuationReady, err := hmcService.CheckEvacuationGates(ctx, maasMachine, log)

@@ -728,7 +728,11 @@ func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *sc
 	}
 
 	// Create MAAS client and services
-	maasClient := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	maasClient, err := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	if err != nil {
+		machineScope.Error(err, "failed to create MAAS client for tag cleanup", "systemID", systemID)
+		return err
+	}
 	tagService := maintenance.NewTagService(maasClient)
 	inventoryService := maintenance.NewInventoryService(maasClient)
 

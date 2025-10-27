@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	// Keys used in the session ConfigMap data
+	// Keys used in the session ConfigMap data (internal use)
 	cmKeyOpID                       = "opId"
 	cmKeyStatus                     = "status"
 	cmKeyStartedAt                  = "startedAt"
@@ -37,6 +37,14 @@ const (
 	cmKeyActiveSessions             = "activeSessions"             // Max 1 or 0
 	cmKeyAffectedWLCClusters        = "affectedWLCClusters"        // JSON array of cluster IDs
 	cmKeyPendingReadyVMReplacements = "pendingReadyVMReplacements" // JSON array of VM system IDs
+	cmKeyNewVMSystemID              = "newVMSystemID"              // New VM system ID for replacement
+
+	// Exported keys for external use (e.g., machine.go, vmevacuation_controller.go)
+	CmKeyOpID          = cmKeyOpID
+	CmKeyStatus        = cmKeyStatus
+	CmKeyNewVMSystemID = cmKeyNewVMSystemID
+	CmKeyCurrentHost   = cmKeyCurrentHost
+	CmKeyStartedAt     = cmKeyStartedAt
 
 	// Optional trigger keys to initiate a session
 	CmKeyTriggerStart = "start"
@@ -211,6 +219,6 @@ func UpdateProgress(cm *corev1.ConfigMap, progress map[string]string) {
 		cm.Data = map[string]string{}
 	}
 	if b, err := json.Marshal(progress); err == nil {
-		cm.Data[CmKeyProgress] = string(b)
+		cm.Data[cmKeyProgress] = string(b)
 	}
 }

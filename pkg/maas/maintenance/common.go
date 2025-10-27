@@ -15,6 +15,7 @@ package maintenance
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 
@@ -324,29 +325,31 @@ func convertIPAddresses(ips []net.IP) []string {
 
 // NewMAASClient creates a new MAAS client using the capmaas-manager-bootstrap-credentials secret
 // Falls back to environment variables if the secret is not available
-func NewMAASClient(k8sClient client.Client, namespace string) maasclient.ClientSetInterface {
+// Returns error if credentials cannot be found
+func NewMAASClient(k8sClient client.Client, namespace string) (maasclient.ClientSetInterface, error) {
 	// Try to get MAAS credentials from the secret first
 	endpoint, apiKey := getCredentialsFromSecret(k8sClient, namespace)
 
 	// Fall back to environment variables if secret is not available
 	if endpoint == "" {
 		endpoint = os.Getenv("MAAS_ENDPOINT")
-		if endpoint == "" {
-			endpoint = "http://localhost:5240/MAAS"
-		}
 	}
 
 	if apiKey == "" {
 		apiKey = os.Getenv("MAAS_API_KEY")
-		if apiKey == "" {
-			// In production, this should be handled more securely
-			// For now, we'll use a placeholder
-			apiKey = "placeholder-api-key"
-		}
+	}
+
+	// Validate that we have both required credentials
+	if endpoint == "" {
+		return nil, fmt.Errorf("MAAS endpoint not found: check capmaas-manager-bootstrap-credentials secret or MAAS_ENDPOINT environment variable")
+	}
+
+	if apiKey == "" {
+		return nil, fmt.Errorf("MAAS API key not found: check capmaas-manager-bootstrap-credentials secret or MAAS_API_KEY environment variable")
 	}
 
 	client := maasclient.NewAuthenticatedClientSet(endpoint, apiKey)
-	return client
+	return client, nil
 }
 
 // getCredentialsFromSecret retrieves MAAS credentials from the capmaas-manager-bootstrap-credentials secret
