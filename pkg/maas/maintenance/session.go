@@ -39,8 +39,8 @@ const (
 	cmKeyPendingReadyVMReplacements = "pendingReadyVMReplacements" // JSON array of VM system IDs
 
 	// Optional trigger keys to initiate a session
-	cmKeyTriggerStart = "start"
-	cmKeyTriggerHost  = "hostSystemID"
+	CmKeyTriggerStart = "start"
+	CmKeyTriggerHost  = "hostSystemID"
 )
 
 // LoadSession loads the session ConfigMap and returns parsed state if present.
@@ -196,8 +196,8 @@ func ShouldStartFromTrigger(cm *corev1.ConfigMap) (bool, string) {
 	if cm == nil || cm.Data == nil {
 		return false, ""
 	}
-	if cm.Data[cmKeyTriggerStart] == "true" {
-		return true, cm.Data[cmKeyTriggerHost]
+	if cm.Data[CmKeyTriggerStart] == "true" {
+		return true, cm.Data[CmKeyTriggerHost]
 	}
 	return false, ""
 }
@@ -211,6 +211,6 @@ func UpdateProgress(cm *corev1.ConfigMap, progress map[string]string) {
 		cm.Data = map[string]string{}
 	}
 	if b, err := json.Marshal(progress); err == nil {
-		cm.Data[cmKeyProgress] = string(b)
+		cm.Data[CmKeyProgress] = string(b)
 	}
 }
