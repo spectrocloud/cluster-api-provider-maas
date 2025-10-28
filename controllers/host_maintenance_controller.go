@@ -49,6 +49,11 @@ type HMCMaintenanceReconciler struct {
 	GenericEventChannel chan event.GenericEvent
 }
 
+// EvacuationCompletedAnnotation marks a MaasMachine that has already completed
+// host evacuation. When present, the controller will not re-add the evacuation
+// finalizer or re-start a maintenance session.
+const EvacuationCompletedAnnotation = "maas.lxd.io/evacuation-completed"
+
 // Reconcile handles both MaasMachine evacuation finalizers and ConfigMap triggers
 func (r *HMCMaintenanceReconciler) Reconcile(ctx context.Context, request ctrl.Request) (ctrl.Result, error) {
 	r.Namespace = request.Namespace
@@ -178,6 +183,12 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 		return ctrl.Result{}, nil
 	}
 
+	// If evacuation already completed, do not re-add finalizer or start a new session
+	if maasMachine.Annotations != nil && maasMachine.Annotations[EvacuationCompletedAnnotation] != "" {
+		log.V(1).Info("Evacuation already completed for host, skipping re-add of finalizer")
+		return ctrl.Result{}, nil
+	}
+
 	// CAPI Machine is being deleted, add evacuation finalizer if not present
 	if !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
 		log.Info("Adding evacuation finalizer to MaasMachine")
@@ -265,10 +276,21 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
+	// Mark evacuation completed on the MaasMachine to prevent future sessions
+	if maasMachine.Annotations == nil {
+		maasMachine.Annotations = map[string]string{}
+	}
+	maasMachine.Annotations[EvacuationCompletedAnnotation] = st.OpID
+	if err := r.Update(ctx, maasMachine); err != nil {
+		log.Error(err, "failed to annotate MaasMachine as evacuation completed")
+		// Not fatal for host cleanup; continue to complete the session
+	}
+
 	// Complete the maintenance session
 	if err := maint.CompleteSession(ctx, r.Client, maasMachine.Namespace); err != nil {
 		log.Error(err, "failed to complete maintenance session")
 		// Don't block on session completion failure
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
 	log.Info("Host evacuation completed successfully")
