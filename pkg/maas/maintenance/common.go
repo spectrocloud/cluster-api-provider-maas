@@ -102,54 +102,47 @@ func (s *maasTagService) RemoveTagFromHost(systemID, tag string) error {
 	return s.client.Tags().Unassign(ctx, tag, systemID)
 }
 
-// ListHostVMs lists all VMs running on the specified host.
-// Since MAAS doesn't have a direct API to list VMs by host, we list all machines
-// and filter by parent system ID (for LXD VMs).
+// ListHostVMs lists all VMs running on the specified BM/LXD host (by host machine systemID).
+// Prefer the MAAS vm-hosts API to enumerate instances on a VM host, which is
+// more accurate than scanning all machines and filtering by parent.
 func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, error) {
 	ctx := context.Background()
 
-	// List all machines in MAAS
-	allMachines, err := s.client.Machines().List(ctx, maasclient.ParamsBuilder())
+	// Try server-side parent filter
+	params := maasclient.ParamsBuilder().Set("parent", hostSystemID)
+	all, err := s.client.Machines().List(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list all machines: %w", err)
+		// fallback to no filter
+		all, err = s.client.Machines().List(ctx, maasclient.ParamsBuilder())
+		if err != nil {
+			return nil, fmt.Errorf("failed to list machines: %w", err)
+		}
 	}
 
-	// Filter for VMs on this specific host
-	var machinesForMaintenance []Machine
-	for _, maasMachine := range allMachines {
-		// Get detailed machine info to access parent and other fields
-		detailedMachine, err := maasMachine.Get(ctx)
+	var out []Machine
+	for _, m := range all {
+		det, err := m.Get(ctx)
 		if err != nil {
-			// Skip machines we can't fetch details for
 			continue
 		}
-
-		// Check if this is an LXD VM on the specified host
-		if detailedMachine.PowerType() != "lxd" {
-			continue // Not an LXD VM
+		// Only keep LXD VMs hosted on this BM/LXD host
+		if det.Parent() != hostSystemID {
+			continue
 		}
-
-		parentSystemID := detailedMachine.Parent()
-		if parentSystemID != hostSystemID {
-			continue // VM is on a different host
-		}
-
-		// This VM is on our host, add it to the list
-		machinesForMaintenance = append(machinesForMaintenance, Machine{
-			SystemID:     detailedMachine.SystemID(),
-			HostSystemID: parentSystemID,
-			Tags:         detailedMachine.Tags(),
-			Zone:         detailedMachine.ZoneName(),
-			ResourcePool: detailedMachine.ResourcePoolName(),
-			FQDN:         detailedMachine.FQDN(),
-			PowerState:   detailedMachine.PowerState(),
-			PowerType:    detailedMachine.PowerType(),
-			Hostname:     detailedMachine.Hostname(),
-			IPAddresses:  convertIPAddresses(detailedMachine.IPAddresses()),
+		out = append(out, Machine{
+			SystemID:     det.SystemID(),
+			HostSystemID: det.Parent(),
+			Tags:         det.Tags(),
+			Zone:         det.ZoneName(),
+			ResourcePool: det.ResourcePoolName(),
+			FQDN:         det.FQDN(),
+			PowerState:   det.PowerState(),
+			PowerType:    det.PowerType(),
+			Hostname:     det.Hostname(),
+			IPAddresses:  convertIPAddresses(det.IPAddresses()),
 		})
 	}
-
-	return machinesForMaintenance, nil
+	return out, nil
 }
 
 // ListAllVMs lists all VMs in the MAAS inventory (machines with power_type="lxd")
