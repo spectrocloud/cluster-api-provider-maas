@@ -159,11 +159,21 @@ func (s *HostMaintenanceService) isHostEmpty(ctx context.Context, hostSystemID s
 // CP VMs with cluster tags and ready-op tags.
 func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSystemID string, log logr.Logger) (bool, error) {
 	// Load session to get opID and track affected clusters
-	session, _, err := maint.LoadSession(ctx, s.client, s.namespace)
+	session, cm, err := maint.LoadSession(ctx, s.client, s.namespace)
 	if err != nil {
 		log.Error(err, "failed to load session, continuing without session data")
 		// Continue without session data - not critical
 	}
+
+	log.Info("Loaded session state",
+		"opID", session.OpID,
+		"status", session.Status,
+		"currentHost", session.CurrentHost,
+		"activeSessions", session.ActiveSessions,
+		"affectedWLCClusters", session.AffectedWLCClusters,
+		"pendingReadyVMReplacements", session.PendingReadyVMReplacements,
+		"configMapExists", cm != nil,
+		"namespace", s.namespace)
 
 	// Get the current host details to know its resource pool and zone
 	hostDetails, err := s.inventoryService.GetHost(hostSystemID)
@@ -266,14 +276,30 @@ func (s *HostMaintenanceService) checkWLCReadyTags(ctx context.Context, hostSyst
 			session.AffectedWLCClusters = append(session.AffectedWLCClusters, cluster)
 		}
 		session.PendingReadyVMReplacements = pendingVMs
+
+		log.Info("Attempting to save session with evacuation data",
+			"opID", session.OpID,
+			"affectedClusters", session.AffectedWLCClusters,
+			"pendingVMs", pendingVMs,
+			"pendingVMCount", len(pendingVMs),
+			"activeSessions", session.ActiveSessions,
+			"currentHost", session.CurrentHost)
+
 		if err := maint.SaveSession(ctx, s.client, s.namespace, session); err != nil {
-			log.Error(err, "failed to update session with affected clusters")
-			// Continue - not critical
-		} else {
-			log.Info("Updated session with evacuation tracking data",
+			log.Error(err, "❌ FAILED to update session with affected clusters",
+				"opID", session.OpID,
 				"affectedClusters", session.AffectedWLCClusters,
 				"pendingVMCount", len(pendingVMs))
+			// Continue - not critical
+		} else {
+			log.Info("✅ Successfully updated session with evacuation tracking data",
+				"opID", session.OpID,
+				"affectedClusters", session.AffectedWLCClusters,
+				"pendingVMCount", len(pendingVMs),
+				"namespace", s.namespace)
 		}
+	} else {
+		log.Info("⚠️ Session OpID is empty, cannot save session data")
 	}
 
 	// Get all VMs in the inventory

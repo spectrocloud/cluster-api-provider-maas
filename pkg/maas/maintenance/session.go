@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pkg/errors"
+
 	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -132,6 +134,8 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 	if len(st.AffectedWLCClusters) > 0 {
 		if clustersJSON, err := json.Marshal(st.AffectedWLCClusters); err == nil {
 			cm.Data[cmKeyAffectedWLCClusters] = string(clustersJSON)
+		} else {
+			return errors.Wrapf(err, "failed to serialize affected wlc %s", st.AffectedWLCClusters)
 		}
 	} else {
 		cm.Data[cmKeyAffectedWLCClusters] = "[]"
@@ -141,6 +145,8 @@ func SaveSession(ctx context.Context, c client.Client, namespace string, st Stat
 	if len(st.PendingReadyVMReplacements) > 0 {
 		if vmsJSON, err := json.Marshal(st.PendingReadyVMReplacements); err == nil {
 			cm.Data[cmKeyPendingReadyVMReplacements] = string(vmsJSON)
+		} else {
+			return errors.Wrapf(err, "failed to serialize pending wlc %s", st.PendingReadyVMReplacements)
 		}
 	} else {
 		cm.Data[cmKeyPendingReadyVMReplacements] = "[]"
@@ -185,7 +191,7 @@ func StartSession(ctx context.Context, c client.Client, namespace, currentHost s
 	return st, nil
 }
 
-// CompleteSession marks the current session as completed and sets ActiveSessions to 0.
+// CompleteSession marks the current session as completed and clears all session data.
 func CompleteSession(ctx context.Context, c client.Client, namespace string) error {
 	st, _, err := LoadSession(ctx, c, namespace)
 	if err != nil {
@@ -194,8 +200,14 @@ func CompleteSession(ctx context.Context, c client.Client, namespace string) err
 	if st.Status == StatusCompleted {
 		return nil // Already completed
 	}
+
+	// Clear all session data
 	st.Status = StatusCompleted
 	st.ActiveSessions = 0
+	st.CurrentHost = "" // Clear the current host
+	st.AffectedWLCClusters = []string{}
+	st.PendingReadyVMReplacements = []string{}
+
 	return SaveSession(ctx, c, namespace, st)
 }
 

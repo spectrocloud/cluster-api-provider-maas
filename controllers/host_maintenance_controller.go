@@ -183,35 +183,42 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 		return ctrl.Result{}, nil
 	}
 
-	// If evacuation already completed, do not re-add finalizer or start a new session
+	// If evacuation already completed, do not start a new session
 	if maasMachine.Annotations != nil && maasMachine.Annotations[EvacuationCompletedAnnotation] != "" {
-		log.V(1).Info("Evacuation already completed for host, skipping re-add of finalizer")
+		log.V(1).Info("Evacuation already completed for host, skipping")
 		return ctrl.Result{}, nil
 	}
 
-	// CAPI Machine is being deleted, add evacuation finalizer if not present
+	// Evacuation finalizer should have been added proactively during reconcileNormal
+	// If it's missing, log a warning but don't try to add it (Kubernetes won't allow it during deletion)
 	if !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
-		log.Info("Adding evacuation finalizer to MaasMachine")
-		controllerutil.AddFinalizer(maasMachine, HostEvacuationFinalizer)
-		if err := r.Update(ctx, maasMachine); err != nil {
-			log.Error(err, "failed to add evacuation finalizer")
-			return ctrl.Result{}, err
-		}
+		log.Error(nil, "⚠️ Evacuation finalizer missing - should have been added proactively during reconcileNormal",
+			"maasMachine", maasMachine.Name,
+			"finalizers", maasMachine.Finalizers)
+		// Cannot add finalizer during deletion - let the machine be deleted without evacuation
+		return ctrl.Result{}, nil
+	}
 
-		// Start maintenance session if not already active
+	// Start maintenance session if not already active (only once when deletion starts)
+	st, _, err := maint.LoadSession(ctx, r.Client, maasMachine.Namespace)
+	if err != nil {
+		log.Error(err, "failed to load maintenance session")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
+	}
+
+	// If no active session exists, start one
+	if st.OpID == "" || st.Status != maint.StatusActive {
 		if maasMachine.Spec.SystemID != nil {
-			st, err := maint.StartSession(ctx, r.Client, maasMachine.Namespace, *maasMachine.Spec.SystemID)
+			st, err = maint.StartSession(ctx, r.Client, maasMachine.Namespace, *maasMachine.Spec.SystemID)
 			if err != nil {
 				log.Error(err, "failed to start maintenance session")
-				return ctrl.Result{}, err
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 			}
 			log.Info("Maintenance session started", "opId", st.OpID, "host", st.CurrentHost)
 		}
-
-		return ctrl.Result{}, nil
 	}
 
-	log.Info("Processing host evacuation for MaasMachine deletion")
+	log.Info("Processing host evacuation for MaasMachine deletion", "opID", st.OpID)
 
 	// Get system ID
 	if maasMachine.Spec.SystemID == nil {
@@ -219,21 +226,6 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 		return ctrl.Result{}, fmt.Errorf("maasMachine has no systemID")
 	}
 	hostSystemID := *maasMachine.Spec.SystemID
-
-	// Load current session to get opID (should already exist from finalizer addition)
-	st, _, err := maint.LoadSession(ctx, r.Client, maasMachine.Namespace)
-	if err != nil {
-		log.Error(err, "failed to load maintenance session")
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
-	}
-
-	// Session should exist from finalizer addition step
-	if st.OpID == "" || st.Status != maint.StatusActive {
-		log.Error(nil, "No active session found, this should not happen",
-			"opId", st.OpID, "status", st.Status)
-		return ctrl.Result{RequeueAfter: 10 * time.Second},
-			fmt.Errorf("no active maintenance session found")
-	}
 
 	// Ensure maintenance tags are present
 	maasClient, err := maint.NewMAASClient(r.Client, maasMachine.Namespace)
@@ -287,13 +279,27 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	}
 
 	// Complete the maintenance session
+	log.Info("Completing maintenance session", "opID", st.OpID, "host", hostSystemID)
 	if err := maint.CompleteSession(ctx, r.Client, maasMachine.Namespace); err != nil {
-		log.Error(err, "failed to complete maintenance session")
+		log.Error(err, "failed to complete maintenance session", "opID", st.OpID)
 		// Don't block on session completion failure
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
 	}
 
-	log.Info("Host evacuation completed successfully")
+	// Verify session was completed
+	completedSession, _, err := maint.LoadSession(ctx, r.Client, maasMachine.Namespace)
+	if err != nil {
+		log.Error(err, "failed to verify session completion")
+	} else {
+		log.Info("Session completion verified",
+			"status", completedSession.Status,
+			"currentHost", completedSession.CurrentHost,
+			"activeSessions", completedSession.ActiveSessions,
+			"affectedWLCClusters", completedSession.AffectedWLCClusters,
+			"pendingReadyVMReplacements", completedSession.PendingReadyVMReplacements)
+	}
+
+	log.Info("Host evacuation completed successfully", "host", hostSystemID, "opID", st.OpID)
 	return ctrl.Result{}, nil
 }
 

@@ -381,6 +381,19 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
+	// For host machines in HCP clusters (where LXD is enabled), proactively add the evacuation finalizer
+	// This ensures VMs are evacuated before the host is deleted
+	// This must be done BEFORE the machine starts being deleted, otherwise Kubernetes
+	// will reject the finalizer addition with "no new finalizers can be added if the object is being deleted"
+	isHostMachine := maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == ""
+	isHCPCluster := clusterScope.IsLXDHostEnabled()
+
+	if isHostMachine && isHCPCluster && !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		machineScope.Info("Adding evacuation finalizer to host machine in HCP cluster")
+		controllerutil.AddFinalizer(maasMachine, HostEvacuationFinalizer)
+		return ctrl.Result{}, nil
+	}
+
 	if !machineScope.Cluster.Status.InfrastructureReady {
 		machineScope.Info("Cluster infrastructure is not ready yet")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForClusterInfrastructureReason, clusterv1.ConditionSeverityInfo, "")
