@@ -61,9 +61,17 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 
 	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
-	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
+	desiredCP, _ := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
 
-	if ok := r.enoughCPNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
+	// New gate: proceed if any node needs initialization. This avoids deadlock during upgrades
+	// when an old node is NotReady due to HMC constraints but new nodes must be initialized.
+	if !r.anyNodeNeedsInitialization(ctx, remoteClient) {
+		r.Log.Info("All nodes already labeled initialized; considering DS cleanup", "namespace", dsNamespace, "ds", dsName)
+		if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+			return err
+		} else if done {
+			return nil
+		}
 		return nil
 	}
 
@@ -236,6 +244,28 @@ func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteCl
 		}
 	}
 	return true
+}
+
+// anyNodeNeedsInitialization returns true if any node in the target cluster lacks the
+// lxdhost.cluster.com/initialized=true label. If listing nodes fails or there are zero
+// nodes reported, it returns true to allow initializer DS creation to proceed.
+func (r *MaasClusterReconciler) anyNodeNeedsInitialization(ctx context.Context, remoteClient client.Client) bool {
+	nodeList := &corev1.NodeList{}
+	if err := remoteClient.List(ctx, nodeList); err != nil {
+		r.Log.Info("Failed to list nodes; proceeding to create initializer DS to be safe", "error", err)
+		return true
+	}
+	if len(nodeList.Items) == 0 {
+		r.Log.Info("No nodes reported yet; proceeding with initializer DS so it is ready when nodes appear")
+		return true
+	}
+	for _, n := range nodeList.Items {
+		if n.Labels == nil || n.Labels["lxdhost.cluster.com/initialized"] != "true" {
+			r.Log.Info("Node requires LXD initialization", "node", n.Name)
+			return true
+		}
+	}
+	return false
 }
 
 // deleteExistingInitializerDS removes any DaemonSets with old labeling in the namespace
