@@ -246,23 +246,41 @@ func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteCl
 	return true
 }
 
-// anyNodeNeedsInitialization returns true if any node in the target cluster lacks the
-// lxdhost.cluster.com/initialized=true label. If listing nodes fails or there are zero
-// nodes reported, it returns true to allow initializer DS creation to proceed.
+// anyNodeNeedsInitialization returns true if any control-plane node needs initialization.
+// Only checks Ready control-plane nodes to avoid false positives from nodes that aren't ready yet.
 func (r *MaasClusterReconciler) anyNodeNeedsInitialization(ctx context.Context, remoteClient client.Client) bool {
 	nodeList := &corev1.NodeList{}
-	if err := remoteClient.List(ctx, nodeList); err != nil {
+	cpSelector := labels.SelectorFromSet(labels.Set{
+		"node-role.kubernetes.io/control-plane": "",
+	})
+	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err != nil {
 		r.Log.Info("Failed to list nodes; proceeding to create initializer DS to be safe", "error", err)
 		return true
 	}
 	if len(nodeList.Items) == 0 {
-		r.Log.Info("No nodes reported yet; proceeding with initializer DS so it is ready when nodes appear")
+		r.Log.Info("No control-plane nodes reported yet; proceeding with initializer DS")
 		return true
 	}
+
 	for _, n := range nodeList.Items {
-		if n.Labels == nil || n.Labels["lxdhost.cluster.com/initialized"] != "true" {
-			r.Log.Info("Node requires LXD initialization", "node", n.Name)
+		// Check if node is Ready
+		isReady := false
+		for _, condition := range n.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				isReady = true
+				break
+			}
+		}
+
+		// If node is Ready but not initialized, it needs initialization
+		if isReady && (n.Labels == nil || n.Labels["lxdhost.cluster.com/initialized"] != "true") {
+			r.Log.Info("Ready control-plane node requires LXD initialization", "node", n.Name)
 			return true
+		}
+
+		// If node is not Ready yet but has the label, log a warning (might be stale)
+		if !isReady && n.Labels != nil && n.Labels["lxdhost.cluster.com/initialized"] == "true" {
+			r.Log.Info("Node has initialization label but is not Ready - may need re-initialization", "node", n.Name)
 		}
 	}
 	return false
@@ -286,6 +304,7 @@ func (r *MaasClusterReconciler) deleteExistingInitializerDS(ctx context.Context,
 }
 
 // maybeShortCircuitDelete deletes the DS if all CP nodes are already initialized
+// BUT only if we have exactly desiredCP nodes - avoids deleting during maintenance when new nodes are joining
 func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredCP int32, dsName string) (bool, error) {
 	shortCircuitNodes := &corev1.NodeList{}
 	shortCircuitSelector := labels.SelectorFromSet(labels.Set{
@@ -296,18 +315,37 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 	}
 
 	initCount := 0
+	readyCount := 0
 	for _, n := range shortCircuitNodes.Items {
+		// Check if node is Ready
+		for _, condition := range n.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				readyCount++
+				break
+			}
+		}
+
+		// Check if node is initialized
 		if n.Labels != nil && n.Labels["lxdhost.cluster.com/initialized"] == "true" {
 			initCount++
 		}
 	}
-	if int64(len(shortCircuitNodes.Items)) >= int64(desiredCP) && int64(initCount) >= int64(desiredCP) {
+
+	// Only delete if:
+	// 1. We have exactly desiredCP nodes (not more, which would indicate maintenance/new nodes)
+	// 2. All nodes are Ready
+	// 3. All nodes are initialized
+	if int64(len(shortCircuitNodes.Items)) == int64(desiredCP) &&
+		int64(readyCount) == int64(desiredCP) &&
+		int64(initCount) >= int64(desiredCP) {
 		shortCircuitDSList := &appsv1.DaemonSetList{}
 		if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(namespace), client.MatchingLabels{"app": dsName}); err == nil {
 			for _, ds := range shortCircuitDSList.Items {
 				_ = remoteClient.Delete(ctx, &ds)
 			}
 		}
+		r.Log.Info("Deleted LXD initializer DaemonSet - all control-plane nodes are ready and initialized",
+			"desiredCP", desiredCP, "totalNodes", len(shortCircuitNodes.Items), "readyNodes", readyCount, "initializedNodes", initCount)
 		return true, nil
 	}
 	return false, nil
