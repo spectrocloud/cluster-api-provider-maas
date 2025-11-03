@@ -90,6 +90,11 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 	}, nil
 }
 
+// Client returns the Kubernetes client
+func (s *ClusterScope) Client() client.Client {
+	return s.client
+}
+
 // PatchObject persists the cluster configuration and status.
 func (s *ClusterScope) PatchObject() error {
 	// Always update the readyCondition by summarizing the state of other conditions.

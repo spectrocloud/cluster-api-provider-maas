@@ -2,14 +2,19 @@ package machine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/pkg/errors"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
@@ -23,6 +28,12 @@ var (
 	ErrVMComposing   = errors.New("vm composing/commissioning")
 	reHostID         = regexp.MustCompile(`host (\d+)`)
 	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
+)
+
+const (
+	clusterNamespacePrefix    = "cluster-"
+	clusterNamespacePrefixLen = len(clusterNamespacePrefix)
+	hashIDLength              = 8 // Length of hash-based cluster ID
 )
 
 type Service struct {
@@ -139,12 +150,12 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			allocator.WithResourcePool(*mm.Spec.ResourcePool)
 		}
 
-		// For HCP clusters, control-plane must be bare metal: exclude pod-backed VM hosts
-		s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		// For HCP clusters, both control-plane and worker nodes can be LXD hosts
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			allocator.WithNotPod(true)
 			allocator.WithNotPodType("lxd")
-			s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
+			s.scope.Info("Allocating machine for LXD host under HCP", "machine", mm.Name, "isControlPlane", s.scope.IsControlPlane())
+			// Allow both bare metal and LXD VM hosts for LXD-enabled clusters
 		}
 
 		if len(mm.Spec.Tags) > 0 {
@@ -163,10 +174,10 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 
 		// Backstop: If MAAS still returned a VM host, reject it for HCP control-plane
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			pt := strings.ToLower(m.PowerType())
 			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
-				s.scope.Info("Rejecting VM host allocation for CP under HCP; releasing and retrying",
+				s.scope.Info("Rejecting VM host allocation for node(s) under HCP; releasing and retrying",
 					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
 				_, _ = m.Releaser().WithForce().Release(ctx)
 				return nil, ErrBrokenMachine
@@ -185,10 +196,10 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 
 		// Backstop for reuse path: if previous reconcile captured a VM host, reject for HCP CP
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			pt := strings.ToLower(m.PowerType())
 			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
-				s.scope.Info("Releasing previously selected VM host for CP under HCP; will re-allocate BM",
+				s.scope.Info("Releasing previously selected VM host for node(s) under HCP; will re-allocate BM",
 					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
 				_, _ = m.Releaser().WithForce().Release(ctx)
 				// Clear IDs so next reconcile re-allocates
@@ -311,6 +322,12 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 			s.scope.SetFailureDomain(fallbackZone)
 		}
 		_ = s.scope.PatchObject()
+
+		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		if s.scope.IsControlPlane() {
+			s.tagVMIfMaintenanceActive(ctx, deployingM.SystemID())
+		}
+
 		res := fromSDKTypeToMachine(deployingM)
 		if res.AvailabilityZone == "" {
 			res.AvailabilityZone = fallbackZone
@@ -494,6 +511,11 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 			s.scope.SetFailureDomain(zone)
 		}
 		_ = s.scope.PatchObject()
+
+		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		if s.scope.IsControlPlane() {
+			s.tagVMIfMaintenanceActive(ctx, m.SystemID())
+		}
 	}
 	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
 
@@ -609,6 +631,104 @@ func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 func (s *Service) PowerOnMachine() error {
 	_, err := s.maasClient.Machines().Machine(s.scope.GetSystemID()).PowerManagerOn().WithPowerOnComment("maas provider power on").PowerOn(context.Background())
 	return err
+}
+
+// tagVMIfMaintenanceActive checks for active maintenance ConfigMaps and tags the VM with cluster identity
+func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string) {
+	if systemID == "" || s.scope == nil || s.scope.ClusterScope == nil {
+		return
+	}
+
+	namespace := s.scope.Cluster.Namespace
+
+	// List all ConfigMaps in the namespace looking for active maintenance sessions
+	cmList := &corev1.ConfigMapList{}
+	k8sClient := s.scope.ClusterScope.Client()
+	if k8sClient == nil {
+		return
+	}
+
+	if err := k8sClient.List(ctx, cmList, client.InNamespace(namespace)); err != nil {
+		s.scope.V(1).Info("Failed to list ConfigMaps for maintenance check", "error", err)
+		return
+	}
+
+	// Look for vec-maintenance-* ConfigMaps with Active status
+	for _, cm := range cmList.Items {
+		if !strings.HasPrefix(cm.Name, "vec-maintenance-") {
+			continue
+		}
+
+		opID := cm.Data[maintenance.CmKeyOpID]
+		status := cm.Data[maintenance.CmKeyStatus]
+
+		if opID == "" || status != string(maintenance.StatusActive) {
+			continue
+		}
+
+		s.scope.Info("Found active maintenance session, tagging VM with CP and cluster identity", "opID", opID, "systemID", systemID)
+
+		// Derive clusterId: extract from cluster name or use namespace
+		clusterId := s.deriveClusterID()
+		clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
+
+		// Tag the VM with maas-lxd-wlc-cp and maas-lxd-wlc-<clusterId>
+		tagsClient := s.maasClient.Tags()
+		if tagsClient != nil {
+			// Tag as control-plane VM, error is ignored as tag already exists
+			_ = tagsClient.Create(ctx, maintenance.TagVMControlPlane)
+			if err := tagsClient.Assign(ctx, maintenance.TagVMControlPlane, systemID); err != nil {
+				s.scope.Error(err, "Failed to tag VM with CP tag", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
+			} else {
+				s.scope.Info("Successfully tagged VM as control-plane", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
+			}
+
+			// Tag with cluster identity, error is ignored as tag already exists
+			_ = tagsClient.Create(ctx, clusterTag)
+			if err := tagsClient.Assign(ctx, clusterTag, systemID); err != nil {
+				s.scope.Error(err, "Failed to tag VM with cluster tag", "tag", clusterTag, "systemID", systemID)
+			} else {
+				s.scope.Info("Successfully tagged VM with cluster identity", "tag", clusterTag, "systemID", systemID)
+			}
+		}
+
+		// Update ConfigMap with the new VM systemID
+		if cm.Data == nil {
+			cm.Data = make(map[string]string)
+		}
+		cm.Data[maintenance.CmKeyNewVMSystemID] = systemID
+		if err := k8sClient.Update(ctx, &cm); err != nil {
+			s.scope.V(1).Info("Failed to update ConfigMap with new VM systemID", "error", err, "opID", opID)
+		}
+
+		// Only process the first active session
+		break
+	}
+}
+
+// deriveClusterID extracts cluster ID from cluster name or hashes namespace
+func (s *Service) deriveClusterID() string {
+	if s.scope == nil || s.scope.Cluster == nil {
+		return ""
+	}
+
+	// Try to extract UID from "cluster-<uid>" format in namespace
+	namespace := s.scope.Cluster.Namespace
+	if strings.HasPrefix(namespace, clusterNamespacePrefix) && len(namespace) > clusterNamespacePrefixLen {
+		uid := namespace[clusterNamespacePrefixLen:] // Extract after "cluster-"
+		if uid != "" {
+			return uid
+		}
+	}
+
+	// Fallback: hash the namespace to get a short identifier
+	hash := sha256.Sum256([]byte(namespace))
+	hashStr := hex.EncodeToString(hash[:])
+	// Take first hashIDLength characters of hash for brevity
+	if len(hashStr) > hashIDLength {
+		return hashStr[:hashIDLength]
+	}
+	return hashStr
 }
 
 //// ReconcileDNS reconciles the load balancers for the given cluster.

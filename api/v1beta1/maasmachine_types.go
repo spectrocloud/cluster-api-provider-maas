@@ -40,6 +40,10 @@ type MaasMachineSpec struct {
 	// +optional
 	SystemID *string `json:"systemID,omitempty"`
 
+	// Parent is the system ID of the parent host machine (for LXD VMs)
+	// +optional
+	Parent *string `json:"parent,omitempty"`
+
 	// ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
