@@ -77,9 +77,9 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
 
   // TODO: Check if we reruire this
-	if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
-		return nil
-	}
+	// if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
+	// 	return nil
+	// }
 
 	if err := r.deleteExistingInitializerDS(ctx, remoteClient, dsNamespace); err != nil {
 		return err
