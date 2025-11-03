@@ -67,11 +67,11 @@ make build
 make docker-push REGISTRY=<your-registry> TAG=<your-tag>
 
 # Update the DaemonSet manifest with your registry and tag
-sed -i 's/${REGISTRY}/<your-registry>/g' lxd-initializer-daemonset.yaml
-sed -i 's/${TAG}/<your-tag>/g' lxd-initializer-daemonset.yaml
+sed -i 's/${REGISTRY}/<your-registry>/g' ../controllers/templates/lxd_initializer_ds.yaml
+sed -i 's/${TAG}/<your-tag>/g' ../controllers/templates/lxd_initializer_ds.yaml
 
 # Apply the DaemonSet manifest
-kubectl apply -f lxd-initializer-daemonset.yaml
+kubectl apply -f ../controllers/templates/lxd_initializer_ds.yaml
 ```
 
 ### 2. Configure CAPMaaS to Use the DaemonSet
