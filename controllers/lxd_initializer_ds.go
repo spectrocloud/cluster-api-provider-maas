@@ -8,7 +8,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -63,7 +62,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	// Gate: derive desired CP count from KubeadmControlPlane
 	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
 
-	if ok := r.enoughCPNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
+	if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
 		return nil
 	}
 
@@ -174,13 +173,11 @@ func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, 
 	return desiredCP, readyByKCP
 }
 
-// enoughCPNodesReady checks the target cluster for Ready control-plane nodes
-func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteClient client.Client, desiredCP, readyByKCP int32) bool {
+// enoughNodesReady checks the target cluster for Ready nodes (both control-plane and worker)
+func (r *MaasClusterReconciler) enoughNodesReady(ctx context.Context, remoteClient client.Client, desiredCP, readyByKCP int32) bool {
 	nodeList := &corev1.NodeList{}
-	cpSelector := labels.SelectorFromSet(labels.Set{
-		"node-role.kubernetes.io/control-plane": "",
-	})
-	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err == nil {
+	// Check all nodes, not just control-plane
+	if err := remoteClient.List(ctx, nodeList); err == nil {
 		ready := 0
 		for _, n := range nodeList.Items {
 			for _, c := range n.Status.Conditions {
@@ -190,8 +187,9 @@ func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteCl
 				}
 			}
 		}
+		// Require at least the desired CP count of nodes to be ready
 		if int64(len(nodeList.Items)) < int64(desiredCP) || int64(ready) < int64(desiredCP) {
-			r.Log.Info("Not enough control-plane nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
+			r.Log.Info("Not enough nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
 			return false
 		}
 	}
@@ -215,13 +213,11 @@ func (r *MaasClusterReconciler) deleteExistingInitializerDS(ctx context.Context,
 	return nil
 }
 
-// maybeShortCircuitDelete deletes the DS if all CP nodes are already initialized
+// maybeShortCircuitDelete deletes the DS if all nodes are already initialized
 func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredCP int32, dsName string) (bool, error) {
 	shortCircuitNodes := &corev1.NodeList{}
-	shortCircuitSelector := labels.SelectorFromSet(labels.Set{
-		"node-role.kubernetes.io/control-plane": "",
-	})
-	if err := remoteClient.List(ctx, shortCircuitNodes, &client.ListOptions{LabelSelector: shortCircuitSelector}); err != nil || len(shortCircuitNodes.Items) == 0 {
+	// Check all nodes, not just control-plane
+	if err := remoteClient.List(ctx, shortCircuitNodes); err != nil || len(shortCircuitNodes.Items) == 0 {
 		return false, nil
 	}
 
@@ -231,6 +227,7 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 			initCount++
 		}
 	}
+	// Require at least the desired CP count of nodes to be initialized
 	if int64(len(shortCircuitNodes.Items)) >= int64(desiredCP) && int64(initCount) >= int64(desiredCP) {
 		shortCircuitDSList := &appsv1.DaemonSetList{}
 		if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(namespace), client.MatchingLabels{"app": dsName}); err == nil {

@@ -150,12 +150,12 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			allocator.WithResourcePool(*mm.Spec.ResourcePool)
 		}
 
-		// For HCP clusters, control-plane must be bare metal: exclude pod-backed VM hosts
-		s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		// For HCP clusters, both control-plane and worker nodes can be LXD hosts
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			allocator.WithNotPod(true)
 			allocator.WithNotPodType("lxd")
-			s.scope.Info("Allocating bare metal machine for CP under HCP", "machine", mm.Name)
+			s.scope.Info("Allocating machine for LXD host under HCP", "machine", mm.Name, "isControlPlane", s.scope.IsControlPlane())
+			// Allow both bare metal and LXD VM hosts for LXD-enabled clusters
 		}
 
 		if len(mm.Spec.Tags) > 0 {
@@ -174,10 +174,10 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 
 		// Backstop: If MAAS still returned a VM host, reject it for HCP control-plane
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			pt := strings.ToLower(m.PowerType())
 			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
-				s.scope.Info("Rejecting VM host allocation for CP under HCP; releasing and retrying",
+				s.scope.Info("Rejecting VM host allocation for node(s) under HCP; releasing and retrying",
 					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
 				_, _ = m.Releaser().WithForce().Release(ctx)
 				return nil, ErrBrokenMachine
@@ -196,10 +196,10 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		}
 
 		// Backstop for reuse path: if previous reconcile captured a VM host, reject for HCP CP
-		if s.scope.IsControlPlane() && s.scope.ClusterScope.IsLXDHostEnabled() {
+		if s.scope.ClusterScope.IsLXDHostEnabled() {
 			pt := strings.ToLower(m.PowerType())
 			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
-				s.scope.Info("Releasing previously selected VM host for CP under HCP; will re-allocate BM",
+				s.scope.Info("Releasing previously selected VM host for node(s) under HCP; will re-allocate BM",
 					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
 				_, _ = m.Releaser().WithForce().Release(ctx)
 				// Clear IDs so next reconcile re-allocates
