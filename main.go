@@ -59,6 +59,12 @@ var (
 	healthAddr           string
 	webhookPort          int
 	watchNamespace       string
+	clusterRole          string
+)
+
+const (
+	HCPClusterRoleValue = "hcp"
+	WLCClusterRoleValue = "wlc"
 )
 
 func init() {
@@ -78,8 +84,16 @@ func main() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
 
+	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
+
 	if watchNamespace != "" {
 		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
+	}
+
+	// Validate cluster role if provided
+	if clusterRole != "" && clusterRole != HCPClusterRoleValue && clusterRole != WLCClusterRoleValue {
+		setupLog.Error(nil, "invalid cluster-role value", "provided", clusterRole, "valid_values", []string{HCPClusterRoleValue, WLCClusterRoleValue})
+		os.Exit(1)
 	}
 
 	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
@@ -155,11 +169,37 @@ func main() {
 	if err := (&controllers.MaasClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
 		Tracker:  tracker,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 		os.Exit(1)
+	}
+
+	// Register VM Evacuation Controller for WLC clusters
+	if clusterRole == WLCClusterRoleValue {
+		if err := (&controllers.VMEvacuationReconciler{
+			Client: mgr.GetClient(),
+			Log:    ctrl.Log.WithName("controllers").WithName("VEC"),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "VEC")
+			os.Exit(1)
+		}
+		setupLog.Info("VEC controller enabled via --cluster-role=wlc")
+	}
+	// PCP-5336: Wire HMC controller when cluster-role is set to hcp
+	if clusterRole == HCPClusterRoleValue {
+		if err := (&controllers.HMCMaintenanceReconciler{
+			Client: mgr.GetClient(),
+			Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "HMC")
+			os.Exit(1)
+		}
+		setupLog.Info("HMC controller enabled via --cluster-role=hcp")
 	}
 
 	if err = (&infrav1beta1.MaasCluster{}).SetupWebhookWithManager(mgr); err != nil {
@@ -200,6 +240,9 @@ func initFlags(fs *pflag.FlagSet) {
 		"Webhook Server port")
 	fs.StringVar(&watchNamespace, "namespace", "",
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
+	)
+	fs.StringVar(&clusterRole, "cluster-role", "",
+		"Role of this cluster: 'hcp' (Host Control Plane) or 'wlc' (Workload Cluster). When set to 'wlc', enables VM evacuation controller.",
 	)
 
 	feature.MutableGates.AddFlag(fs)

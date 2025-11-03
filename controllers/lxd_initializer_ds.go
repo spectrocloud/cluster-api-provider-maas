@@ -61,17 +61,30 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	}
 
 	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
-	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
+	desiredCP, _ := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
 
-	if ok := r.enoughCPNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
+	// New gate: proceed if any node needs initialization. This avoids deadlock during upgrades
+	// when an old node is NotReady due to HMC constraints but new nodes must be initialized.
+	if !r.anyNodeNeedsInitialization(ctx, remoteClient) {
+		r.Log.Info("All nodes already labeled initialized; considering DS cleanup", "namespace", dsNamespace, "ds", dsName)
+		if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+			return err
+		} else if done {
+			return nil
+		}
 		return nil
 	}
+
+	//TODO: Check if we require this
+	// if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
+	// 	return nil
+	// }
 
 	if err := r.deleteExistingInitializerDS(ctx, remoteClient, dsNamespace); err != nil {
 		return err
 	}
 
-	// Ensure RBAC resources are created on target cluster
+	// Ensure RBAC resources are created on the target cluster
 	if err := r.ensureLXDInitializerRBACOnTarget(ctx, remoteClient, dsNamespace); err != nil {
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
@@ -149,64 +162,24 @@ func (r *MaasClusterReconciler) namespaceIsTarget(ctx context.Context, namespace
 	return v == "target", v
 }
 
-// computeDesiredControlPlane determines desired control-plane replicas and ready count
+// computeDesiredControlPlane determines desired control-plane replicas and ready count from KubeadmControlPlane
 func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, namespace, clusterName string) (int32, int32) {
 	desiredCP := int32(1)
 	readyByKCP := int32(0)
 
-	// Prefer MaasCloudConfig.spec.machinePoolConfig[].size where isControlPlane=true (sum)
-	mccList := &unstructured.UnstructuredList{}
-	mccList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.spectrocloud.com", Version: "v1alpha1", Kind: "MaasCloudConfigList"})
-	if err := r.Client.List(ctx, mccList, client.InNamespace(namespace)); err == nil {
-		var sum int64
-		for _, it := range mccList.Items {
-			owned := false
-			for _, or := range it.GetOwnerReferences() {
-				if or.Name == clusterName {
-					owned = true
-					break
-				}
+	// Use KubeadmControlPlane as the authoritative source
+	kcpList := &unstructured.UnstructuredList{}
+	kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
+	if err := r.Client.List(ctx, kcpList, client.InNamespace(namespace), client.MatchingLabels{
+		"cluster.x-k8s.io/cluster-name": clusterName,
+	}); err == nil {
+		if len(kcpList.Items) > 0 {
+			item := kcpList.Items[0]
+			if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
+				desiredCP = util.SafeInt64ToInt32(v)
 			}
-			if !owned && !strings.HasSuffix(it.GetName(), "-maas-config") {
-				continue
-			}
-			pools, found, _ := unstructured.NestedSlice(it.Object, "spec", "machinePoolConfig")
-			if !found {
-				continue
-			}
-			for _, p := range pools {
-				if mp, ok := p.(map[string]interface{}); ok {
-					isCP, _, _ := unstructured.NestedBool(mp, "isControlPlane")
-					if !isCP {
-						continue
-					}
-					if v, foundSz, _ := unstructured.NestedInt64(mp, "size"); foundSz && v > 0 {
-						sum += v
-					}
-				}
-			}
-			if sum > 0 {
-				desiredCP = util.SafeInt64ToInt32(sum)
-				break
-			}
-		}
-	}
-
-	// Fallback: use KCP if MCC not found
-	if desiredCP == 1 {
-		kcpList := &unstructured.UnstructuredList{}
-		kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
-		if err := r.Client.List(ctx, kcpList, client.InNamespace(namespace), client.MatchingLabels{
-			"cluster.x-k8s.io/cluster-name": clusterName,
-		}); err == nil {
-			if len(kcpList.Items) > 0 {
-				item := kcpList.Items[0]
-				if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
-					desiredCP = util.SafeInt64ToInt32(v)
-				}
-				if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
-					readyByKCP = util.SafeInt64ToInt32(v)
-				}
+			if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
+				readyByKCP = util.SafeInt64ToInt32(v)
 			}
 		}
 	}
@@ -214,13 +187,11 @@ func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, 
 	return desiredCP, readyByKCP
 }
 
-// enoughCPNodesReady checks the target cluster for Ready control-plane nodes
-func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteClient client.Client, desiredCP, readyByKCP int32) bool {
+// enoughNodesReady checks the target cluster for Ready nodes (both control-plane and worker)
+func (r *MaasClusterReconciler) enoughNodesReady(ctx context.Context, remoteClient client.Client, desiredCP, readyByKCP int32) bool {
 	nodeList := &corev1.NodeList{}
-	cpSelector := labels.SelectorFromSet(labels.Set{
-		"node-role.kubernetes.io/control-plane": "",
-	})
-	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err == nil {
+	// Check all nodes, not just control-plane
+	if err := remoteClient.List(ctx, nodeList); err == nil {
 		ready := 0
 		for _, n := range nodeList.Items {
 			for _, c := range n.Status.Conditions {
@@ -230,12 +201,53 @@ func (r *MaasClusterReconciler) enoughCPNodesReady(ctx context.Context, remoteCl
 				}
 			}
 		}
+		// Require at least the desired CP count of nodes to be ready
 		if int64(len(nodeList.Items)) < int64(desiredCP) || int64(ready) < int64(desiredCP) {
-			r.Log.Info("Not enough control-plane nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
+			r.Log.Info("Not enough nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
 			return false
 		}
 	}
 	return true
+}
+
+// anyNodeNeedsInitialization returns true if any control-plane node needs initialization.
+// Only checks Ready control-plane nodes to avoid false positives from nodes that aren't ready yet.
+func (r *MaasClusterReconciler) anyNodeNeedsInitialization(ctx context.Context, remoteClient client.Client) bool {
+	nodeList := &corev1.NodeList{}
+	cpSelector := labels.SelectorFromSet(labels.Set{
+		"node-role.kubernetes.io/control-plane": "",
+	})
+	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err != nil {
+		r.Log.Info("Failed to list nodes; proceeding to create initializer DS to be safe", "error", err)
+		return true
+	}
+	if len(nodeList.Items) == 0 {
+		r.Log.Info("No control-plane nodes reported yet; proceeding with initializer DS")
+		return true
+	}
+
+	for _, n := range nodeList.Items {
+		// Check if node is Ready
+		isReady := false
+		for _, condition := range n.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				isReady = true
+				break
+			}
+		}
+
+		// If node is Ready but not initialized, it needs initialization
+		if isReady && (n.Labels == nil || n.Labels["lxdhost.cluster.com/initialized"] != "true") {
+			r.Log.Info("Ready control-plane node requires LXD initialization", "node", n.Name)
+			return true
+		}
+
+		// If node is not Ready yet but has the label, log a warning (might be stale)
+		if !isReady && n.Labels != nil && n.Labels["lxdhost.cluster.com/initialized"] == "true" {
+			r.Log.Info("Node has initialization label but is not Ready - may need re-initialization", "node", n.Name)
+		}
+	}
+	return false
 }
 
 // deleteExistingInitializerDS removes any DaemonSets with old labeling in the namespace
@@ -256,28 +268,46 @@ func (r *MaasClusterReconciler) deleteExistingInitializerDS(ctx context.Context,
 }
 
 // maybeShortCircuitDelete deletes the DS if all CP nodes are already initialized
+// BUT only if we have exactly desiredCP nodes - avoids deleting during maintenance when new nodes are joining
 func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredCP int32, dsName string) (bool, error) {
 	shortCircuitNodes := &corev1.NodeList{}
-	shortCircuitSelector := labels.SelectorFromSet(labels.Set{
-		"node-role.kubernetes.io/control-plane": "",
-	})
-	if err := remoteClient.List(ctx, shortCircuitNodes, &client.ListOptions{LabelSelector: shortCircuitSelector}); err != nil || len(shortCircuitNodes.Items) == 0 {
+	// Check all nodes, not just control-plane
+	if err := remoteClient.List(ctx, shortCircuitNodes); err != nil || len(shortCircuitNodes.Items) == 0 {
 		return false, nil
 	}
 
 	initCount := 0
+	readyCount := 0
 	for _, n := range shortCircuitNodes.Items {
+		// Check if node is Ready
+		for _, condition := range n.Status.Conditions {
+			if condition.Type == corev1.NodeReady && condition.Status == corev1.ConditionTrue {
+				readyCount++
+				break
+			}
+		}
+
+		// Check if node is initialized
 		if n.Labels != nil && n.Labels["lxdhost.cluster.com/initialized"] == "true" {
 			initCount++
 		}
 	}
-	if int64(len(shortCircuitNodes.Items)) >= int64(desiredCP) && int64(initCount) >= int64(desiredCP) {
+
+	// Only delete if:
+	// 1. We have exactly desiredCP nodes (not more, which would indicate maintenance/new nodes)
+	// 2. All nodes are Ready
+	// 3. All nodes are initialized
+	if int64(len(shortCircuitNodes.Items)) == int64(desiredCP) &&
+		int64(readyCount) == int64(desiredCP) &&
+		int64(initCount) >= int64(desiredCP) {
 		shortCircuitDSList := &appsv1.DaemonSetList{}
 		if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(namespace), client.MatchingLabels{"app": dsName}); err == nil {
 			for _, ds := range shortCircuitDSList.Items {
 				_ = remoteClient.Delete(ctx, &ds)
 			}
 		}
+		r.Log.Info("Deleted LXD initializer DaemonSet - all control-plane nodes are ready and initialized",
+			"desiredCP", desiredCP, "totalNodes", len(shortCircuitNodes.Items), "readyNodes", readyCount, "initializedNodes", initCount)
 		return true, nil
 	}
 	return false, nil

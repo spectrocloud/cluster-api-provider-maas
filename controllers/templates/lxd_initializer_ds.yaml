@@ -15,8 +15,6 @@ spec:
     spec:
       hostNetwork: true
       hostPID: true
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
       tolerations:
       - key: node.kubernetes.io/disk-pressure
         operator: "Exists"

@@ -21,6 +21,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/go-logr/logr"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/klog/v2/textlogger"
 )
@@ -229,6 +231,28 @@ func UnregisterLXDHostByNameWithMaasClient(apiKey, apiEndpoint, hostName string)
 	return nil
 }
 
+// isHostUnderMaintenance checks if a host has maintenance tags
+func isHostUnderMaintenance(client maasclient.ClientSetInterface, hostSystemID string, log logr.Logger) bool {
+	if hostSystemID == "" {
+		return false
+	}
+
+	ctx := context.Background()
+	machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
+	if err != nil {
+		log.Info("Failed to get machine details for maintenance check", "system-id", hostSystemID, "error", err.Error())
+		return false // Assume not under maintenance if we can't check
+	}
+
+	tags := machine.Tags()
+	for _, tag := range tags {
+		if tag == maintenance.TagHostMaintenance || tag == maintenance.TagHostNoSchedule {
+			return true
+		}
+	}
+	return false
+}
+
 // SelectLXDHostWithMaasClient selects an LXD host based on availability, AZ, and resource pool
 func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
 	log := textlogger.NewLogger(textlogger.NewConfig())
@@ -259,22 +283,31 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 				machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
 				if err != nil {
 					log.Info("Failed to get machine details", "system-id", hostSystemID, "error", err.Error())
-				} else {
-					powerState := machine.PowerState()
-					machineState := machine.State()
-					isHealthy := powerState == "on" && machineState == "Deployed"
+					continue
+				}
 
-					if isHealthy {
-						log.Info("Selected LXD host", "host-name", host.Name(), "host-id", host.SystemID())
-						return host, nil
-					}
+				powerState := machine.PowerState()
+				machineState := machine.State()
+				isHealthy := powerState == "on" && machineState == "Deployed"
+
+				// Check if host is under maintenance
+				isUnderMaintenance := isHostUnderMaintenance(client, hostSystemID, log)
+
+				if isUnderMaintenance {
+					log.Info("Skipping LXD host under maintenance", "host-name", host.Name(), "host-id", hostSystemID)
+					continue
+				}
+
+				if isHealthy {
+					log.Info("Selected LXD host", "host-name", host.Name(), "host-id", host.SystemID())
+					return host, nil
 				}
 			}
 			continue
 		}
 	}
 
-	// If no host matches the AZ and resource pool, try to find a host in the specified AZ
+	// If no host matches the AZ and resource pool, try to find a host in the specified AZ (without maintenance)
 	if resourcePool != "" {
 		for _, host := range hosts {
 			hostZone := ""
@@ -283,12 +316,15 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 			}
 
 			if az == "" || hostZone == az {
-				return host, nil
+				// Check if host is under maintenance
+				if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
+					return host, nil
+				}
 			}
 		}
 	}
 
-	// If no host matches the AZ, try to find a host in the specified resource pool
+	// If no host matches the AZ, try to find a host in the specified resource pool (without maintenance)
 	if az != "" {
 		for _, host := range hosts {
 			hostPool := ""
@@ -297,13 +333,23 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 			}
 
 			if resourcePool == "" || hostPool == resourcePool {
-				return host, nil
+				// Check if host is under maintenance
+				if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
+					return host, nil
+				}
 			}
 		}
 	}
 
-	// If no host matches the criteria, return the first host
-	return hosts[0], nil
+	// If no host matches the criteria, return the first non-maintenance host
+	for _, host := range hosts {
+		if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
+			return host, nil
+		}
+	}
+
+	// If all hosts are under maintenance, return error
+	return nil, fmt.Errorf("no available LXD hosts (all hosts are under maintenance)")
 }
 
 // CreateLXDVMWithMaasClient creates a VM on an LXD host using MAAS API

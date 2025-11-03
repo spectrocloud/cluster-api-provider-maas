@@ -534,6 +534,8 @@ func main() {
 				if node.Labels != nil {
 					if node.Labels[LXDHostInitializedLabel] == LabelValueTrue {
 						log.Printf("Node %s already labeled %s=true; skipping initializer", nodeName, LXDHostInitializedLabel)
+						log.Printf("Sleeping for 1 hour to keep the container running")
+						time.Sleep(3600 * time.Second)
 						return
 					}
 				}
@@ -574,13 +576,22 @@ func main() {
 			log.Fatalf("Failed to register LXD host in MAAS: %v", err)
 		}
 
-		// Label the node only after successful registration
+		// Validate LXD is functional before labeling
+		log.Println("Validating LXD is functional before labeling node...")
+		if err := validateLXDFunctional(); err != nil {
+			log.Printf("ERROR: LXD registration succeeded but LXD is not functional: %v", err)
+			log.Printf("NOT labeling node as initialized - LXD needs to be properly initialized")
+			log.Fatalf("LXD validation failed after registration: %v", err)
+		}
+
+		// Label the node only after successful registration AND validation
 		if nodeName != "" {
 			nodeLabeler, err := NewNodeLabeler(nodeName)
 			if err != nil {
 				log.Printf("Warning: Failed to create node labeler for %s: %v", nodeName, err)
 			} else {
 				nodeLabeler.SafeMarkLXDInitialized()
+				log.Printf("Node %s successfully labeled as LXD initialized after validation", nodeName)
 			}
 		}
 	}
@@ -976,5 +987,47 @@ func configureLXDNetwork(trustPassword, hostIP string) error {
 	}
 
 	log.Printf("LXD configured to listen on %s", address)
+	return nil
+}
+
+// validateLXDFunctional validates that LXD is actually functional before labeling the node.
+// This prevents labeling nodes where LXD initialization failed or is incomplete.
+func validateLXDFunctional() error {
+	socketPath, err := findLXDSocket()
+	if err != nil {
+		return fmt.Errorf("LXD socket not found: %w", err)
+	}
+
+	c, err := lxdclient.ConnectLXDUnix(socketPath, nil)
+	if err != nil {
+		return fmt.Errorf("failed to connect to LXD: %w", err)
+	}
+
+	// Try to get server info - this validates LXD is responding
+	server, _, err := c.GetServer()
+	if err != nil {
+		return fmt.Errorf("failed to get LXD server info: %w", err)
+	}
+
+	// Check storage pools exist
+	pools, err := c.GetStoragePools()
+	if err != nil {
+		return fmt.Errorf("failed to get storage pools: %w", err)
+	}
+	if len(pools) == 0 {
+		return fmt.Errorf("no storage pools found - LXD not properly initialized")
+	}
+
+	// Check networks exist
+	networks, err := c.GetNetworks()
+	if err != nil {
+		return fmt.Errorf("failed to get networks: %w", err)
+	}
+	if len(networks) == 0 {
+		return fmt.Errorf("no networks found - LXD not properly initialized")
+	}
+
+	log.Printf("LXD validation passed: API version %s, %d pools, %d networks",
+		server.APIVersion, len(pools), len(networks))
 	return nil
 }
