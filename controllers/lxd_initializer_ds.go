@@ -60,7 +60,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return nil
 	}
 
-	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
+	// Gate: derive desired CP count from KubeadmControlPlane
 	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
 
 	if ok := r.enoughCPNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
@@ -149,64 +149,24 @@ func (r *MaasClusterReconciler) namespaceIsTarget(ctx context.Context, namespace
 	return v == "target", v
 }
 
-// computeDesiredControlPlane determines desired control-plane replicas and ready count
+// computeDesiredControlPlane determines desired control-plane replicas and ready count from KubeadmControlPlane
 func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, namespace, clusterName string) (int32, int32) {
 	desiredCP := int32(1)
 	readyByKCP := int32(0)
 
-	// Prefer MaasCloudConfig.spec.machinePoolConfig[].size where isControlPlane=true (sum)
-	mccList := &unstructured.UnstructuredList{}
-	mccList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.spectrocloud.com", Version: "v1alpha1", Kind: "MaasCloudConfigList"})
-	if err := r.Client.List(ctx, mccList, client.InNamespace(namespace)); err == nil {
-		var sum int64
-		for _, it := range mccList.Items {
-			owned := false
-			for _, or := range it.GetOwnerReferences() {
-				if or.Name == clusterName {
-					owned = true
-					break
-				}
+	// Use KubeadmControlPlane as the authoritative source
+	kcpList := &unstructured.UnstructuredList{}
+	kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
+	if err := r.Client.List(ctx, kcpList, client.InNamespace(namespace), client.MatchingLabels{
+		"cluster.x-k8s.io/cluster-name": clusterName,
+	}); err == nil {
+		if len(kcpList.Items) > 0 {
+			item := kcpList.Items[0]
+			if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
+				desiredCP = util.SafeInt64ToInt32(v)
 			}
-			if !owned && !strings.HasSuffix(it.GetName(), "-maas-config") {
-				continue
-			}
-			pools, found, _ := unstructured.NestedSlice(it.Object, "spec", "machinePoolConfig")
-			if !found {
-				continue
-			}
-			for _, p := range pools {
-				if mp, ok := p.(map[string]interface{}); ok {
-					isCP, _, _ := unstructured.NestedBool(mp, "isControlPlane")
-					if !isCP {
-						continue
-					}
-					if v, foundSz, _ := unstructured.NestedInt64(mp, "size"); foundSz && v > 0 {
-						sum += v
-					}
-				}
-			}
-			if sum > 0 {
-				desiredCP = util.SafeInt64ToInt32(sum)
-				break
-			}
-		}
-	}
-
-	// Fallback: use KCP if MCC not found
-	if desiredCP == 1 {
-		kcpList := &unstructured.UnstructuredList{}
-		kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
-		if err := r.Client.List(ctx, kcpList, client.InNamespace(namespace), client.MatchingLabels{
-			"cluster.x-k8s.io/cluster-name": clusterName,
-		}); err == nil {
-			if len(kcpList.Items) > 0 {
-				item := kcpList.Items[0]
-				if v, found, _ := unstructured.NestedInt64(item.Object, "spec", "replicas"); found && v > 0 {
-					desiredCP = util.SafeInt64ToInt32(v)
-				}
-				if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
-					readyByKCP = util.SafeInt64ToInt32(v)
-				}
+			if v, found, _ := unstructured.NestedInt64(item.Object, "status", "readyReplicas"); found && v >= 0 {
+				readyByKCP = util.SafeInt64ToInt32(v)
 			}
 		}
 	}
