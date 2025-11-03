@@ -50,6 +50,7 @@ import (
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
 	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
@@ -172,6 +173,13 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	machineScope.Info("Reconciling MaasMachine delete")
 
 	maasMachine := machineScope.MaasMachine
+
+	// Check if the host evacuation finalizer is present - if so, requeue for HMC controller
+	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
+			"systemID", machineScope.GetInstanceID())
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
 
 	machineSvc := maasmachine.NewService(machineScope)
 
@@ -373,6 +381,19 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		return ctrl.Result{}, nil
 	}
 
+	// For host machines in HCP clusters (where LXD is enabled), proactively add the evacuation finalizer
+	// This ensures VMs are evacuated before the host is deleted
+	// This must be done BEFORE the machine starts being deleted, otherwise Kubernetes
+	// will reject the finalizer addition with "no new finalizers can be added if the object is being deleted"
+	isHostMachine := maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == ""
+	isHCPCluster := clusterScope.IsLXDHostEnabled()
+
+	if isHostMachine && isHCPCluster && !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		machineScope.Info("Adding evacuation finalizer to host machine in HCP cluster")
+		controllerutil.AddFinalizer(maasMachine, HostEvacuationFinalizer)
+		return ctrl.Result{}, nil
+	}
+
 	if !machineScope.Cluster.Status.InfrastructureReady {
 		machineScope.Info("Cluster infrastructure is not ready yet")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.WaitingForClusterInfrastructureReason, clusterv1.ConditionSeverityInfo, "")
@@ -431,6 +452,15 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
+		}
+
+		// HMC will not know when machine is Deployed.
+		// So MAAS Machine controller only will remove the stale tags.
+		// Clean up stale maintenance tags after successful deployment
+		// This ensures new machines start with a clean tag state
+		if err := r.cleanupStaleTagsAfterDeployment(machineScope, clusterScope, m.ID); err != nil {
+			machineScope.Error(err, "failed to cleanup stale tags after deployment", "systemID", m.ID)
+			// Don't fail the deployment for tag cleanup errors
 		}
 	}
 
@@ -700,4 +730,83 @@ func getNodeIP(addresses []clusterv1.MachineAddress) string {
 		}
 	}
 	return internal
+}
+
+// cleanupStaleTagsAfterDeployment cleans up stale maintenance tags after successful machine deployment
+func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, systemID string) error {
+	// Only cleanup tags for bare metal machines (not VMs)
+	// Check if this is a VM by looking at the Parent field in MaasMachine spec
+	if machineScope.MaasMachine.Spec.Parent != nil && *machineScope.MaasMachine.Spec.Parent != "" {
+		return nil // This is a VM, skip tag cleanup
+	}
+
+	// Create MAAS client and services
+	maasClient, err := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	if err != nil {
+		machineScope.Error(err, "failed to create MAAS client for tag cleanup", "systemID", systemID)
+		return err
+	}
+	tagService := maintenance.NewTagService(maasClient)
+	inventoryService := maintenance.NewInventoryService(maasClient)
+
+	// Get current machine details to check existing tags and power type
+	machine, err := inventoryService.GetHost(systemID)
+	if err != nil {
+		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
+		return err
+	}
+
+	// Double-check: Skip if this is a VM based on PowerType (lxd VMs)
+	if machine.PowerType == "lxd" {
+		machineScope.Info("Skipping tag cleanup for LXD VM", "systemID", systemID, "powerType", machine.PowerType)
+		return nil
+	}
+
+	// Define static maintenance tags to clean up
+	maintenanceTags := []string{
+		maintenance.TagHostMaintenance,
+		maintenance.TagHostNoSchedule,
+		maintenance.TagVMControlPlane, // VM control plane tag
+	}
+
+	// Remove any existing static maintenance tags
+	for _, tag := range maintenanceTags {
+		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+			machineScope.Error(err, "failed to remove stale maintenance tag", "tag", tag, "systemID", systemID)
+			// Continue with other tags even if one fails
+		} else {
+			machineScope.Info("Cleaned up stale maintenance tag", "tag", tag, "systemID", systemID)
+		}
+	}
+
+	// Remove any dynamic tags with prefixes (operation ID tags, VM cluster tags, VM ready tags)
+	for _, tag := range machine.Tags {
+		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
+			// Remove operation ID tags (maas-lxd-hcp-op-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMClusterPrefix) {
+			// Remove VM cluster tags (maas-lxd-wlc-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM cluster tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM cluster tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMReadyOpPrefix) {
+			// Remove VM ready operation tags (maas-lxd-ready-op-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM ready operation tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM ready operation tag", "tag", tag, "systemID", systemID)
+			}
+		}
+	}
+
+	return nil
 }
