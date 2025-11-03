@@ -8,6 +8,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -74,7 +75,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return nil
 	}
 
-    //TODO: Check if we require this
+	//TODO: Check if we require this
 	// if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
 	// 	return nil
 	// }
