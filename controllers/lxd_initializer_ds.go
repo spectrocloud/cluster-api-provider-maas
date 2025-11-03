@@ -71,12 +71,10 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		} else if done {
 			return nil
 		}
-  }
-  
-	// Gate: derive desired CP count from KubeadmControlPlane
-	desiredCP, readyByKCP := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
+		return nil
+	}
 
-  // TODO: Check if we reruire this
+    //TODO: Check if we require this
 	// if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
 	// 	return nil
 	// }
@@ -85,7 +83,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return err
 	}
 
-	// Ensure RBAC resources are created on target cluster
+	// Ensure RBAC resources are created on the target cluster
 	if err := r.ensureLXDInitializerRBACOnTarget(ctx, remoteClient, dsNamespace); err != nil {
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
