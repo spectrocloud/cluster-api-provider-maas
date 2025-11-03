@@ -15,9 +15,14 @@ package maintenance
 
 import (
 	"context"
+	"fmt"
 	"net"
+	"os"
 
 	"github.com/spectrocloud/maas-client-go/maasclient"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // maasTagService implements the TagService interface using the MAAS client.
@@ -97,32 +102,80 @@ func (s *maasTagService) RemoveTagFromHost(systemID, tag string) error {
 	return s.client.Tags().Unassign(ctx, tag, systemID)
 }
 
-// ListHostVMs lists all VMs running on the specified host.
+// ListHostVMs lists all VMs running on the specified BM/LXD host (by host machine systemID).
+// Prefer the MAAS vm-hosts API to enumerate instances on a VM host, which is
+// more accurate than scanning all machines and filtering by parent.
 func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, error) {
 	ctx := context.Background()
 
-	// Get the VMHost and list its machines
-	vmHost := s.client.VMHosts().VMHost(hostSystemID)
-	maasClientMachines, err := vmHost.Machines().List(ctx)
+	// Try server-side parent filter
+	params := maasclient.ParamsBuilder().Set("parent", hostSystemID)
+	all, err := s.client.Machines().List(ctx, params)
+	if err != nil {
+		// fallback to no filter
+		all, err = s.client.Machines().List(ctx, maasclient.ParamsBuilder())
+		if err != nil {
+			return nil, fmt.Errorf("failed to list machines: %w", err)
+		}
+	}
+
+	var out []Machine
+	for _, m := range all {
+		det, err := m.Get(ctx)
+		if err != nil {
+			continue
+		}
+		// Only keep LXD VMs hosted on this BM/LXD host
+		if det.Parent() != hostSystemID {
+			continue
+		}
+		out = append(out, Machine{
+			SystemID:     det.SystemID(),
+			HostSystemID: det.Parent(),
+			Tags:         det.Tags(),
+			Zone:         det.ZoneName(),
+			ResourcePool: det.ResourcePoolName(),
+			FQDN:         det.FQDN(),
+			PowerState:   det.PowerState(),
+			PowerType:    det.PowerType(),
+			Hostname:     det.Hostname(),
+			IPAddresses:  convertIPAddresses(det.IPAddresses()),
+		})
+	}
+	return out, nil
+}
+
+// ListAllVMs lists all VMs in the MAAS inventory (machines with power_type="lxd")
+func (s *maasInventoryService) ListAllVMs() ([]Machine, error) {
+	ctx := context.Background()
+
+	// List all machines in MAAS
+	allMachines, err := s.client.Machines().List(ctx, maasclient.ParamsBuilder())
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert MAAS Client Machines to maintenance.Machine objects
-	var machinesForMaintenance []Machine
-	for _, maasMachine := range maasClientMachines {
-		// Get detailed machine info to access all fields
+	// Filter for VMs (power_type="lxd") and convert to maintenance.Machine objects
+	var vms []Machine
+	for _, maasMachine := range allMachines {
+		// Get detailed machine info to access all fields including power type
 		detailedMachine, err := maasMachine.Get(ctx)
 		if err != nil {
 			// Skip machines we can't fetch details for
 			continue
 		}
 
-		machinesForMaintenance = append(machinesForMaintenance, Machine{
+		// Only include LXD VMs
+		if detailedMachine.PowerType() != "lxd" {
+			continue
+		}
+
+		vms = append(vms, Machine{
 			SystemID:     detailedMachine.SystemID(),
-			HostSystemID: hostSystemID, // We know this from the input
+			HostSystemID: detailedMachine.Parent(), // Parent system_id for LXD VMs
 			Tags:         detailedMachine.Tags(),
 			Zone:         detailedMachine.ZoneName(),
+			ResourcePool: detailedMachine.ResourcePoolName(),
 			FQDN:         detailedMachine.FQDN(),
 			PowerState:   detailedMachine.PowerState(),
 			PowerType:    detailedMachine.PowerType(),
@@ -131,7 +184,7 @@ func (s *maasInventoryService) ListHostVMs(hostSystemID string) ([]Machine, erro
 		})
 	}
 
-	return machinesForMaintenance, nil
+	return vms, nil
 }
 
 // ResolveSystemIDByHostname finds the system ID of a machine by its hostname.
@@ -179,6 +232,7 @@ func (s *maasInventoryService) GetMachine(systemID string) (Machine, error) {
 		HostSystemID: detailedMachine.Parent(), // Automatically populated for LXD VMs
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),
@@ -206,6 +260,7 @@ func (s *maasInventoryService) GetHost(systemID string) (Machine, error) {
 		HostSystemID: "", // Hosts don't have a parent host
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),
@@ -234,6 +289,7 @@ func (s *maasInventoryService) GetVM(systemID string) (Machine, error) {
 		HostSystemID: detailedMachine.Parent(), // Parent system_id for LXD VMs
 		Tags:         detailedMachine.Tags(),
 		Zone:         detailedMachine.ZoneName(),
+		ResourcePool: detailedMachine.ResourcePoolName(),
 		FQDN:         detailedMachine.FQDN(),
 		PowerState:   detailedMachine.PowerState(),
 		PowerType:    detailedMachine.PowerType(),
@@ -270,4 +326,69 @@ func convertIPAddresses(ips []net.IP) []string {
 		result = append(result, ip.String())
 	}
 	return result
+}
+
+// NewMAASClient creates a new MAAS client using the capmaas-manager-bootstrap-credentials secret
+// Falls back to environment variables if the secret is not available
+// Returns error if credentials cannot be found
+func NewMAASClient(k8sClient client.Client, namespace string) (maasclient.ClientSetInterface, error) {
+	// Get MAAS credentials using the same logic as ClusterScope.GetMaasClientIdentity
+	endpoint, apiKey, err := GetMAASCredentials(k8sClient, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	client := maasclient.NewAuthenticatedClientSet(endpoint, apiKey)
+	return client, nil
+}
+
+// GetMAASCredentials retrieves MAAS credentials from the capmaas-manager-bootstrap-credentials secret
+// Falls back to environment variables if the secret is not available
+// This function implements the same logic as ClusterScope.GetMaasClientIdentity but as a standalone function
+func GetMAASCredentials(k8sClient client.Client, namespace string) (endpoint, apiKey string, err error) {
+	// Secret containing MAAS endpoint/token created by Palette bootstrapper
+	secretName := "capmaas-manager-bootstrap-credentials"
+
+	// Try to get credentials from secret first
+	if k8sClient != nil && namespace != "" {
+		secret := &corev1.Secret{}
+		key := types.NamespacedName{
+			Namespace: namespace,
+			Name:      secretName,
+		}
+
+		// Try to get the secret
+		if err := k8sClient.Get(context.Background(), key, secret); err == nil {
+			// Get the credentials from the secret
+			endpoint = string(secret.Data["MAAS_ENDPOINT"])
+			apiKey = string(secret.Data["MAAS_API_KEY"])
+
+			// If both credentials are valid, return them
+			if endpoint != "" && apiKey != "" {
+				return endpoint, apiKey, nil
+			}
+		}
+	}
+
+	// Fall back to environment variables
+	endpoint = os.Getenv("MAAS_ENDPOINT")
+	if endpoint == "" {
+		endpoint = os.Getenv("MAAS_API_URL") // Alternative env var name
+	}
+
+	apiKey = os.Getenv("MAAS_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("MAAS_API_TOKEN") // Alternative env var name
+	}
+
+	// Validate that we have both required credentials
+	if endpoint == "" {
+		return "", "", fmt.Errorf("MAAS endpoint not found: check capmaas-manager-bootstrap-credentials secret (MAAS_ENDPOINT) or MAAS_ENDPOINT/MAAS_API_URL environment variable")
+	}
+
+	if apiKey == "" {
+		return "", "", fmt.Errorf("MAAS API key not found: check capmaas-manager-bootstrap-credentials secret (MAAS_API_KEY) or MAAS_API_KEY/MAAS_API_TOKEN environment variable")
+	}
+
+	return endpoint, apiKey, nil
 }

@@ -29,10 +29,13 @@ const (
 
 // State captures persisted fields for the current maintenance session.
 type State struct {
-	OpID        string
-	Status      Status
-	StartedAt   time.Time
-	CurrentHost string
+	OpID                       string
+	Status                     Status
+	StartedAt                  time.Time
+	CurrentHost                string
+	ActiveSessions             int      // Max 1 or 0
+	AffectedWLCClusters        []string // List of WLC cluster IDs affected by this maintenance
+	PendingReadyVMReplacements []string // List of VM system IDs pending ready-op tags
 }
 
 // MAAS API-facing interfaces and light types.
@@ -54,6 +57,8 @@ type TagService interface {
 type InventoryService interface {
 	// ListHostVMs lists all VMs on a host.
 	ListHostVMs(hostSystemID string) ([]Machine, error)
+	// ListAllVMs lists all VMs in the MAAS inventory.
+	ListAllVMs() ([]Machine, error)
 	// ResolveSystemIDByHostname resolves a hostname to a system ID.
 	ResolveSystemIDByHostname(hostname string) (string, error)
 	// GetMachine gets a machine by system ID.
@@ -76,6 +81,8 @@ type Machine struct {
 	Tags []string
 	// Zone is the zone the machine is in.
 	Zone string
+	// ResourcePool is the resource pool the machine is in.
+	ResourcePool string
 	// FQDN is the fully qualified domain name of the machine.
 	FQDN string
 	// PowerState is the power state of the machine.

@@ -44,9 +44,10 @@ const (
 
 // HMCConfig configures Host Maintenance Controller timeouts and policy.
 type HMCConfig struct {
-	PerWLCMoveTimeout  time.Duration
-	PerHostWaveTimeout time.Duration
-	Policy             ForcePolicy
+	PerWLCMoveTimeout       time.Duration
+	PerHostWaveTimeout      time.Duration
+	EvacuationCheckInterval time.Duration
+	Policy                  ForcePolicy
 }
 
 // VECConfig configures VM Evacuation Controller timeouts and checks.
@@ -59,9 +60,10 @@ type VECConfig struct {
 // DefaultHMCConfig returns conservative defaults for HMC operation.
 func DefaultHMCConfig() HMCConfig {
 	return HMCConfig{
-		PerWLCMoveTimeout:  20 * time.Minute,
-		PerHostWaveTimeout: 60 * time.Minute,
-		Policy:             ForceHalt,
+		PerWLCMoveTimeout:       20 * time.Minute,
+		PerHostWaveTimeout:      60 * time.Minute,
+		EvacuationCheckInterval: 30 * time.Second,
+		Policy:                  ForceHalt,
 	}
 }
 
