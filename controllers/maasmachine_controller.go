@@ -176,17 +176,21 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	// Check if the host evacuation finalizer is present - if so, requeue for HMC controller
 	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
-		// If we have neither a systemID nor a providerID, there's nothing to evacuate.
+		// Evacuation requires the MAAS systemID; if it's missing, there's nothing to evacuate.
 		hasSystemID := maasMachine.Spec.SystemID != nil && *maasMachine.Spec.SystemID != ""
-		hasProviderID := machineScope.GetProviderID() != ""
-		if !hasSystemID && !hasProviderID {
+		if !hasSystemID {
 			machineScope.Info("No systemID/providerID; removing evacuation finalizer to unblock deletion")
 			controllerutil.RemoveFinalizer(maasMachine, HostEvacuationFinalizer)
 			return ctrl.Result{}, nil
 		}
 
+		// Log using Spec.SystemID directly to avoid providerID parse errors
+		var sysID string
+		if maasMachine.Spec.SystemID != nil {
+			sysID = *maasMachine.Spec.SystemID
+		}
 		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
-			"systemID", machineScope.GetInstanceID())
+			"systemID", sysID)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
