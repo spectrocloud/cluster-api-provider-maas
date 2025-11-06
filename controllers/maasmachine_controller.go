@@ -185,12 +185,8 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		}
 
 		// Log using Spec.SystemID directly to avoid providerID parse errors
-		var sysID string
-		if maasMachine.Spec.SystemID != nil {
-			sysID = *maasMachine.Spec.SystemID
-		}
 		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
-			"systemID", sysID)
+			"systemID", *maasMachine.Spec.SystemID)
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
