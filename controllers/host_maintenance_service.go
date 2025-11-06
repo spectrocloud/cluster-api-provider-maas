@@ -23,6 +23,8 @@ import (
 	"github.com/go-logr/logr"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maint "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -40,10 +42,11 @@ type HostMaintenanceService struct {
 	namespace        string
 	tagService       maint.TagService
 	inventoryService maint.InventoryService
+	recorder         record.EventRecorder
 }
 
 // NewHostMaintenanceService creates a new host maintenance service
-func NewHostMaintenanceService(k8sClient client.Client, namespace string) (*HostMaintenanceService, error) {
+func NewHostMaintenanceService(k8sClient client.Client, namespace string, recorder record.EventRecorder) (*HostMaintenanceService, error) {
 	maasClient, err := maint.NewMAASClient(k8sClient, namespace)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create MAAS client: %w", err)
@@ -53,6 +56,7 @@ func NewHostMaintenanceService(k8sClient client.Client, namespace string) (*Host
 		namespace:        namespace,
 		tagService:       maint.NewTagService(maasClient),
 		inventoryService: maint.NewInventoryService(maasClient),
+		recorder:         recorder,
 	}, nil
 }
 
@@ -79,13 +83,40 @@ func (s *HostMaintenanceService) CheckEvacuationGates(ctx context.Context, maasM
 	hostSystemID := *maasMachine.Spec.SystemID
 
 	// Gate 1: Check if host is empty (no VMs running)
-	hostEmpty, err := s.isHostEmpty(ctx, hostSystemID, log)
+	// Get VMs list first so we can include names in event if host is not empty
+	vms, err := s.inventoryService.ListHostVMs(hostSystemID)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if host is empty: %w", err)
+		return false, fmt.Errorf("failed to list host VMs: %w", err)
 	}
 
-	if !hostEmpty {
-		log.Info("Host not empty, evacuation blocked", "host", hostSystemID)
+	hostEmpty := len(vms) == 0
+	if hostEmpty {
+		log.Info("Host is empty (no VMs)", "host", hostSystemID)
+	} else {
+		// Build list of VM names/identifiers for the event
+		vmNames := make([]string, 0, len(vms))
+		for _, vm := range vms {
+			// Prefer FQDN or Hostname, fallback to SystemID
+			vmName := vm.FQDN
+			if vmName == "" {
+				vmName = vm.Hostname
+			}
+			if vmName == "" {
+				vmName = vm.SystemID
+			}
+			vmNames = append(vmNames, vmName)
+		}
+
+		log.Info("Host not empty, evacuation blocked", "host", hostSystemID, "vmCount", len(vms), "vms", vmNames)
+
+		// Emit Kubernetes event with VM names
+		if s.recorder != nil {
+			vmNamesStr := strings.Join(vmNames, ", ")
+			s.recorder.Eventf(maasMachine, corev1.EventTypeWarning, "EvacuationBlocked",
+				"Host evacuation blocked: %d VM(s) still present on host %s: %s",
+				len(vms), hostSystemID, vmNamesStr)
+		}
+
 		return false, nil
 	}
 
@@ -97,6 +128,13 @@ func (s *HostMaintenanceService) CheckEvacuationGates(ctx context.Context, maasM
 
 	if !wlcReady {
 		log.Info("WLC ready tags not met, evacuation blocked", "host", hostSystemID)
+
+		// Emit Kubernetes event
+		if s.recorder != nil {
+			s.recorder.Eventf(maasMachine, corev1.EventTypeWarning, "WLCReplacementPending",
+				"WLC evacuation blocked: waiting for replacement VMs on host %s", hostSystemID)
+		}
+
 		return false, nil
 	}
 
