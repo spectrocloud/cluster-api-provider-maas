@@ -261,6 +261,10 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 		return nil, fmt.Errorf("no LXD hosts available")
 	}
 
+	// If either AZ or resource pool is specified, enforce strict placement on the provided constraints.
+	// By design, AZ and pool are optional; but if specified, they must be honored strictly.
+	strictConstraints := (az != "" || resourcePool != "")
+
 	// First, try to find a host in the specified AZ and resource pool
 	for _, host := range hosts {
 		hostZone := ""
@@ -305,6 +309,13 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 			}
 			continue
 		}
+	}
+
+	// If strict constraints are provided (AZ and/or resource pool), do not fall back.
+	// Return an error so the caller can retry rather than violating placement constraints.
+	if strictConstraints {
+		log.Info("Strict LXD host placement enforced; no matching host found", "zone", az, "resourcePool", resourcePool)
+		return nil, fmt.Errorf("no LXD host available matching zone %s and pool %s", az, resourcePool)
 	}
 
 	// If no host matches the AZ and resource pool, try to find a host in the specified AZ (without maintenance)
