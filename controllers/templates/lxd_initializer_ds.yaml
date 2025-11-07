@@ -36,7 +36,7 @@ spec:
           if ! command -v lxd >/dev/null 2>&1; then
             echo "LXD not present, installing via snap";
             apt-get update;
-            apt-get install -y snapd systemd;
+            apt-get install -y snapd;
             systemctl enable --now snapd.socket;
             snap install lxd --channel=5.0/stable;
           fi
