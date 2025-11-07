@@ -93,6 +93,17 @@ func (s *HostMaintenanceService) CheckEvacuationGates(ctx context.Context, maasM
 	if hostEmpty {
 		log.Info("Host is empty (no VMs)", "host", hostSystemID)
 	} else {
+		// Get host details to use hostname in event
+		hostDetails, err := s.inventoryService.GetHost(hostSystemID)
+		hostName := hostSystemID // fallback to systemID
+		if err == nil {
+			if hostDetails.FQDN != "" {
+				hostName = hostDetails.FQDN
+			} else if hostDetails.Hostname != "" {
+				hostName = hostDetails.Hostname
+			}
+		}
+
 		// Build list of VM names/identifiers for the event
 		vmNames := make([]string, 0, len(vms))
 		for _, vm := range vms {
@@ -114,7 +125,7 @@ func (s *HostMaintenanceService) CheckEvacuationGates(ctx context.Context, maasM
 			vmNamesStr := strings.Join(vmNames, ", ")
 			s.recorder.Eventf(maasMachine, corev1.EventTypeWarning, "EvacuationBlocked",
 				"Host evacuation blocked: %d VM(s) still present on host %s: %s",
-				len(vms), hostSystemID, vmNamesStr)
+				len(vms), hostName, vmNamesStr)
 		}
 
 		return false, nil
@@ -127,12 +138,23 @@ func (s *HostMaintenanceService) CheckEvacuationGates(ctx context.Context, maasM
 	}
 
 	if !wlcReady {
+		// Get host details to use hostname in event
+		hostDetails, err := s.inventoryService.GetHost(hostSystemID)
+		hostName := hostSystemID // fallback to systemID
+		if err == nil {
+			if hostDetails.FQDN != "" {
+				hostName = hostDetails.FQDN
+			} else if hostDetails.Hostname != "" {
+				hostName = hostDetails.Hostname
+			}
+		}
+
 		log.Info("WLC ready tags not met, evacuation blocked", "host", hostSystemID)
 
 		// Emit Kubernetes event
 		if s.recorder != nil {
 			s.recorder.Eventf(maasMachine, corev1.EventTypeWarning, "WLCReplacementPending",
-				"WLC evacuation blocked: waiting for replacement VMs on host %s", hostSystemID)
+				"WLC evacuation blocked: waiting for replacement VMs on host %s", hostName)
 		}
 
 		return false, nil
