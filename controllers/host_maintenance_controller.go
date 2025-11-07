@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -41,8 +42,9 @@ import (
 // HMCMaintenanceReconciler handles host maintenance operations via ConfigMap triggers
 type HMCMaintenanceReconciler struct {
 	client.Client
-	Log    logr.Logger
-	Scheme *runtime.Scheme
+	Log      logr.Logger
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 	// Namespace is the controller namespace (namespaced deployment)
 	Namespace string
 	// GenericEventChannel allows external triggers to enqueue reconcile requests
@@ -242,7 +244,7 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	log.Info("Maintenance tags ensured", "host", hostSystemID, "opId", st.OpID)
 
 	// Create host maintenance service
-	hmcService, err := NewHostMaintenanceService(r.Client, maasMachine.Namespace)
+	hmcService, err := NewHostMaintenanceService(r.Client, maasMachine.Namespace, r.Recorder)
 	if err != nil {
 		log.Error(err, "failed to create host maintenance service")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, err
@@ -306,6 +308,10 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 func (r *HMCMaintenanceReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	recover := true
 	options.RecoverPanic = &recover
+
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorderFor("hmc-controller")
+	}
 
 	if r.GenericEventChannel == nil {
 		r.GenericEventChannel = make(chan event.GenericEvent)
