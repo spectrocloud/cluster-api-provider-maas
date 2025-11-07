@@ -314,10 +314,10 @@ func (m *MachineScope) GetStaticIP() string {
 // GetStaticIPConfig returns the full static IP configuration if configured
 func (m *MachineScope) GetStaticIPConfig() *infrav1beta1.StaticIPConfig {
 	if m.MaasMachine.Spec.StaticIP == nil {
-		m.Info("StaticIPConfig: StaticIP config is nil")
+		m.V(1).Info("StaticIPConfig: StaticIP config is nil")
 		return nil
 	}
 
-	m.Info("StaticIPConfig: returning config", "ip", m.MaasMachine.Spec.StaticIP.IP)
+	m.V(1).Info("StaticIPConfig: returning config", "ip", m.MaasMachine.Spec.StaticIP.IP)
 	return m.MaasMachine.Spec.StaticIP
 }
