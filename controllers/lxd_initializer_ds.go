@@ -8,7 +8,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -35,7 +34,7 @@ func render(replacements map[string]string, tmpl string) string {
 	return tmpl
 }
 
-// ensureLXDInitializerDS creates or deletes the DaemonSet that initialises LXD on control-plane nodes
+// ensureLXDInitializerDS creates or deletes the DaemonSet that initialises LXD on all nodes (control-plane and worker)
 func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clusterScope *scope.ClusterScope) error {
 	cluster := clusterScope.MaasCluster
 
@@ -210,19 +209,17 @@ func (r *MaasClusterReconciler) enoughNodesReady(ctx context.Context, remoteClie
 	return true
 }
 
-// anyNodeNeedsInitialization returns true if any control-plane node needs initialization.
-// Only checks Ready control-plane nodes to avoid false positives from nodes that aren't ready yet.
+// anyNodeNeedsInitialization returns true if any node (control-plane or worker) needs initialization.
+// Only checks Ready nodes to avoid false positives from nodes that aren't ready yet.
 func (r *MaasClusterReconciler) anyNodeNeedsInitialization(ctx context.Context, remoteClient client.Client) bool {
 	nodeList := &corev1.NodeList{}
-	cpSelector := labels.SelectorFromSet(labels.Set{
-		"node-role.kubernetes.io/control-plane": "",
-	})
-	if err := remoteClient.List(ctx, nodeList, &client.ListOptions{LabelSelector: cpSelector}); err != nil {
+	// Check all nodes, not just control-plane, to include worker nodes
+	if err := remoteClient.List(ctx, nodeList); err != nil {
 		r.Log.Info("Failed to list nodes; proceeding to create initializer DS to be safe", "error", err)
 		return true
 	}
 	if len(nodeList.Items) == 0 {
-		r.Log.Info("No control-plane nodes reported yet; proceeding with initializer DS")
+		r.Log.Info("No nodes reported yet; proceeding with initializer DS")
 		return true
 	}
 
@@ -238,7 +235,12 @@ func (r *MaasClusterReconciler) anyNodeNeedsInitialization(ctx context.Context, 
 
 		// If node is Ready but not initialized, it needs initialization
 		if isReady && (n.Labels == nil || n.Labels["lxdhost.cluster.com/initialized"] != "true") {
-			r.Log.Info("Ready control-plane node requires LXD initialization", "node", n.Name)
+			// Determine node role for logging
+			nodeRole := "worker"
+			if n.Labels != nil && n.Labels["node-role.kubernetes.io/control-plane"] != "" {
+				nodeRole = "control-plane"
+			}
+			r.Log.Info("Ready node requires LXD initialization", "node", n.Name, "role", nodeRole)
 			return true
 		}
 
@@ -267,7 +269,7 @@ func (r *MaasClusterReconciler) deleteExistingInitializerDS(ctx context.Context,
 	return nil
 }
 
-// maybeShortCircuitDelete deletes the DS if all CP nodes are already initialized
+// maybeShortCircuitDelete deletes the DS if all nodes are already initialized
 // BUT only if we have exactly desiredCP nodes - avoids deleting during maintenance when new nodes are joining
 func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredCP int32, dsName string) (bool, error) {
 	shortCircuitNodes := &corev1.NodeList{}
@@ -306,7 +308,7 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 				_ = remoteClient.Delete(ctx, &ds)
 			}
 		}
-		r.Log.Info("Deleted LXD initializer DaemonSet - all control-plane nodes are ready and initialized",
+		r.Log.Info("Deleted LXD initializer DaemonSet - all nodes are ready and initialized",
 			"desiredCP", desiredCP, "totalNodes", len(shortCircuitNodes.Items), "readyNodes", readyCount, "initializedNodes", initCount)
 		return true, nil
 	}
