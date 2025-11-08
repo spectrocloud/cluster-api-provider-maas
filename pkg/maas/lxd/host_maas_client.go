@@ -232,7 +232,7 @@ func UnregisterLXDHostByNameWithMaasClient(apiKey, apiEndpoint, hostName string)
 }
 
 // isHostUnderMaintenance checks if a host has maintenance tags
-func isHostUnderMaintenance(client maasclient.ClientSetInterface, hostSystemID string, log logr.Logger) bool {
+func isHostUnderMaintenance(client machineGetter, hostSystemID string, log logr.Logger) bool {
 	if hostSystemID == "" {
 		return false
 	}
@@ -253,15 +253,31 @@ func isHostUnderMaintenance(client maasclient.ClientSetInterface, hostSystemID s
 	return false
 }
 
+// machineGetter narrows the client interface to only what is needed here
+type machineGetter interface {
+	Machines() maasclient.Machines
+}
+
 // SelectLXDHostWithMaasClient selects an LXD host based on availability, AZ, and resource pool
-func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
+func SelectLXDHostWithMaasClient(client machineGetter, hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
 	log := textlogger.NewLogger(textlogger.NewConfig())
 
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no LXD hosts available")
 	}
 
-	// First, try to find a host in the specified AZ and resource pool
+	// If either AZ or resource pool is specified, enforce strict placement on the provided constraints.
+	// By design, AZ and pool are optional; but if specified, they must be honored strictly.
+	strictConstraints := (az != "" || resourcePool != "")
+
+	// Helper to detect Palette-managed hosts by naming convention
+	isManagedHost := func(h maasclient.VMHost) bool {
+		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Name())), "lxd-host-")
+	}
+
+	// First pass (strict matching): collect healthy, non-maintenance hosts matching AZ/pool
+	var strictManaged maasclient.VMHost
+	var strictAny maasclient.VMHost
 	for _, host := range hosts {
 		hostZone := ""
 		if host.Zone() != nil {
@@ -274,38 +290,53 @@ func SelectLXDHostWithMaasClient(client maasclient.ClientSetInterface, hosts []m
 		}
 
 		if (az == "" || hostZone == az) && (resourcePool == "" || hostPool == resourcePool) {
-
-			// Check if the underlying host machine is deployed and powered on
 			hostSystemID := host.HostSystemID()
-			if hostSystemID != "" {
-				// Check actual machine status using MAAS client
-				ctx := context.Background()
-				machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
-				if err != nil {
-					log.Info("Failed to get machine details", "system-id", hostSystemID, "error", err.Error())
-					continue
-				}
-
-				powerState := machine.PowerState()
-				machineState := machine.State()
-				isHealthy := powerState == "on" && machineState == "Deployed"
-
-				// Check if host is under maintenance
-				isUnderMaintenance := isHostUnderMaintenance(client, hostSystemID, log)
-
-				if isUnderMaintenance {
-					log.Info("Skipping LXD host under maintenance", "host-name", host.Name(), "host-id", hostSystemID)
-					continue
-				}
-
-				if isHealthy {
-					log.Info("Selected LXD host", "host-name", host.Name(), "host-id", host.SystemID())
-					return host, nil
-				}
+			if hostSystemID == "" {
+				continue
 			}
-			continue
+			// Check host health and maintenance state
+			ctx := context.Background()
+			machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
+			if err != nil {
+				log.Info("Failed to get machine details", "system-id", hostSystemID, "error", err.Error())
+				continue
+			}
+			powerState := machine.PowerState()
+			machineState := machine.State()
+			if powerState != "on" || machineState != "Deployed" {
+				continue
+			}
+			if isHostUnderMaintenance(client, hostSystemID, log) {
+				log.Info("Skipping LXD host under maintenance", "host-name", host.Name(), "host-id", hostSystemID)
+				continue
+			}
+
+			// Prefer managed host, but allow OOB within constraints
+			if isManagedHost(host) && strictManaged == nil {
+				strictManaged = host
+			}
+			if strictAny == nil {
+				strictAny = host
+			}
 		}
 	}
+
+	if strictConstraints {
+		if strictManaged != nil {
+			log.Info("Selected LXD host (managed, strict)", "host-name", strictManaged.Name(), "host-id", strictManaged.SystemID())
+			return strictManaged, nil
+		}
+		if strictAny != nil {
+			log.Info("Selected LXD host (strict)", "host-name", strictAny.Name(), "host-id", strictAny.SystemID())
+			return strictAny, nil
+		}
+		log.Info("Strict LXD host placement enforced; no matching host found", "zone", az, "resourcePool", resourcePool)
+		return nil, fmt.Errorf("no LXD host available matching zone %s and pool %s", az, resourcePool)
+	}
+
+	// If strict constraints are provided (AZ and/or resource pool), do not fall back.
+	// Return an error so the caller can retry rather than violating placement constraints.
+	// (Already handled above) If not strict, continue with existing fallback behavior below.
 
 	// If no host matches the AZ and resource pool, try to find a host in the specified AZ (without maintenance)
 	if resourcePool != "" {
