@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	crand "crypto/rand"
 	"flag"
 	"fmt"
 	"log"
@@ -10,7 +9,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -555,70 +553,9 @@ func main() {
 
 	// Add a fixed delay after init before registration when doing both steps
 	if actionStr == "both" {
-		// Stagger registration across control-plane nodes by stable index
-		nodeIndex := 0
-		nodeCount := 0
-		if nodeName != "" {
-			if client, err := getKubernetesClient(); err == nil {
-				// List control-plane nodes on the cluster
-				nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{LabelSelector: "node-role.kubernetes.io/control-plane"})
-				if err == nil && len(nodes.Items) > 0 {
-					nodeCount = len(nodes.Items)
-					names := make([]string, 0, len(nodes.Items))
-					for _, n := range nodes.Items {
-						names = append(names, n.Name)
-					}
-					sort.Strings(names)
-					for i, n := range names {
-						if n == nodeName {
-							nodeIndex = i
-							break
-						}
-					}
-				}
-			}
-		}
-
-		// Configurable stagger via env with sane defaults
-		perNodeSec := 60
-		if v := strings.TrimSpace(os.Getenv("STAGGER_PER_NODE_SEC")); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-				perNodeSec = n
-			}
-		}
-		maxCapSec := 300 // 5 minutes cap; set 0 to disable
-		if v := strings.TrimSpace(os.Getenv("STAGGER_MAX_SEC")); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-				maxCapSec = n
-			}
-		}
-		jitterSec := 10
-		if v := strings.TrimSpace(os.Getenv("STAGGER_JITTER_SEC")); v != "" {
-			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
-				jitterSec = n
-			}
-		}
-
-		// Calculate delay: index * per-node, capped, with jitter
-		delaySec := nodeIndex * perNodeSec
-		if maxCapSec > 0 && delaySec > maxCapSec {
-			delaySec = maxCapSec
-		}
-		actualDelaySec := delaySec
-		if jitterSec > 0 {
-			// crypto-strong jitter in [0, jitterSec]
-			var rb [8]byte
-			if _, err := crand.Read(rb[:]); err == nil {
-				// Convert to uint64, then mod
-				rnd := int(rb[0])
-				if jitterSec > 0 {
-					rnd = rnd % (jitterSec + 1)
-				}
-				actualDelaySec += rnd
-			}
-		}
-		delay := time.Duration(actualDelaySec) * time.Second
-		log.Printf("LXD init complete; staggering for %v before host registration (index=%d/%d, per=%ds, cap=%ds, jitter<=%ds)", delay, nodeIndex, nodeCount, perNodeSec, maxCapSec, jitterSec)
+		delay := 30 * time.Second
+		//log.Printf("LXD init complete; staggering for %v before host registration (index=%d/%d, per=%ds, cap=%ds, jitter<=%ds)", delay, nodeIndex, nodeCount, perNodeSec, maxCapSec, jitterSec)
+		log.Printf("LXD init complete; staggering for %v before host registration", delay)
 		time.Sleep(delay)
 	}
 
