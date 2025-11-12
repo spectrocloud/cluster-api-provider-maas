@@ -644,11 +644,11 @@ func logLXDDiagnostics() {
 	}
 
 	// host daemon status
-	out, err := exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "systemctl", "status", "snap.lxd.daemon").CombinedOutput()
+	out, err := exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "snap", "services", "lxd").CombinedOutput()
 	if err == nil {
-		log.Printf("systemctl status snap.lxd.daemon:\n%s", string(out))
+		log.Printf("snap services lxd:\n%s", string(out))
 	} else {
-		log.Printf("nsenter systemctl status failed: %v", err)
+		log.Printf("nsenter snap services failed: %v", err)
 	}
 
 	// process list
@@ -974,16 +974,11 @@ func configureLXDNetwork(trustPassword, hostIP string) error {
 			return err
 		}
 	}
-	// Restart LXD to apply changes
-	cmd = exec.Command("systemctl", "restart", "snap.lxd.daemon")
+	// Restart LXD to apply changes (avoid systemd; use snap)
+	cmd = exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "snap", "restart", "lxd")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("systemctl restart inside container failed (%v), trying nsenter fallback", err)
-		cmd = exec.Command("nsenter", "-t", "1", "-m", "-p", "--", "systemctl", "restart", "snap.lxd.daemon")
-		output, err = cmd.CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("failed to restart LXD (fallback): %s: %w", string(output), err)
-		}
+		return fmt.Errorf("failed to restart LXD via snap: %s: %w", string(output), err)
 	}
 
 	log.Printf("LXD configured to listen on %s", address)
