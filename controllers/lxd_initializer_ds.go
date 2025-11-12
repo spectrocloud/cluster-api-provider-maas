@@ -67,10 +67,13 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	if !r.anyNodeNeedsInitialization(ctx, remoteClient) {
 		r.Log.Info("All nodes already labeled initialized; considering DS cleanup", "namespace", dsNamespace, "ds", dsName)
 		if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+			r.Log.Error(err, "failed to maybe short circuit delete", "namespace", dsNamespace, "ds", dsName)
 			return err
 		} else if done {
+			r.Log.Info("deleted existing initializer DS - all nodes are ready and initialized", "namespace", dsNamespace, "ds", dsName)
 			return nil
 		}
+		r.Log.Info("no nodes need initialization; skipping DS creation", "namespace", dsNamespace, "ds", dsName)
 		return nil
 	}
 
@@ -80,28 +83,68 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	// }
 
 	if err := r.deleteExistingInitializerDS(ctx, remoteClient, dsNamespace); err != nil {
+		r.Log.Error(err, "failed to delete existing initializer DS", "namespace", dsNamespace, "ds", dsName)
 		return err
 	}
 
 	// Ensure RBAC resources are created on the target cluster
 	if err := r.ensureLXDInitializerRBACOnTarget(ctx, remoteClient, dsNamespace); err != nil {
+		r.Log.Error(err, "failed to ensure LXD initializer RBAC", "namespace", dsNamespace, "ds", dsName)
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
 
 	if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+		r.Log.Error(err, "failed to maybe short circuit delete", "namespace", dsNamespace, "ds", dsName)
 		return err
 	} else if done {
+		r.Log.Info("deleted existing initializer DS - all nodes are ready and initialized", "namespace", dsNamespace, "ds", dsName)
 		return nil
 	}
 
 	ds, err := r.renderDaemonSetForCluster(clusterScope, dsName, dsNamespace)
 	if err != nil {
+		r.Log.Error(err, "failed to render DaemonSet for cluster", "namespace", dsNamespace, "ds", dsName)
 		return err
 	}
 
-	// Do not set owner refs across clusters; just create/patch on target cluster
-	_, err = controllerutil.CreateOrPatch(ctx, remoteClient, ds, func() error { return nil })
-	return err
+	// Do not set owner refs across clusters; just create/patch on target cluster.
+	// Mutate existing DaemonSet so changes to template/spec take effect on reconcile.
+	current := &appsv1.DaemonSet{}
+	current.Name = dsName
+	current.Namespace = dsNamespace
+
+	_, err = controllerutil.CreateOrPatch(ctx, remoteClient, current, func() error {
+		// Preserve immutable selector if already present; align labels.
+		current.Labels = ds.Labels
+		current.Annotations = ds.Annotations
+
+		// Update pod template and mutable spec fields
+		current.Spec.Template = ds.Spec.Template
+		current.Spec.UpdateStrategy = ds.Spec.UpdateStrategy
+		current.Spec.MinReadySeconds = ds.Spec.MinReadySeconds
+		current.Spec.RevisionHistoryLimit = ds.Spec.RevisionHistoryLimit
+
+		// Initialize selector if missing (only valid on create)
+		if current.Spec.Selector == nil || len(current.Spec.Selector.MatchLabels) == 0 {
+			current.Spec.Selector = ds.Spec.Selector
+		}
+		// Ensure template labels include selector labels
+		if current.Spec.Selector != nil && len(current.Spec.Selector.MatchLabels) > 0 {
+			if current.Spec.Template.Labels == nil {
+				current.Spec.Template.Labels = map[string]string{}
+			}
+			for k, v := range current.Spec.Selector.MatchLabels {
+				current.Spec.Template.Labels[k] = v
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		r.Log.Error(err, "failed to create/patch DaemonSet", "namespace", dsNamespace, "ds", dsName)
+		return err
+	}
+	r.Log.Info("created/patched DaemonSet", "namespace", dsNamespace, "ds", dsName)
+	return nil
 }
 
 // ensureLXDInitializerRBACOnTarget creates the RBAC resources for lxd-initializer on the target cluster
