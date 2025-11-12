@@ -338,21 +338,18 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 		}
 	}
 
-	// Only delete if:
-	// 1. We have exactly desiredCP nodes (not more, which would indicate maintenance/new nodes)
-	// 2. All nodes are Ready
-	// 3. All nodes are initialized
-	if int64(len(shortCircuitNodes.Items)) == int64(desiredCP) &&
-		int64(readyCount) == int64(desiredCP) &&
-		int64(initCount) >= int64(desiredCP) {
+	// Delete initializer DS only when ALL nodes (control-plane + worker) are initialized.
+	// This matches the new requirement to register both CP and worker nodes.
+	totalNodes := len(shortCircuitNodes.Items)
+	if totalNodes > 0 && initCount == totalNodes {
 		shortCircuitDSList := &appsv1.DaemonSetList{}
 		if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(namespace), client.MatchingLabels{"app": dsName}); err == nil {
 			for _, ds := range shortCircuitDSList.Items {
 				_ = remoteClient.Delete(ctx, &ds)
 			}
 		}
-		r.Log.Info("Deleted LXD initializer DaemonSet - all nodes are ready and initialized",
-			"desiredCP", desiredCP, "totalNodes", len(shortCircuitNodes.Items), "readyNodes", readyCount, "initializedNodes", initCount)
+		r.Log.Info("Deleted LXD initializer DaemonSet - all nodes initialized",
+			"desiredCP", desiredCP, "totalNodes", totalNodes, "readyNodes", readyCount, "initializedNodes", initCount)
 		return true, nil
 	}
 	return false, nil
