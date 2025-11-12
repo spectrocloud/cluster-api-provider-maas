@@ -26,7 +26,7 @@ endif
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 REGISTRY ?= "us-east1-docker.pkg.dev/spectro-images/dev/${USER}/cluster-api"
-SPECTRO_VERSION ?= 4.0.0-dev-29082025
+SPECTRO_VERSION ?= 4.8.3-dev-12112025
 IMG_TAG ?= v0.6.1-spectro-${SPECTRO_VERSION}
 CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 

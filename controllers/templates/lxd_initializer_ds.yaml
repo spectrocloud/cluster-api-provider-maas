@@ -33,27 +33,24 @@ spec:
         - -c
         - |
           set -ex
-          if ! command -v lxd >/dev/null 2>&1; then
-            echo "LXD not present, installing via snap";
-            apt-get update;
-            apt-get install -y snapd;
-            systemctl enable --now snapd.socket;
-            snap install lxd --channel=5.0/stable;
+          # Check on the HOST, not in the container
+          if ! nsenter -t 1 -m -p -- bash -lc 'command -v lxd >/dev/null 2>&1'; then
+            echo "LXD not present on host, installing snapd and LXD on host";
+            nsenter -t 1 -m -p -- bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y snapd'
+            # Enable and start snapd on the host
+            nsenter -t 1 -m -p -- systemctl enable --now snapd.socket
+            # Install LXD via snap on the host
+            nsenter -t 1 -m -p -- snap install lxd --channel=5.0/stable
           fi
           echo "Ensuring LXD daemon is running on host";
-          if nsenter -t 1 -m -p -- systemctl is-active --quiet snap.lxd.daemon; then
-            echo "LXD daemon already active";
-          else
-            echo "Starting LXD daemon via host systemd";
-            nsenter -t 1 -m -p -- systemctl start snap.lxd.daemon || snap start --enable lxd.daemon;
-          fi
+          # Start/enable via snap (avoid systemd invocation from the pod)
+          nsenter -t 1 -m -p -- snap start --enable lxd.daemon || true
           # Wait for LXD to report readiness (up to 5 minutes)
           echo "Waiting for LXD to become ready on host (timeout 5 min)…"
           if ! nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300 ; then
             echo "LXD did not become ready after 5 minutes"; exit 1;
           fi
           echo "Host LXD is ready";
-
         securityContext:
           privileged: true
         volumeMounts:
@@ -71,7 +68,7 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: us-east1-docker.pkg.dev/spectro-images/dev/jayeshsrivastava/cluster-api/lxd-initializer:v0.6.1-spectro-4.8.2
+        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.8.3
         imagePullPolicy: Always
         securityContext:
           privileged: true
