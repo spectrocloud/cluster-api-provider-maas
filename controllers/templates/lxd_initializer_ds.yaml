@@ -139,6 +139,7 @@ spec:
       - name: maas-ca
         secret:
           secretName: maas-ca
+          optional: true
           items:
           - key: ca.crt
             path: ca.crt
