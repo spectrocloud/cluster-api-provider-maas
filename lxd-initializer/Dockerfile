@@ -31,10 +31,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o lxd-initializer .
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk add --no-cache lxc curl jq
+RUN apk add --no-cache lxc curl jq ca-certificates
 
 # Copy the binary from the builder stage
 COPY --from=builder /workspace/lxd-initializer /lxd-initializer
 
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Set the entrypoint
-ENTRYPOINT ["/lxd-initializer"] 
+ENTRYPOINT ["/entrypoint.sh"] 

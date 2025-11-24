@@ -68,7 +68,7 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.8.3
+        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.8.3-dev-12112025
         imagePullPolicy: Always
         securityContext:
           privileged: true
@@ -95,6 +95,8 @@ spec:
           value: "${SKIP_NETWORK_UPDATE}"
         - name: TRUST_PASSWORD
           value: "${TRUST_PASSWORD}"
+        - name: MAAS_CA_CERT
+          value: /etc/maas/maas-ca.crt
         volumeMounts:
         - name: var-lib-lxd
           mountPath: /var/lib/lxd
@@ -108,6 +110,10 @@ spec:
           mountPath: /run
         - name: tmp
           mountPath: /tmp
+        - name: maas-ca
+          mountPath: /etc/maas/maas-ca.crt
+          subPath: ca.crt
+          readOnly: true
       volumes:
       - name: var-lib-lxd
         hostPath:
@@ -130,6 +136,12 @@ spec:
       - name: tmp
         hostPath:
           path: /tmp
+      - name: maas-ca
+        secret:
+          secretName: maas-ca
+          items:
+          - key: ca.crt
+            path: ca.crt
       serviceAccount: lxd-initializer
       serviceAccountName: lxd-initializer
       restartPolicy: Always
