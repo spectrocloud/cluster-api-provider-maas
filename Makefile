@@ -263,10 +263,11 @@ process-lxd-initializer-template: ## Process LXD initializer template with image
 	fi; \
 	if [ -f controllers/templates/lxd_initializer_ds.yaml.processed ]; then \
 		if grep -q "$$INIT_IMG" controllers/templates/lxd_initializer_ds.yaml.processed; then \
-			echo "Template already processed with image: $$INIT_IMG (skipping)"; \
-			exit 0; \
+			if [ controllers/templates/lxd_initializer_ds.yaml -ot controllers/templates/lxd_initializer_ds.yaml.processed ]; then \
+				echo "Template already processed with image: $$INIT_IMG and up to date (skipping)"; \
+				exit 0; \
+			fi; \
 		fi; \
-	fi; \
 	echo "Processing LXD initializer template with image: $$INIT_IMG"; \
 	LXD_INITIALIZER_IMAGE=$$INIT_IMG envsubst '$$LXD_INITIALIZER_IMAGE' \
 		< controllers/templates/lxd_initializer_ds.yaml > controllers/templates/lxd_initializer_ds.yaml.processed
