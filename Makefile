@@ -256,7 +256,6 @@ lxd-initializer-docker-push: lxd-initializer-docker-build ## Push LXD initialize
 controllers/templates/lxd_initializer_ds.yaml.processed: controllers/templates/lxd_initializer_ds.yaml
 	@$(MAKE) process-lxd-initializer-template
 
-.PHONY: process-lxd-initializer-template
 process-lxd-initializer-template: ## Process LXD initializer template with image substitution using envsubst
 	@# Check if envsubst is available
 	@command -v envsubst >/dev/null 2>&1 || { echo "ERROR: envsubst not found. Please install gettext package."; exit 1; }
