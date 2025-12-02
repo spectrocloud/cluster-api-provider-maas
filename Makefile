@@ -61,7 +61,7 @@ endif
 all: manager
 
 # Run tests
-test: generate fmt vet manifests ## Run unit tests
+test: generate fmt vet manifests generate-lxd-template ## Run unit tests
 	# TODO bring back
 	go test ./... -coverprofile cover.out
 
@@ -70,7 +70,7 @@ manager: generate fmt vet generate-lxd-template ## Build manager binary
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate fmt vet manifests
+run: generate fmt vet manifests generate-lxd-template
 	go run ./main.go
 
 # Install CRDs into a cluster
@@ -251,6 +251,11 @@ lxd-initializer-docker-push: lxd-initializer-docker-build ## Push LXD initialize
 	echo "Pushing LXD initializer image: $$PUSH_IMG"; \
 	docker push $$PUSH_IMG
 
+# File target for processed template - ensures it exists before Go compilation
+# This file target ensures the processed template exists, making it a proper dependency
+controllers/templates/lxd_initializer_ds.yaml.processed: controllers/templates/lxd_initializer_ds.yaml
+	@$(MAKE) process-lxd-initializer-template
+
 .PHONY: process-lxd-initializer-template
 process-lxd-initializer-template: ## Process LXD initializer template with image substitution using envsubst
 	@# Check if envsubst is available
@@ -286,7 +291,7 @@ process-lxd-initializer-template: ## Process LXD initializer template with image
 	fi
 
 .PHONY: generate-lxd-template
-generate-lxd-template: process-lxd-initializer-template ## Generate processed LXD initializer template for embedding
+generate-lxd-template: controllers/templates/lxd_initializer_ds.yaml.processed ## Generate processed LXD initializer template for embedding
 	@# Ensure processed file exists (required for go:embed)
 	@if [ ! -f controllers/templates/lxd_initializer_ds.yaml.processed ]; then \
 		echo "ERROR: Processed template not found"; \
