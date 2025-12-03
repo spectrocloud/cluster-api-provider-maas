@@ -27,6 +27,9 @@ maas-credentials.env
 
 _build
 
+# Generated processed templates (created by envsubst during build)
+controllers/templates/*.processed
+
 # LXD test directory
 lxd-test-tmp/
 utils/maas/lxd-test/.netrc

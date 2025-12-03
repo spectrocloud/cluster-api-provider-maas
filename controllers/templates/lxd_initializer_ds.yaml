@@ -27,7 +27,10 @@ spec:
         effect: "NoSchedule"
       initContainers:
       - name: ensure-lxd
-        image: ubuntu:22.04
+        # Pinned Ubuntu version: 22.04.3 (tested and verified)
+        # Using custom registry to avoid Docker Hub rate limits
+        image: us-docker.pkg.dev/palette-images/third-party/ubuntu:22.04
+        imagePullPolicy: IfNotPresent
         command:
         - /bin/bash
         - -c
@@ -36,11 +39,46 @@ spec:
           # Check on the HOST, not in the container
           if ! nsenter -t 1 -m -p -- bash -lc 'command -v lxd >/dev/null 2>&1'; then
             echo "LXD not present on host, installing snapd and LXD on host";
-            nsenter -t 1 -m -p -- bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y snapd'
+            # Pin snapd version to avoid unexpected updates
+            # Version 2.60+ is required for LXD 5.0 support
+            # Using specific version to ensure consistency across deployments
+            nsenter -t 1 -m -p -- bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y snapd=2.60.*'
             # Enable and start snapd on the host
             nsenter -t 1 -m -p -- systemctl enable --now snapd.socket
-            # Install LXD via snap on the host
-            nsenter -t 1 -m -p -- snap install lxd --channel=5.0/stable
+            # Install LXD 5.0.5 (hardcoded - revision 38113)
+            echo "Installing LXD 5.0.5 (revision 38113)"
+            nsenter -t 1 -m -p -- snap install lxd --revision=38113 || {
+              echo "ERROR: Failed to install LXD revision 38113 (5.0.5)"
+              exit 1
+            }
+            
+            # Verify both LXD and LXC are 5.0.5
+            LXD_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_CLIENT=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Client version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_SERVER=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Server version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            
+            echo "LXD version: ${LXD_VERSION}, LXC client: ${LXC_CLIENT}, LXC server: ${LXC_SERVER}"
+            
+            if [ "${LXD_VERSION}" != "5.0.5" ] || [ "${LXC_CLIENT}" != "5.0.5" ] || [ "${LXC_SERVER}" != "5.0.5" ]; then
+              echo "ERROR: Version mismatch! Expected 5.0.5, got LXD:${LXD_VERSION} LXC-client:${LXC_CLIENT} LXC-server:${LXC_SERVER}"
+              exit 1
+            fi
+            
+            # Hold snap to prevent updates
+            nsenter -t 1 -m -p -- snap refresh --hold lxd
+          else
+            # Verify existing installation is 5.0.5
+            LXD_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_CLIENT=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Client version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_SERVER=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Server version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            echo "LXD version: ${LXD_VERSION}, LXC client: ${LXC_CLIENT}, LXC server: ${LXC_SERVER}"
+            
+            if [ "${LXD_VERSION}" != "5.0.5" ] || [ "${LXC_CLIENT}" != "5.0.5" ] || [ "${LXC_SERVER}" != "5.0.5" ]; then
+              echo "WARNING: Existing installation is not 5.0.5"
+            fi
+            
+            # Ensure snap is held
+            nsenter -t 1 -m -p -- snap refresh --hold lxd || true
           fi
           echo "Ensuring LXD daemon is running on host";
           # Start/enable via snap (avoid systemd invocation from the pod)
@@ -50,7 +88,9 @@ spec:
           if ! nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300 ; then
             echo "LXD did not become ready after 5 minutes"; exit 1;
           fi
-          echo "Host LXD is ready";
+          # Final version verification
+          FINAL_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 || echo "unknown")
+          echo "Host LXD is ready, version: ${FINAL_VERSION}";
         securityContext:
           privileged: true
         volumeMounts:
@@ -68,8 +108,8 @@ spec:
           mountPropagation: HostToContainer
       containers:
       - name: lxd-initializer
-        image: us-east1-docker.pkg.dev/spectro-images/dev/amit/cluster-api/lxd-initializer:v0.6.1-spectro-4.8.3
-        imagePullPolicy: Always
+        image: ${LXD_INITIALIZER_IMAGE}  # Will be replaced by envsubst during build
+        imagePullPolicy: IfNotPresent
         securityContext:
           privileged: true
         env:

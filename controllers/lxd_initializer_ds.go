@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 
+	// embed template
+	_ "embed"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -16,12 +19,9 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util/trust"
-
-	// embed template
-	_ "embed"
 )
 
-//go:embed templates/lxd_initializer_ds.yaml
+//go:embed templates/lxd_initializer_ds.yaml.processed
 var lxdInitTemplate string
 
 //go:embed templates/lxd_initializer_rbac.yaml
@@ -392,10 +392,8 @@ func (r *MaasClusterReconciler) renderDaemonSetForCluster(clusterScope *scope.Cl
 		"${NIC_PARENT}":          np,
 	}, lxdInitTemplate)
 
-	dsYaml := strings.ReplaceAll(rendered, "${DS_NAME}", dsName)
-
 	ds := &appsv1.DaemonSet{}
-	if err := yaml.Unmarshal([]byte(dsYaml), ds); err != nil {
+	if err := yaml.Unmarshal([]byte(rendered), ds); err != nil {
 		return nil, err
 	}
 
