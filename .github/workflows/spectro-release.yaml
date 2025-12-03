@@ -39,6 +39,7 @@ jobs:
         run: |
           echo "LEGACY_REGISTRY=us-east1-docker.pkg.dev/spectro-images/dev/cluster-api-maas" >> $GITHUB_ENV
           echo "FIPS_REGISTRY=us-east1-docker.pkg.dev/spectro-images/dev-fips/cluster-api-maas" >> $GITHUB_ENV
+          echo "INIT_RELEASE_IMG=us-east1-docker.pkg.dev/spectro-images/dev/cluster-api/lxd-initializer" >> $GITHUB_ENV
 
       -
         uses: actions/checkout@v3
@@ -64,20 +65,20 @@ jobs:
         env:
           REGISTRY: ${{ env.LEGACY_REGISTRY }}
         run: |
-          make docker-build-all
-          make docker-push-all
-          make lxd-initializer-docker-build
-          make lxd-initializer-docker-push
+          make docker-build-all STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make docker-push-all STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make lxd-initializer-docker-build STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make lxd-initializer-docker-push STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
       -
         name: Build Image - FIPS Mode
         env:
           FIPS_ENABLE: yes
           REGISTRY: ${{ env.FIPS_REGISTRY }}
         run: |
-          make docker-build-all
-          make docker-push-all
-          make lxd-initializer-docker-build
-          make lxd-initializer-docker-push
+          make docker-build-all STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make docker-push-all STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make lxd-initializer-docker-build STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
+          make lxd-initializer-docker-push STAGE=release VERSION=${{ env.SPECTRO_VERSION }}
       -
         name: Create Tag
         if: ${{ github.event.inputs.rel_type == 'release' }}
