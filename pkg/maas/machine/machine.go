@@ -439,6 +439,26 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		Set("zone", fmt.Sprintf("%d", zoneID)).
 		Set("pool", fmt.Sprintf("%d", poolID))
 
+	// If spec.LXD.VMConfig.Network is present, check if its values are separated by ","
+	// The values are subnet names that will be passed to compose LXD VMs
+	// Maximum number of subnets is 2
+	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.Network != "" {
+		networkStr := strings.TrimSpace(mm.Spec.LXD.VMConfig.Network)
+		if networkStr != "" {
+			// Split by comma to get individual subnet names
+			subnets := strings.Split(networkStr, ",")
+			// Only set interfaces when there are exactly 2 subnets
+			if len(subnets) == 2 {
+				subnet0 := strings.TrimSpace(subnets[0])
+				subnet1 := strings.TrimSpace(subnets[1])
+				// Format: "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>"
+				interfacesParam := fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s", subnet0, subnet1)
+				params.Set("interfaces", interfacesParam)
+				s.scope.Info("Setting network interfaces for VM composition", "interfaces", interfacesParam)
+			}
+		}
+	}
+
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
