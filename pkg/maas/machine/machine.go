@@ -444,24 +444,22 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	// Maximum number of subnets is 2
 	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.Network != "" {
 		networkStr := strings.TrimSpace(mm.Spec.LXD.VMConfig.Network)
-		if networkStr != "" {
-			// Split by comma to get individual subnet names
-			subnets := strings.Split(networkStr, ",")
-			// Only set interfaces when there are exactly 2 subnets
-			if len(subnets) == 2 {
-				subnet0 := strings.TrimSpace(subnets[0])
-				subnet1 := strings.TrimSpace(subnets[1])
-				if subnet0 == "" || subnet1 == "" {
-					s.scope.Info("Skipping setting network interfaces due to empty subnet name(s)", "subnet0", subnet0, "subnet1", subnet1)
-				} else {
-					// Format: "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>"
-					interfacesParam := fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s", subnet0, subnet1)
-					params.Set("interfaces", interfacesParam)
-					s.scope.Info("Setting network interfaces for VM composition", "interfaces", interfacesParam)
-				}
+		// Split by comma to get individual subnet names
+		subnets := strings.Split(networkStr, ",")
+		// Only set interfaces when there are exactly 2 subnets
+		if len(subnets) == 2 {
+			subnet0 := strings.TrimSpace(subnets[0])
+			subnet1 := strings.TrimSpace(subnets[1])
+			if subnet0 == "" || subnet1 == "" {
+				s.scope.Info("Skipping setting network interfaces due to empty subnet name(s)", "subnet0", subnet0, "subnet1", subnet1)
 			} else {
-				s.scope.Info("Network configuration ignored: expected exactly 2 subnets, got", "count", len(subnets), "network", networkStr)
+				// Format: "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>"
+				interfacesParam := fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s", subnet0, subnet1)
+				params.Set("interfaces", interfacesParam)
+				s.scope.Info("Setting network interfaces for VM composition", "interfaces", interfacesParam)
 			}
+		} else {
+			s.scope.Info("Network configuration ignored: expected exactly 2 subnets, got", "count", len(subnets), "network", networkStr)
 		}
 	}
 
