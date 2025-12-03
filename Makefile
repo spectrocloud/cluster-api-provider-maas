@@ -15,11 +15,17 @@ REPO_ROOT := $(shell git rev-parse --show-toplevel)
 ARCH ?= amd64
 ALL_ARCH = amd64 arm64
 
+## Image URL to use all building/pushing image targets
+#IMAGE_NAME := cluster-api-provider-maas-controller
+#IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
+#IMG_TAG ?= v0.6.1
+#IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
+
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
-IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
+REGISTRY ?= "us-east1-docker.pkg.dev/spectro-images/dev/${USER}/cluster-api"
 IMG_TAG ?= v0.6.1
-IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
+CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
 ifneq ($(abspath $(REPO_ROOT)),$(shell go env GOPATH)/src/github.com/spectrocloud/cluster-api-provider-maas)
@@ -149,36 +155,37 @@ generate-manifests:  ## Generate manifests
 
 
 # Build the docker image
-docker-build: generate manifests #test
-	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t ${IMG}-$(ARCH)
+.PHONY: docker-build
+docker-build: #test
+	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
+.PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-#	docker push ${IMG}
-	docker push  ${IMG}-$(ARCH)
+	docker push  $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 ### --------------------------------------
 ### Docker — All ARCH
 ### --------------------------------------
-#.PHONY: docker-build-all ## Build all the architecture docker images
-#docker-build-all: $(addprefix docker-build-,$(ALL_ARCH))
-#
-#docker-build-%:
-#	$(MAKE) ARCH=$* docker-build
-#
-#.PHONY: docker-push-all ## Push all the architecture docker images
-#docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
-#	$(MAKE) docker-push-manifest
-#
-#docker-push-%:
-#	$(MAKE) ARCH=$* docker-push
-#
-#.PHONY: docker-push-manifest
-#docker-push-manifest: ## Push the fat manifest docker image.
-#	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
-#	docker manifest create --amend ${IMG}-$(ARCH) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(IMG)\-&:$(ARCH)~g")
-#	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
-	#docker manifest push --insecure --purge $(CONTROLLER_IMG):$(IMG_TAG)
+.PHONY: docker-build-all ## Build all the architecture docker images
+docker-build-all: $(addprefix docker-build-,$(ALL_ARCH))
+
+docker-build-%:
+	$(MAKE) ARCH=$* docker-build
+
+.PHONY: docker-push-all ## Push all the architecture docker images
+docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))
+	$(MAKE) docker-push-manifest
+
+docker-push-%:
+	$(MAKE) ARCH=$* docker-push
+
+.PHONY: docker-push-manifest
+docker-push-manifest: ## Push the fat manifest docker image.
+	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
+	docker manifest create --amend $(CONTROLLER_IMG):$(IMG_TAG) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(CONTROLLER_IMG)\-&:$(IMG_TAG)~g")
+	@for arch in $(ALL_ARCH); do docker manifest annotate --arch $${arch} ${CONTROLLER_IMG}:${IMG_TAG} ${CONTROLLER_IMG}-$${arch}:${IMG_TAG}; done
+	docker manifest push --insecure --purge $(CONTROLLER_IMG):$(IMG_TAG)
 
 docker-rmi: ## Remove the docker image locally
 	docker rmi ${IMG}
