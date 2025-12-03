@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -553,14 +554,88 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
 	}
 
-	// Now set the static IP on the target machine's boot interface
-	s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
-	err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
-	if err != nil {
-		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+	// Find the correct interface with matching subnet CIDR, or fallback to boot interface
+	var targetInterfaceID string
+	var useBootInterface bool
+
+	if config.CIDR != "" {
+		// Parse the target CIDR
+		_, targetIPNet, err := net.ParseCIDR(config.CIDR)
+		if err != nil {
+			s.scope.Error(err, "Failed to parse CIDR, falling back to boot interface", "cidr", config.CIDR)
+			useBootInterface = true
+		} else {
+			// Verify the static IP is within the CIDR
+			staticIP := net.ParseIP(config.IP)
+			if staticIP == nil {
+				s.scope.Error(nil, "Invalid IP address, falling back to boot interface", "ip", config.IP)
+				useBootInterface = true
+			} else if !targetIPNet.Contains(staticIP) {
+				s.scope.Info("Static IP is not within target CIDR, but will try to find matching subnet", "ip", config.IP, "cidr", config.CIDR)
+			}
+
+			if !useBootInterface {
+				// Get all interfaces for the machine
+				interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+				if err != nil {
+					s.scope.Error(err, "Failed to get interfaces, falling back to boot interface", "systemID", systemID)
+					useBootInterface = true
+				} else {
+					// Find interface with matching subnet CIDR
+					found := false
+					for _, iface := range interfaces {
+						links := iface.Links()
+						for _, link := range links {
+							if link.Subnet() != nil {
+								subnetCIDR := link.Subnet().CIDR()
+								if subnetCIDR != "" {
+									_, subnetIPNet, err := net.ParseCIDR(subnetCIDR)
+									if err == nil {
+										// Check if CIDRs match or if static IP is within subnet CIDR
+										if config.CIDR == subnetCIDR || subnetIPNet.Contains(staticIP) {
+											targetInterfaceID = iface.ID()
+											found = true
+											s.scope.Info("Found interface with matching subnet CIDR", "interface-id", targetInterfaceID, "interface-name", iface.Name(), "subnet-cidr", subnetCIDR, "target-cidr", config.CIDR)
+											break
+										}
+									}
+								}
+							}
+						}
+						if found {
+							break
+						}
+					}
+
+					if !found {
+						s.scope.Info("No interface found with matching subnet CIDR, falling back to boot interface", "target-cidr", config.CIDR)
+						useBootInterface = true
+					}
+				}
+			}
+		}
+	} else {
+		// No CIDR provided, use boot interface
+		useBootInterface = true
 	}
 
-	s.scope.Info("Static IP configured successfully", "ip", config.IP, "systemID", systemID)
+	// Set static IP on the selected interface
+	if useBootInterface {
+		s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
+		err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+		if err != nil {
+			return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+		}
+		s.scope.Info("Static IP configured successfully on boot interface", "ip", config.IP, "systemID", systemID)
+	} else {
+		s.scope.Info("Setting static IP on interface", "ip", config.IP, "systemID", systemID, "interface-id", targetInterfaceID)
+		err = s.maasClient.NetworkInterfaces().SetStaticIPOnInterfaceID(ctx, systemID, targetInterfaceID, config.IP)
+		if err != nil {
+			return fmt.Errorf("failed to set static IP %s on interface %s for machine %s: %w", config.IP, targetInterfaceID, systemID, err)
+		}
+		s.scope.Info("Static IP configured successfully on interface", "ip", config.IP, "systemID", systemID, "interface-id", targetInterfaceID)
+	}
+
 	return nil
 }
 
