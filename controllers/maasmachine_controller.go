@@ -494,7 +494,9 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		machineScope.SetNotReady()
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
 		if machineScope.GetDynamicLXD() {
-			_ = machineSvc.VerifyVMNetworkInterfaces(context.Background(), m.ID)
+			if err := machineSvc.VerifyVMNetworkInterfaces(context.Background(), m.ID); err != nil {
+				machineScope.Error(err, "Failed to verify VM network interfaces", "machineID", m.ID)
+			}
 		}
 	case s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
 		machineScope.SetNotReady()
