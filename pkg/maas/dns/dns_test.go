@@ -51,7 +51,7 @@ func TestDNS(t *testing.T) {
 		mockDNSResourceBuilder.EXPECT().WithFQDN(gomock.Any()).Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithAddressTTL("10").Return(mockDNSResourceBuilder)
 		mockDNSResourceBuilder.EXPECT().WithIPAddresses(nil).Return(mockDNSResourceBuilder)
-		mockDNSResourceBuilder.EXPECT().Create(context.Background())
+		mockDNSResourceBuilder.EXPECT().Create(context.TODO())
 		err := s.ReconcileDNS()
 
 		g.Expect(err).ToNot(HaveOccurred())
@@ -79,7 +79,7 @@ func TestDNS(t *testing.T) {
 		mockDNSResources.EXPECT().List(context.Background(), gomock.Any()).Return([]maasclient.DNSResource{mockDNSResource}, nil)
 		mockDNSResource.EXPECT().Modifier().Return(mockDNSResourceModifier)
 		mockDNSResourceModifier.EXPECT().SetIPAddresses([]string{"1.1.1.1", "8.8.8.8"}).Return(mockDNSResourceModifier)
-		mockDNSResourceModifier.EXPECT().Modify(context.Background()).Return(mockDNSResource, nil)
+		mockDNSResourceModifier.EXPECT().Modify(context.TODO()).Return(mockDNSResource, nil)
 
 		err := s.UpdateDNSAttachments([]string{"1.1.1.1", "8.8.8.8"})
 

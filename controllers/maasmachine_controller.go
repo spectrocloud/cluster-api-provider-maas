@@ -20,8 +20,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
 	"time"
+
+	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -254,7 +255,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	m, err := r.findMachine(machineScope, machineSvc)
 	if err != nil {
 		machineScope.Error(err, "unable to find m")
-		conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineNotFoundReason, err.Error())
+		conditions.MarkUnknown(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineNotFoundReason, "%v", err)
 		return ctrl.Result{}, err
 	}
 
@@ -273,7 +274,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
 			machineScope.Error(err, "unable to create m")
-			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, "%v", err)
 			return ctrl.Result{}, err
 		}
 	}

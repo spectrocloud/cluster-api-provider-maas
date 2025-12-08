@@ -50,6 +50,11 @@ spec:
                     description: Spec is the specification of the desired behavior
                       of the machine.
                     properties:
+                      deployInMemory:
+                        default: false
+                        description: DeployInMemory indicates to maas to deploy machine
+                          in memory
+                        type: boolean
                       failureDomain:
                         description: |-
                           FailureDomain is the failure domain the machine will be created in.
