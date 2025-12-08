@@ -607,20 +607,24 @@ func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string
 	}
 
 	var aggErr error
-	if eth0Iface != nil && !strings.EqualFold(eth0Subnet, expected0) {
-		if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0"); err != nil {
-			s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
-			aggErr = errors.Wrap(err, "eth0 subnet correction failed")
+	if eth0Iface != nil {
+		if eth0Subnet == "" || !strings.EqualFold(eth0Subnet, expected0) {
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0"); err != nil {
+				s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
+				aggErr = errors.Wrap(err, "eth0 subnet correction failed")
+			}
 		}
 	}
 
-	if eth1Iface != nil && !strings.EqualFold(eth1Subnet, expected1) {
-		if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1"); err != nil {
-			s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
-			if aggErr != nil {
-				aggErr = errors.Wrap(aggErr, err.Error())
-			} else {
-				aggErr = errors.Wrap(err, "eth1 subnet correction failed")
+	if eth1Iface != nil {
+		if eth1Subnet == "" || !strings.EqualFold(eth1Subnet, expected1) {
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1"); err != nil {
+				s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
+				if aggErr != nil {
+					aggErr = errors.Wrap(aggErr, err.Error())
+				} else {
+					aggErr = errors.Wrap(err, "eth1 subnet correction failed")
+				}
 			}
 		}
 	}
