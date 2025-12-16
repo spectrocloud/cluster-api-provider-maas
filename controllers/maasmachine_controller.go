@@ -379,7 +379,7 @@ func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, ma
 	return m, nil
 }
 
-func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasMachineReconciler) reconcileNormal(ctx context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	machineScope.Info("Reconciling MaasMachine")
 
 	maasMachine := machineScope.MaasMachine
@@ -443,7 +443,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		// This ensures correct subnet assignment before deployment starts
 		if m != nil && m.State == infrav1beta1.MachineStateReady && machineScope.GetDynamicLXD() {
 			machineScope.Info("Machine is in Ready state, verifying network interfaces before deployment", "machineID", m.ID)
-			if err := machineSvc.VerifyVMNetworkInterfaces(context.Background(), m.ID); err != nil {
+			if err := machineSvc.VerifyVMNetworkInterfaces(ctx, m.ID); err != nil {
 				machineScope.Error(err, "Failed to verify VM network interfaces in Ready state, requeuing", "machineID", m.ID)
 				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "verifying network interfaces")
 				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
@@ -508,7 +508,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		// Note: Network interface verification happens before deployment is triggered (see above).
 		// This is a safety check in case the machine reached Ready state through a different path.
 		if machineScope.GetDynamicLXD() {
-			if err := machineSvc.VerifyVMNetworkInterfaces(context.Background(), m.ID); err != nil {
+			if err := machineSvc.VerifyVMNetworkInterfaces(ctx, m.ID); err != nil {
 				machineScope.Error(err, "Failed to verify VM network interfaces in Ready state (safety check)", "machineID", m.ID)
 				// Requeue to retry verification - deployment should not proceed until interfaces are correct
 				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
