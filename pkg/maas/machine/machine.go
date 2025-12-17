@@ -564,7 +564,7 @@ func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string
 
 	subnets := strings.Split(strings.TrimSpace(mm.Spec.LXD.VMConfig.Network), ",")
 	if len(subnets) != 2 {
-		s.scope.Info("VMConfig.Network should contain exactly 2 comma-separated subnets (e.g., 'subnetA,subnetB'). Got: %q (%d subnets)", mm.Spec.LXD.VMConfig.Network, len(subnets))
+		s.scope.Info("VMConfig.Network should contain exactly 2 comma-separated subnets", "network", mm.Spec.LXD.VMConfig.Network, "count", len(subnets))
 		return nil
 	}
 
