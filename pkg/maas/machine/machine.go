@@ -290,6 +290,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
+
 		if s.scope.IsControlPlane() {
 			if staticIP := s.scope.GetStaticIP(); staticIP != "" {
 				if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
@@ -538,6 +539,199 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		res.AvailabilityZone = zone
 	}
 	return res, nil
+}
+
+// getSubnetCIDR safely extracts CIDR from a subnet, handling nil pointer panics
+func (s *Service) getSubnetCIDR(subnet maasclient.Subnet) string {
+	if subnet == nil {
+		return ""
+	}
+	// Use recover to handle typed nil interfaces that pass != nil check
+	defer func() {
+		if r := recover(); r != nil {
+			s.scope.V(1).Info("Panic while getting subnet CIDR", "panic", r)
+		}
+	}()
+	return subnet.CIDR()
+}
+
+// VerifyVMNetworkInterfaces verifies and fixes LXD VM network interfaces to have expected subnets after commissioning.
+func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string) error {
+	mm := s.scope.MaasMachine
+	if mm.Spec.LXD == nil || mm.Spec.LXD.VMConfig == nil || mm.Spec.LXD.VMConfig.Network == "" {
+		return nil
+	}
+
+	subnets := strings.Split(strings.TrimSpace(mm.Spec.LXD.VMConfig.Network), ",")
+	if len(subnets) != 2 {
+		s.scope.Info("VMConfig.Network should contain exactly 2 comma-separated subnets (e.g., 'subnetA,subnetB'). Got: %q (%d subnets)", mm.Spec.LXD.VMConfig.Network, len(subnets))
+		return nil
+	}
+
+	expected0, expected1 := strings.TrimSpace(subnets[0]), strings.TrimSpace(subnets[1])
+	if expected0 == "" || expected1 == "" {
+		return nil
+	}
+
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get machine state: %w", err)
+	}
+
+	machineState := machine.State()
+	allowedStates := map[string]bool{"New": true, "Ready": true, "Allocated": true, "Broken": true}
+	if !allowedStates[machineState] {
+		s.scope.Info("Skipping VM network interface verification - machine not in allowed state", "system-id", systemID, "state", machineState, "allowed-states", []string{"New", "Ready", "Allocated", "Broken"})
+		return nil
+	}
+
+	s.scope.Info("Verifying VM network interfaces", "system-id", systemID, "state", machineState, "expected-subnets", fmt.Sprintf("%s,%s", expected0, expected1))
+
+	// Fetch network interfaces - refetch if we encounter issues with subnet data
+	interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+	if err != nil {
+		return fmt.Errorf("failed to get network interfaces: %w", err)
+	}
+
+	var eth0Iface, eth1Iface maasclient.NetworkInterface
+	var eth0Subnet, eth1Subnet string
+	needsRefetch := false
+
+	// First pass: try to extract subnet information
+	for _, iface := range interfaces {
+		name := iface.Name()
+		if name == "eth0" {
+			eth0Iface = iface
+			for _, link := range iface.Links() {
+				subnet := link.Subnet()
+				if subnet != nil {
+					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+						eth0Subnet = cidr
+						break
+					} else {
+						needsRefetch = true
+					}
+				}
+			}
+		} else if name == "eth1" {
+			eth1Iface = iface
+			for _, link := range iface.Links() {
+				subnet := link.Subnet()
+				if subnet != nil {
+					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+						eth1Subnet = cidr
+						break
+					} else {
+						needsRefetch = true
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't get subnet info and suspect stale data, refetch interfaces once
+	if needsRefetch && (eth0Subnet == "" || eth1Subnet == "") {
+		s.scope.Info("Refetching network interfaces due to incomplete subnet data", "system-id", systemID)
+		interfaces, err = s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+		if err != nil {
+			return fmt.Errorf("failed to refetch network interfaces: %w", err)
+		}
+
+		// Reset and retry extraction
+		eth0Subnet, eth1Subnet = "", ""
+		for _, iface := range interfaces {
+			name := iface.Name()
+			if name == "eth0" && eth0Subnet == "" {
+				eth0Iface = iface
+				for _, link := range iface.Links() {
+					subnet := link.Subnet()
+					if subnet != nil {
+						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+							eth0Subnet = cidr
+							break
+						}
+					}
+				}
+			} else if name == "eth1" && eth1Subnet == "" {
+				eth1Iface = iface
+				for _, link := range iface.Links() {
+					subnet := link.Subnet()
+					if subnet != nil {
+						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+							eth1Subnet = cidr
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var aggErr error
+	if eth0Iface != nil {
+		if eth0Subnet == "" || !strings.EqualFold(eth0Subnet, expected0) {
+			s.scope.Info("Fixing eth0 subnet mismatch", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0"); err != nil {
+				s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
+				aggErr = errors.Wrap(err, "eth0 subnet correction failed")
+			} else {
+				s.scope.Info("Successfully fixed eth0 subnet", "system-id", systemID, "subnet", expected0)
+			}
+		} else {
+			s.scope.V(1).Info("eth0 subnet is correct", "system-id", systemID, "subnet", eth0Subnet)
+		}
+	} else {
+		s.scope.Info("eth0 interface not found, skipping verification", "system-id", systemID)
+	}
+
+	if eth1Iface != nil {
+		if eth1Subnet == "" || !strings.EqualFold(eth1Subnet, expected1) {
+			s.scope.Info("Fixing eth1 subnet mismatch", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1"); err != nil {
+				s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
+				if aggErr != nil {
+					aggErr = errors.Wrap(aggErr, err.Error())
+				} else {
+					aggErr = errors.Wrap(err, "eth1 subnet correction failed")
+				}
+			} else {
+				s.scope.Info("Successfully fixed eth1 subnet", "system-id", systemID, "subnet", expected1)
+			}
+		} else {
+			s.scope.V(1).Info("eth1 subnet is correct", "system-id", systemID, "subnet", eth1Subnet)
+		}
+	} else {
+		s.scope.Info("eth1 interface not found, skipping verification", "system-id", systemID)
+	}
+
+	if aggErr == nil {
+		s.scope.Info("VM network interfaces verified successfully", "system-id", systemID)
+	}
+
+	return aggErr
+}
+
+func (s *Service) fixInterfaceSubnet(ctx context.Context, systemID string, iface maasclient.NetworkInterface, expectedSubnetIdentifier, ifaceName string) error {
+	interfaceID := iface.ID()
+	ifaceClient := s.maasClient.NetworkInterfaces().Interface(systemID, interfaceID)
+
+	// Unlink all existing subnets from this interface
+	for _, link := range iface.Links() {
+		if link.Subnet() != nil {
+			if err := ifaceClient.UnlinkSubnet(ctx, link.ID()); err != nil {
+				return fmt.Errorf("failed to unlink subnet from %s: %w", ifaceName, err)
+			}
+		}
+	}
+
+	// Link the subnet with auto IP assignment (empty string means auto/DHCP)
+	// The MAAS API accepts subnet names, CIDRs, or IDs directly
+	if err := ifaceClient.LinkSubnet(ctx, expectedSubnetIdentifier, ""); err != nil {
+		return fmt.Errorf("failed to link subnet %s to %s: %w", expectedSubnetIdentifier, ifaceName, err)
+	}
+
+	s.scope.Info("Fixed subnet on interface", "system-id", systemID, "interface", ifaceName, "subnet", expectedSubnetIdentifier)
+	return nil
 }
 
 // findExistingVMByHostname searches for an existing VM in MAAS by hostname
