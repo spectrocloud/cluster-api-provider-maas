@@ -224,7 +224,7 @@ INIT_IMAGE_NAME ?= "lxd-initializer"
 INIT_IMG_TAG    ?= $(IMG_TAG)          # reuse the same tag as controller
 INIT_DRI_IMG    ?= us-east1-docker.pkg.dev/spectro-images/dev/$(USER)/cluster-api/$(INIT_IMAGE_NAME)
 # Release image for LXD initializer (without tag)
-INIT_RELEASE_IMG ?= us-east1-docker.pkg.dev/spectro-images/cluster-api/$(INIT_IMAGE_NAME)
+INIT_RELEASE_IMG ?= us-east1-docker.pkg.dev/spectro-images/dev/cluster-api/$(INIT_IMAGE_NAME)
 
 .PHONY: lxd-initializer-docker-build
 lxd-initializer-docker-build: generate-lxd-template ## Build LXD initializer image (ensures template is processed first)
