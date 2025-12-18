@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -289,6 +290,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
+
 		if s.scope.IsControlPlane() {
 			if staticIP := s.scope.GetStaticIP(); staticIP != "" {
 				if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
@@ -439,64 +441,77 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		Set("zone", fmt.Sprintf("%d", zoneID)).
 		Set("pool", fmt.Sprintf("%d", poolID))
 
+	// If spec.LXD.VMConfig.Network is present, check if its values are separated by ","
+	// The values are subnet names that will be passed to compose LXD VMs
+	// Maximum number of subnets is 2
+	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.Network != "" {
+		networkStr := strings.TrimSpace(mm.Spec.LXD.VMConfig.Network)
+		// Split by comma to get individual subnet names
+		subnets := strings.Split(networkStr, ",")
+		// Only set interfaces when there are exactly 2 subnets
+		if len(subnets) == 2 {
+			subnet0 := strings.TrimSpace(subnets[0])
+			subnet1 := strings.TrimSpace(subnets[1])
+			if subnet0 == "" || subnet1 == "" {
+				s.scope.Info("Skipping setting network interfaces due to empty subnet name(s)", "subnet0", subnet0, "subnet1", subnet1)
+			} else {
+				// Build interfaces parameter: eth0 gets first subnet (MAAS management), eth1 gets second subnet
+				// Format: "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>" or
+				//         "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>,ip=<static-ip>" if static IP is configured
+				interfacesParam := fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s", subnet0, subnet1)
+
+				// Check if static IP is configured for control-plane - include it in compose parameter
+				staticIP := ""
+				if s.scope.IsControlPlane() && s.scope.GetStaticIP() != "" {
+					staticIP = s.scope.GetStaticIP()
+					// Include static IP in the compose parameter: eth1:subnet=<subnet>,ip=<ip>
+					interfacesParam = fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s,ip=%s", subnet0, subnet1, staticIP)
+				}
+
+				params.Set("interfaces", interfacesParam)
+				if staticIP != "" {
+					s.scope.Info("Setting network interfaces for VM composition with static IP", "interfaces", interfacesParam, "static-ip", staticIP)
+				} else {
+					s.scope.Info("Setting network interfaces for VM composition", "interfaces", interfacesParam)
+				}
+			}
+		} else {
+			s.scope.Info("Network configuration ignored: expected exactly 2 subnets, got", "count", len(subnets), "network", networkStr)
+		}
+	}
+
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
-		// If hostname already exists, reuse that VM
 		errStr := err.Error()
-		if strings.Contains(strings.ToLower(errStr), "hostname") && strings.Contains(strings.ToLower(errStr), "already exists") {
-			// First try global machines list
-			if all, aerr := s.maasClient.Machines().List(ctx, nil); aerr == nil {
-				for _, cand := range all {
-					cid := cand.SystemID()
-					if cid == "" {
-						continue
-					}
-					cDet, cg := s.maasClient.Machines().Machine(cid).Get(ctx)
-					if cg == nil && strings.EqualFold(cDet.Hostname(), vmName) {
-						s.scope.SetSystemID(cDet.SystemID())
-						s.scope.SetProviderID(cDet.SystemID(), zone)
-						if zone != "" {
-							s.scope.SetFailureDomain(zone)
-						}
-						_ = s.scope.PatchObject()
-						s.scope.Info("Reusing existing VM by hostname (pre-bootstrap)", "system-id", cDet.SystemID())
-						res := fromSDKTypeToMachine(cDet)
-						if res.AvailabilityZone == "" {
-							res.AvailabilityZone = zone
-						}
-						return res, nil
-					}
-				}
+
+		// Check for network mismatch error - the selected host doesn't have access to requested networks
+		if strings.Contains(errStr, "does not match the specified networks") || strings.Contains(errStr, "pod does not match") {
+			requestedNetworks := ""
+			if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.Network != "" {
+				requestedNetworks = mm.Spec.LXD.VMConfig.Network
 			}
-			// Then try host-local list
-			if list, lerr := selectedHost.Machines().List(ctx); lerr == nil {
-				for _, ex := range list {
-					exID := ex.SystemID()
-					if exID == "" {
-						continue
-					}
-					// fetch details to get hostname
-					exDet, gerr := s.maasClient.Machines().Machine(exID).Get(ctx)
-					if gerr != nil {
-						continue
-					}
-					if strings.EqualFold(exDet.Hostname(), vmName) {
-						s.scope.SetSystemID(exDet.SystemID())
-						s.scope.SetProviderID(exDet.SystemID(), zone)
-						if zone != "" {
-							s.scope.SetFailureDomain(zone)
-						}
-						_ = s.scope.PatchObject()
-						s.scope.Info("Reusing existing VM by hostname (pre-bootstrap)", "system-id", exDet.SystemID())
-						res := fromSDKTypeToMachine(exDet)
-						if res.AvailabilityZone == "" {
-							res.AvailabilityZone = zone
-						}
-						return res, nil
-					}
-				}
+			return nil, fmt.Errorf("selected LXD host %q (ID: %s) does not have access to the requested networks %q. "+
+				"This host may be in a different zone/fabric or the networks may not be configured on this host. "+
+				"Zone: %s, Resource Pool: %s. Error: %w",
+				selectedHost.Name(), selectedHost.SystemID(), requestedNetworks, zone, resourcePool, err)
+		}
+
+		// Check for instance/hostname already exists errors - try to reuse existing VM
+		isHostnameExists := strings.Contains(strings.ToLower(errStr), "hostname") && strings.Contains(strings.ToLower(errStr), "already exists")
+		isInstanceExists := strings.Contains(errStr, "Instance") && strings.Contains(errStr, "already exists")
+
+		if isHostnameExists || isInstanceExists {
+			if existingVM, findErr := s.findExistingVMByHostname(ctx, vmName, selectedHost, zone); findErr == nil && existingVM != nil {
+				return existingVM, nil
 			}
+
+			// If LXD instance exists but not found in MAAS, provide helpful error
+			if isInstanceExists {
+				return nil, fmt.Errorf("LXD instance %q already exists on host %q but is not registered in MAAS. "+
+					"This may indicate a stale LXD instance. Manual cleanup may be required. Error: %w", vmName, selectedHost.Name(), err)
+			}
+
 			return nil, errors.Wrap(err, "failed to compose VM on LXD host")
 		}
 
@@ -526,10 +541,310 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	return res, nil
 }
 
+// getSubnetCIDR safely extracts CIDR from a subnet, handling nil pointer panics
+func (s *Service) getSubnetCIDR(subnet maasclient.Subnet) string {
+	if subnet == nil {
+		return ""
+	}
+	// Use recover to handle typed nil interfaces that pass != nil check
+	defer func() {
+		if r := recover(); r != nil {
+			s.scope.V(1).Info("Panic while getting subnet CIDR", "panic", r)
+		}
+	}()
+	return subnet.CIDR()
+}
+
+// VerifyVMNetworkInterfaces verifies and fixes LXD VM network interfaces to have expected subnets after commissioning.
+func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string) error {
+	mm := s.scope.MaasMachine
+	if mm.Spec.LXD == nil || mm.Spec.LXD.VMConfig == nil || mm.Spec.LXD.VMConfig.Network == "" {
+		return nil
+	}
+
+	subnets := strings.Split(strings.TrimSpace(mm.Spec.LXD.VMConfig.Network), ",")
+	if len(subnets) != 2 {
+		s.scope.Info("VMConfig.Network should contain exactly 2 comma-separated subnets", "network", mm.Spec.LXD.VMConfig.Network, "count", len(subnets))
+		return nil
+	}
+
+	expected0, expected1 := strings.TrimSpace(subnets[0]), strings.TrimSpace(subnets[1])
+	if expected0 == "" || expected1 == "" {
+		return nil
+	}
+
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get machine state: %w", err)
+	}
+
+	machineState := machine.State()
+	allowedStates := map[string]bool{"New": true, "Ready": true, "Allocated": true, "Broken": true}
+	if !allowedStates[machineState] {
+		s.scope.Info("Skipping VM network interface verification - machine not in allowed state", "system-id", systemID, "state", machineState, "allowed-states", []string{"New", "Ready", "Allocated", "Broken"})
+		return nil
+	}
+
+	s.scope.Info("Verifying VM network interfaces", "system-id", systemID, "state", machineState, "expected-subnets", fmt.Sprintf("%s,%s", expected0, expected1))
+
+	// Fetch network interfaces - refetch if we encounter issues with subnet data
+	interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+	if err != nil {
+		return fmt.Errorf("failed to get network interfaces: %w", err)
+	}
+
+	var eth0Iface, eth1Iface maasclient.NetworkInterface
+	var eth0Subnet, eth1Subnet string
+	needsRefetch := false
+
+	// First pass: try to extract subnet information
+	for _, iface := range interfaces {
+		name := iface.Name()
+		if name == "eth0" {
+			eth0Iface = iface
+			for _, link := range iface.Links() {
+				subnet := link.Subnet()
+				if subnet != nil {
+					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+						eth0Subnet = cidr
+						break
+					} else {
+						needsRefetch = true
+					}
+				}
+			}
+		} else if name == "eth1" {
+			eth1Iface = iface
+			for _, link := range iface.Links() {
+				subnet := link.Subnet()
+				if subnet != nil {
+					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+						eth1Subnet = cidr
+						break
+					} else {
+						needsRefetch = true
+					}
+				}
+			}
+		}
+	}
+
+	// If we couldn't get subnet info and suspect stale data, refetch interfaces once
+	if needsRefetch && (eth0Subnet == "" || eth1Subnet == "") {
+		s.scope.Info("Refetching network interfaces due to incomplete subnet data", "system-id", systemID)
+		interfaces, err = s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+		if err != nil {
+			return fmt.Errorf("failed to refetch network interfaces: %w", err)
+		}
+
+		// Reset and retry extraction
+		eth0Subnet, eth1Subnet = "", ""
+		for _, iface := range interfaces {
+			name := iface.Name()
+			if name == "eth0" && eth0Subnet == "" {
+				eth0Iface = iface
+				for _, link := range iface.Links() {
+					subnet := link.Subnet()
+					if subnet != nil {
+						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+							eth0Subnet = cidr
+							break
+						}
+					}
+				}
+			} else if name == "eth1" && eth1Subnet == "" {
+				eth1Iface = iface
+				for _, link := range iface.Links() {
+					subnet := link.Subnet()
+					if subnet != nil {
+						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
+							eth1Subnet = cidr
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	var aggErr error
+	if eth0Iface != nil {
+		if eth0Subnet == "" || !strings.EqualFold(eth0Subnet, expected0) {
+			s.scope.Info("Fixing eth0 subnet mismatch", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0"); err != nil {
+				s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
+				aggErr = errors.Wrap(err, "eth0 subnet correction failed")
+			} else {
+				s.scope.Info("Successfully fixed eth0 subnet", "system-id", systemID, "subnet", expected0)
+			}
+		} else {
+			s.scope.V(1).Info("eth0 subnet is correct", "system-id", systemID, "subnet", eth0Subnet)
+		}
+	} else {
+		s.scope.Info("eth0 interface not found, skipping verification", "system-id", systemID)
+	}
+
+	if eth1Iface != nil {
+		if eth1Subnet == "" || !strings.EqualFold(eth1Subnet, expected1) {
+			s.scope.Info("Fixing eth1 subnet mismatch", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
+			if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1"); err != nil {
+				s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
+				if aggErr != nil {
+					aggErr = errors.Wrap(aggErr, err.Error())
+				} else {
+					aggErr = errors.Wrap(err, "eth1 subnet correction failed")
+				}
+			} else {
+				s.scope.Info("Successfully fixed eth1 subnet", "system-id", systemID, "subnet", expected1)
+			}
+		} else {
+			s.scope.V(1).Info("eth1 subnet is correct", "system-id", systemID, "subnet", eth1Subnet)
+		}
+	} else {
+		s.scope.Info("eth1 interface not found, skipping verification", "system-id", systemID)
+	}
+
+	if aggErr == nil {
+		s.scope.Info("VM network interfaces verified successfully", "system-id", systemID)
+	}
+
+	return aggErr
+}
+
+func (s *Service) fixInterfaceSubnet(ctx context.Context, systemID string, iface maasclient.NetworkInterface, expectedSubnetIdentifier, ifaceName string) error {
+	interfaceID := iface.ID()
+	ifaceClient := s.maasClient.NetworkInterfaces().Interface(systemID, interfaceID)
+
+	// Unlink all existing subnets from this interface
+	for _, link := range iface.Links() {
+		if link.Subnet() != nil {
+			if err := ifaceClient.UnlinkSubnet(ctx, link.ID()); err != nil {
+				return fmt.Errorf("failed to unlink subnet from %s: %w", ifaceName, err)
+			}
+		}
+	}
+
+	// Link the subnet with auto IP assignment (empty string means auto/DHCP)
+	// The MAAS API accepts subnet names, CIDRs, or IDs directly
+	if err := ifaceClient.LinkSubnet(ctx, expectedSubnetIdentifier, ""); err != nil {
+		return fmt.Errorf("failed to link subnet %s to %s: %w", expectedSubnetIdentifier, ifaceName, err)
+	}
+
+	s.scope.Info("Fixed subnet on interface", "system-id", systemID, "interface", ifaceName, "subnet", expectedSubnetIdentifier)
+	return nil
+}
+
+// findExistingVMByHostname searches for an existing VM in MAAS by hostname
+// Returns the machine if found, nil otherwise
+func (s *Service) findExistingVMByHostname(ctx context.Context, vmName string, selectedHost maasclient.VMHost, zone string) (*infrav1beta1.Machine, error) {
+	// First try global machines list
+	if all, err := s.maasClient.Machines().List(ctx, nil); err == nil {
+		for _, cand := range all {
+			cid := cand.SystemID()
+			if cid == "" {
+				continue
+			}
+			cDet, err := s.maasClient.Machines().Machine(cid).Get(ctx)
+			if err == nil && strings.EqualFold(cDet.Hostname(), vmName) {
+				return s.reuseExistingVM(cDet, zone)
+			}
+		}
+	}
+
+	// Then try host-local list
+	if list, err := selectedHost.Machines().List(ctx); err == nil {
+		for _, ex := range list {
+			exID := ex.SystemID()
+			if exID == "" {
+				continue
+			}
+			exDet, err := s.maasClient.Machines().Machine(exID).Get(ctx)
+			if err == nil && strings.EqualFold(exDet.Hostname(), vmName) {
+				return s.reuseExistingVM(exDet, zone)
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+// reuseExistingVM sets the system ID and provider ID for an existing VM and returns it
+func (s *Service) reuseExistingVM(m maasclient.Machine, zone string) (*infrav1beta1.Machine, error) {
+	s.scope.SetSystemID(m.SystemID())
+	s.scope.SetProviderID(m.SystemID(), zone)
+	if zone != "" {
+		s.scope.SetFailureDomain(zone)
+	}
+	_ = s.scope.PatchObject()
+	s.scope.Info("Reusing existing VM by hostname", "system-id", m.SystemID())
+	res := fromSDKTypeToMachine(m)
+	if res.AvailabilityZone == "" {
+		res.AvailabilityZone = zone
+	}
+	return res, nil
+}
+
 // setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
 // It first checks if the IP is already allocated elsewhere and releases it if necessary
 func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
 	ctx := context.TODO()
+
+	// Check machine state - MAAS only allows network interface changes in specific states
+	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get machine state: %w", err)
+	}
+	machineState := machine.State()
+
+	// MAAS allows unlinking subnet interfaces only when machine is in: New, Ready, Allocated, or Broken
+	allowedStates := map[string]bool{
+		"New":       true,
+		"Ready":     true,
+		"Allocated": true,
+		"Broken":    true,
+	}
+
+	if !allowedStates[machineState] {
+		s.scope.Info("Machine is not in a state that allows network configuration changes", "state", machineState, "systemID", systemID)
+
+		// Special handling for Commissioning state: skip static IP configuration to avoid blocking commissioning
+		if machineState == "Commissioning" {
+			s.scope.Info("Machine is commissioning, skipping static IP configuration to avoid interfering with commissioning process. Will configure after commissioning completes", "systemID", systemID)
+			// Return error to requeue - static IP will be configured after commissioning completes
+			return fmt.Errorf("machine is commissioning, static IP configuration will be retried after commissioning completes")
+		}
+
+		// For other non-allowed states, check if static IP is already correctly configured
+		// If already configured, we can skip the update
+		interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+		if err == nil {
+			staticIP := net.ParseIP(config.IP)
+			if staticIP != nil {
+				for _, iface := range interfaces {
+					links := iface.Links()
+					for _, link := range links {
+						if link.Mode() == "static" && link.IPAddress() != nil {
+							existingIP := link.IPAddress().String()
+							if existingIP == config.IP {
+								if link.Subnet() != nil {
+									subnetCIDR := link.Subnet().CIDR()
+									if subnetCIDR != "" {
+										_, subnetIPNet, err := net.ParseCIDR(subnetCIDR)
+										if err == nil && subnetIPNet.Contains(staticIP) {
+											s.scope.Info("Static IP already correctly configured, skipping update due to machine state", "ip", config.IP, "state", machineState, "systemID", systemID)
+											return nil
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		// If not already configured, return error to requeue and retry when machine reaches allowed state
+		return fmt.Errorf("machine is in state %s which does not allow network interface changes (allowed states: New, Ready, Allocated, Broken). Will retry when machine reaches an allowed state", machineState)
+	}
 
 	// Check if the IP is already allocated elsewhere
 	s.scope.V(1).Info("Checking existing IP allocation", "ip", config.IP)
@@ -553,14 +868,129 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
 	}
 
-	// Now set the static IP on the target machine's boot interface
-	s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
-	err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
-	if err != nil {
-		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+	// Parse the static IP address
+	staticIP := net.ParseIP(config.IP)
+	if staticIP == nil {
+		return fmt.Errorf("invalid IP address: %s", config.IP)
 	}
 
-	s.scope.Info("Static IP configured successfully", "ip", config.IP, "systemID", systemID)
+	// Find the correct interface with matching subnet CIDR, or fallback to boot interface
+	var targetInterfaceID string
+	var useBootInterface bool
+
+	// Always fetch all interfaces to find the one with matching subnet
+	interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
+	if err != nil {
+		s.scope.Error(err, "Failed to get interfaces, falling back to boot interface", "systemID", systemID)
+		useBootInterface = true
+	} else {
+		// Find interface with subnet that contains the static IP
+		found := false
+		for _, iface := range interfaces {
+			links := iface.Links()
+			for _, link := range links {
+				if link.Subnet() != nil {
+					subnetCIDR := link.Subnet().CIDR()
+					if subnetCIDR != "" {
+						_, subnetIPNet, err := net.ParseCIDR(subnetCIDR)
+						if err == nil {
+							// Check if static IP is within this subnet
+							if subnetIPNet.Contains(staticIP) {
+								targetInterfaceID = iface.ID()
+								found = true
+								s.scope.Info("Found interface with matching subnet for static IP", "interface-id", targetInterfaceID, "interface-name", iface.Name(), "subnet-cidr", subnetCIDR, "static-ip", config.IP)
+								break
+							}
+						}
+					}
+				}
+			}
+			if found {
+				break
+			}
+		}
+
+		if !found {
+			// If CIDR was provided, also check for exact CIDR match
+			if config.CIDR != "" {
+				// Validate CIDR format
+				if _, _, err := net.ParseCIDR(config.CIDR); err == nil {
+					for _, iface := range interfaces {
+						links := iface.Links()
+						for _, link := range links {
+							if link.Subnet() != nil {
+								subnetCIDR := link.Subnet().CIDR()
+								if subnetCIDR == config.CIDR {
+									targetInterfaceID = iface.ID()
+									found = true
+									s.scope.Info("Found interface with exact CIDR match", "interface-id", targetInterfaceID, "interface-name", iface.Name(), "subnet-cidr", subnetCIDR, "target-cidr", config.CIDR)
+									break
+								}
+							}
+						}
+						if found {
+							break
+						}
+					}
+				}
+			}
+
+			if !found {
+				s.scope.Info("No interface found with matching subnet for static IP, falling back to boot interface", "static-ip", config.IP, "target-cidr", config.CIDR)
+				useBootInterface = true
+			}
+		}
+	}
+
+	// Set static IP on the selected interface
+	if useBootInterface {
+		s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
+		err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
+		if err != nil {
+			return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
+		}
+		s.scope.Info("Static IP configured successfully on boot interface", "ip", config.IP, "systemID", systemID)
+	} else {
+		// Get the target interface and check if static IP is already correctly configured
+		targetInterface := s.maasClient.NetworkInterfaces().Interface(systemID, targetInterfaceID)
+		targetInterface, err = targetInterface.Get(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get interface %s for machine %s: %w", targetInterfaceID, systemID, err)
+		}
+
+		// Check if the static IP is already correctly configured on this interface
+		alreadyConfigured := false
+		links := targetInterface.Links()
+		for _, link := range links {
+			if link.Mode() == "static" && link.IPAddress() != nil {
+				existingIP := link.IPAddress().String()
+				if existingIP == config.IP {
+					// Check if the subnet matches
+					if link.Subnet() != nil {
+						subnetCIDR := link.Subnet().CIDR()
+						if subnetCIDR != "" {
+							_, subnetIPNet, err := net.ParseCIDR(subnetCIDR)
+							if err == nil && subnetIPNet.Contains(staticIP) {
+								alreadyConfigured = true
+								s.scope.Info("Static IP already correctly configured on interface", "ip", config.IP, "interface-id", targetInterfaceID, "interface-name", targetInterface.Name(), "systemID", systemID)
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if !alreadyConfigured {
+			s.scope.Info("Setting static IP on interface", "ip", config.IP, "systemID", systemID, "interface-id", targetInterfaceID)
+			err = targetInterface.SetStaticIP(ctx, config.IP)
+			if err != nil {
+				return fmt.Errorf("failed to set static IP %s on interface %s for machine %s: %w", config.IP, targetInterfaceID, systemID, err)
+			}
+			s.scope.Info("Static IP configured successfully on interface", "ip", config.IP, "systemID", systemID, "interface-id", targetInterfaceID)
+		}
+	}
+
 	return nil
 }
 
