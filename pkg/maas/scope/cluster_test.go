@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta1 "github.com/cloud104/cluster-api-provider-maas/api/v1beta1"
 )
 
 func TestNewCluster(t *testing.T) {

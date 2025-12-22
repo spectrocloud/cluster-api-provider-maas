@@ -17,7 +17,7 @@ limitations under the License.
 package scope
 
 import (
-	"github.com/spectrocloud/maas-client-go/maasclient"
+	"github.com/cloud104/maas-client-go/maasclient"
 	"os"
 )
 

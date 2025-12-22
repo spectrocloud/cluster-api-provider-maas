@@ -41,11 +41,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
-	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	//infrav1alpha3 "github.com/cloud104/cluster-api-provider-maas/api/v1alpha3"
+	infrav1beta1 "github.com/cloud104/cluster-api-provider-maas/api/v1beta1"
+	maasdns "github.com/cloud104/cluster-api-provider-maas/pkg/maas/dns"
+	maasmachine "github.com/cloud104/cluster-api-provider-maas/pkg/maas/machine"
+	"github.com/cloud104/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 var ErrRequeueDNS = errors.New("need to requeue DNS")

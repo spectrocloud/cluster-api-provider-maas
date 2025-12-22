@@ -1,17 +1,15 @@
-module github.com/spectrocloud/cluster-api-provider-maas
+module github.com/cloud104/cluster-api-provider-maas
 
-go 1.23.0
-
-toolchain go1.23.6
+go 1.24
 
 require (
+	github.com/cloud104/maas-client-go v1.0.0
 	github.com/go-logr/logr v1.4.2
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.1
 	github.com/pkg/errors v0.9.1
-	github.com/spectrocloud/maas-client-go v0.0.1-beta1.0.20230830132549-2f7491722359
 	github.com/spf13/pflag v1.0.5
 	k8s.io/api v0.31.3
 	k8s.io/apiextensions-apiserver v0.31.3
@@ -79,3 +77,6 @@ require (
 )
 
 replace sigs.k8s.io/structured-merge-diff/v4 => sigs.k8s.io/structured-merge-diff/v4 v4.4.3
+
+// TODO: remove this replacement when cloud104/maas-client-go v1.0.0 is released
+replace github.com/cloud104/maas-client-go v1.0.0 => ./../maas-client-go

@@ -1,5 +1,5 @@
 domain: cluster.x-k8s.io
-repo: github.com/spectrocloud/cluster-api-provider-maas
+repo: github.com/cloud104/cluster-api-provider-maas
 resources:
 - group: infrastructure
   kind: MaasCluster

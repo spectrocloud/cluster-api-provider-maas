@@ -40,10 +40,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+	infrav1beta1 "github.com/cloud104/cluster-api-provider-maas/api/v1beta1"
+	"github.com/cloud104/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/cloud104/cluster-api-provider-maas/pkg/maas/scope"
+	infrautil "github.com/cloud104/cluster-api-provider-maas/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
 

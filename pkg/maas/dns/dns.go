@@ -3,9 +3,9 @@ package dns
 import (
 	"context"
 	"github.com/pkg/errors"
-	infrainfrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
-	"github.com/spectrocloud/maas-client-go/maasclient"
+	infrainfrav1beta1 "github.com/cloud104/cluster-api-provider-maas/api/v1beta1"
+	"github.com/cloud104/cluster-api-provider-maas/pkg/maas/scope"
+	"github.com/cloud104/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 

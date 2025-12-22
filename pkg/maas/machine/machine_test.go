@@ -11,8 +11,8 @@ import (
 	"k8s.io/klog/v2/klogr"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 
-	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
-	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
+	mockclientset "github.com/cloud104/cluster-api-provider-maas/pkg/maas/client/mock"
+	"github.com/cloud104/cluster-api-provider-maas/pkg/maas/scope"
 )
 
 func TestMachine(t *testing.T) {

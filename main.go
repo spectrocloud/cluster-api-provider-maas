@@ -27,7 +27,7 @@ import (
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
-	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
+	"github.com/cloud104/cluster-api-provider-maas/controllers"
 
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
-	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	infrav1beta1 "github.com/cloud104/cluster-api-provider-maas/api/v1beta1"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	webhookserver "sigs.k8s.io/controller-runtime/pkg/webhook"
 	// +kubebuilder:scaffold:imports
