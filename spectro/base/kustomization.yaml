@@ -6,6 +6,7 @@ commonLabels:
   control-plane: capmaas-controller-manager
 
 bases:
+  - ../../config/rbac
   - ../../config/manager
 
 patchesStrategicMerge:
