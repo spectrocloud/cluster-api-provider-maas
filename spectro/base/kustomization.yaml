@@ -5,6 +5,9 @@ namePrefix: capmaas-
 commonLabels:
   control-plane: capmaas-controller-manager
 
+resources:
+  - service_account.yaml
+
 bases:
   - ../../config/rbac
   - ../../config/manager
@@ -13,6 +16,7 @@ patchesStrategicMerge:
   - ../../config/default/manager_image_patch.yaml
   - ../../config/default/manager_pull_policy.yaml
   - ../../config/default/manager_credentials_patch.yaml
+  - manager_service_account_patch.yaml
 
 patchesJson6902:
   - target:
@@ -22,3 +26,27 @@ patchesJson6902:
       namespace: system
       version: v1
     path: patch_secret_credentials.yaml
+  - target:
+      group: rbac.authorization.k8s.io
+      kind: RoleBinding
+      name: leader-election-rolebinding
+      version: v1
+    path: patch_serviceaccount.yaml
+  - target:
+      group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+      name: manager-rolebinding
+      version: v1
+    path: patch_serviceaccount.yaml
+  - target:
+      group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+      name: proxy-rolebinding
+      version: v1
+    path: patch_serviceaccount.yaml
+  - target:
+      group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+      name: webhook-manager-rolebinding
+      version: v1
+    path: patch_serviceaccount.yaml
