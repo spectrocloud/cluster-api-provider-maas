@@ -1,3 +1,11 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    control-plane: capmaas-controller-manager
+  name: capmaas-manager
+  namespace: cluster-api-provider-maas-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -148,7 +156,7 @@ roleRef:
   name: capmaas-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: capmaas-manager
   namespace: cluster-api-provider-maas-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -163,7 +171,7 @@ roleRef:
   name: capmaas-manager-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: capmaas-manager
   namespace: cluster-api-provider-maas-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -178,7 +186,7 @@ roleRef:
   name: capmaas-proxy-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: capmaas-manager
   namespace: cluster-api-provider-maas-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -193,7 +201,7 @@ roleRef:
   name: capmaas-manager-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: capmaas-manager
   namespace: cluster-api-provider-maas-system
 ---
 apiVersion: v1
@@ -254,4 +262,5 @@ spec:
           requests:
             cpu: 200m
             memory: 20Mi
+      serviceAccountName: capmaas-manager
       terminationGracePeriodSeconds: 10
