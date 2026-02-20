@@ -286,6 +286,11 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get existing VM by system-id")
 		}
+		// Verify and fix network interfaces (eth0/eth1 subnets) before deploy so that even if MAAS
+		// selected the wrong subnet for eth0 after commissioning/acquire, we correct it before deploy.
+		if err := s.VerifyVMNetworkInterfaces(ctx, m.SystemID()); err != nil {
+			return nil, errors.Wrap(err, "failed to verify VM network interfaces before deploy")
+		}
 		// Best-effort: set hostname and static IP before deploy
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
@@ -667,9 +672,27 @@ func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string
 		}
 	}
 
+	// subnetsMatch returns true if actual and expected represent the same subnet (CIDR or name).
+	subnetsMatch := func(actual, expected string) bool {
+		if actual == "" || expected == "" {
+			return false
+		}
+		if strings.EqualFold(actual, expected) {
+			return true
+		}
+		// If both parse as CIDR, compare by network equality (robust to formatting)
+		_, actualNet, err1 := net.ParseCIDR(actual)
+		_, expectedNet, err2 := net.ParseCIDR(expected)
+		if err1 == nil && err2 == nil && actualNet != nil && expectedNet != nil {
+			return actualNet.IP.Equal(expectedNet.IP) && actualNet.Mask != nil && expectedNet.Mask != nil &&
+				string(actualNet.Mask) == string(expectedNet.Mask)
+		}
+		return false
+	}
+
 	var aggErr error
 	if eth0Iface != nil {
-		if eth0Subnet == "" || !strings.EqualFold(eth0Subnet, expected0) {
+		if eth0Subnet == "" || !subnetsMatch(eth0Subnet, expected0) {
 			s.scope.Info("Fixing eth0 subnet mismatch", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
 			if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0"); err != nil {
 				s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
@@ -685,7 +708,7 @@ func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string
 	}
 
 	if eth1Iface != nil {
-		if eth1Subnet == "" || !strings.EqualFold(eth1Subnet, expected1) {
+		if eth1Subnet == "" || !subnetsMatch(eth1Subnet, expected1) {
 			s.scope.Info("Fixing eth1 subnet mismatch", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
 			if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1"); err != nil {
 				s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
