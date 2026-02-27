@@ -284,15 +284,17 @@ type SelectOptions struct {
 // candidateHost holds a VM host along with computed metrics for ranking.
 // The cpCount field is used for anti-affinity: hosts with lower cpCount are preferred
 // to spread control-plane VMs across multiple physical hosts.
+// The resourceScore combines available cores and memory into a single metric for ranking.
 type candidateHost struct {
-	host    maasclient.VMHost
-	cpCount int // number of CP VMs for the target cluster already on this host (0 = ideal for anti-affinity)
+	host          maasclient.VMHost
+	cpCount       int     // number of CP VMs for the target cluster already on this host (0 = ideal for anti-affinity)
+	resourceScore float64 // combined resource availability score (higher = more resources)
 }
 
 // SelectLXDHostWithMaasClient selects an LXD host based on SelectOptions.
 // It implements a filter-then-rank approach:
 //   - Filter: zone, pool, tags (all must match when set), resources, health, maintenance
-//   - Rank: fewer CP VMs for cluster → more available memory → more available cores → managed host
+//   - Rank: fewer CP VMs for cluster → combined resource score (cores + memory) → managed host
 //
 // No fallback or constraint relaxation: if no host passes all filters, an error is returned.
 func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclient.VMHost, opts SelectOptions) (maasclient.VMHost, error) {
@@ -314,26 +316,33 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 	}
 
 	// Filter phase: collect eligible hosts
+	log.Info("Starting host selection", "totalHosts", len(hosts), "opts", fmt.Sprintf("%+v", opts))
 	var candidates []candidateHost
 	for _, host := range hosts {
+		hostZone := ""
+		if host.Zone() != nil {
+			hostZone = host.Zone().Name()
+		}
+		hostPool := ""
+		if host.ResourcePool() != nil {
+			hostPool = host.ResourcePool().Name()
+		}
+		log.Info("Evaluating host", "name", host.Name(), "zone", hostZone, "pool", hostPool,
+			"tags", host.Tags(), "cores", host.AvailableCores(), "memory", host.AvailableMemory(),
+			"hostSystemID", host.HostSystemID())
+
 		// 1. Zone filter
 		if opts.Zone != "" {
-			hostZone := ""
-			if host.Zone() != nil {
-				hostZone = host.Zone().Name()
-			}
 			if hostZone != opts.Zone {
+				log.Info("Skipping host: zone mismatch", "host", host.Name(), "hostZone", hostZone, "requiredZone", opts.Zone)
 				continue
 			}
 		}
 
 		// 2. Resource pool filter
 		if opts.ResourcePool != "" {
-			hostPool := ""
-			if host.ResourcePool() != nil {
-				hostPool = host.ResourcePool().Name()
-			}
 			if hostPool != opts.ResourcePool {
+				log.Info("Skipping host: pool mismatch", "host", host.Name(), "hostPool", hostPool, "requiredPool", opts.ResourcePool)
 				continue
 			}
 		}
@@ -341,6 +350,7 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 		// 3. Tags filter: host must have ALL specified tags
 		if len(opts.Tags) > 0 {
 			if !hostHasAllTags(host, opts.Tags) {
+				log.Info("Skipping host: missing required tags", "host", host.Name(), "hostTags", host.Tags(), "requiredTags", opts.Tags)
 				continue
 			}
 		}
@@ -389,9 +399,16 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 			}
 		}
 
+		// Compute combined resource score.
+		// Score = (availableCores / minCores) + (availableMemory / minMemory)
+		// This balances both resources: a host with more headroom on both resources scores higher.
+		// If minCores or minMemory is 0, we use raw values normalized to a reasonable scale.
+		resourceScore := computeResourceScore(host.AvailableCores(), host.AvailableMemory(), opts.MinCores, opts.MinMemory)
+
 		candidates = append(candidates, candidateHost{
-			host:    host,
-			cpCount: cpCount,
+			host:          host,
+			cpCount:       cpCount,
+			resourceScore: resourceScore,
 		})
 	}
 
@@ -404,34 +421,59 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 	//
 	// Priority order (highest to lowest):
 	//   1. Anti-affinity: Prefer hosts with fewer CP VMs for this cluster.
-	//   2. Resource availability: Prefer hosts with more available memory, then cores.
-	//      Among hosts with equal CP counts, pick the one with most resource.
+	//   2. Combined resource score: Prefer hosts with higher combined resource availability.
+	//      The score considers both cores and memory together, not sequentially.
 	//   3. Managed preference: Prefer Palette-managed hosts (lxd-host-*) over OOB hosts.
 	//      Tie-breaker when all else is equal.
 	sort.Slice(candidates, func(i, j int) bool {
 		a, b := candidates[i], candidates[j]
 
+		// 1. Anti-affinity: fewer CP VMs wins
 		if a.cpCount != b.cpCount {
 			return a.cpCount < b.cpCount
 		}
 
-		if a.host.AvailableMemory() != b.host.AvailableMemory() {
-			return a.host.AvailableMemory() > b.host.AvailableMemory()
+		// 2. Combined resource score: higher score wins
+		if a.resourceScore != b.resourceScore {
+			return a.resourceScore > b.resourceScore
 		}
 
-		if a.host.AvailableCores() != b.host.AvailableCores() {
-			return a.host.AvailableCores() > b.host.AvailableCores()
-		}
-
-		// 4. Prefer managed host over OOB
+		// 3. Prefer managed host over OOB
 		return isManagedHost(a.host) && !isManagedHost(b.host)
 	})
 
 	selected := candidates[0].host
 	log.Info("Selected LXD host", "host", selected.Name(), "host-id", selected.SystemID(),
 		"zone", opts.Zone, "pool", opts.ResourcePool, "cpCount", candidates[0].cpCount,
+		"resourceScore", fmt.Sprintf("%.2f", candidates[0].resourceScore),
 		"availableCores", selected.AvailableCores(), "availableMemory", selected.AvailableMemory())
 	return selected, nil
+}
+
+// computeResourceScore calculates a combined resource availability score.
+// The score normalizes cores and memory relative to the requested minimums,
+// then sums them so that hosts with more headroom on both resources score higher.
+//
+// Formula: score = (availableCores / minCores) + (availableMemory / minMemory)
+//
+// Examples (minCores=4, minMemory=8192):
+//
+//	Host A: 8 cores, 16GB  → score = 8/4 + 16384/8192 = 2.0 + 2.0 = 4.0
+//	Host B: 12 cores, 8GB  → score = 12/4 + 8192/8192 = 3.0 + 1.0 = 4.0
+//	Host C: 4 cores, 32GB  → score = 4/4 + 32768/8192 = 1.0 + 4.0 = 5.0
+//
+// If minCores or minMemory is 0, that dimension contributes 0 to the score.
+func computeResourceScore(availableCores, availableMemory, minCores, minMemory int) float64 {
+	var coreRatio, memRatio float64
+
+	if minCores > 0 {
+		coreRatio = float64(availableCores) / float64(minCores)
+	}
+	if minMemory > 0 {
+		memRatio = float64(availableMemory) / float64(minMemory)
+	}
+
+	return coreRatio + memRatio
 }
 
 // hostHasAllTags checks if the VM host has all the required tags
@@ -466,7 +508,7 @@ func isManagedHost(h maasclient.VMHost) bool {
 
 // countCPVMsOnHost counts control-plane VMs for a given cluster on the specified host.
 //
-//   - It queries all VMs currently running on the given LXD host
+//   - It queries all machines and filters by Parent() matching the host's HostSystemID
 //   - It identifies CP VMs by checking for TagVMControlPlane ("maas-lxd-wlc-cp")
 //   - It filters to only THIS cluster's VMs using the cluster-specific tag
 //   - The returned count is used to prefer hosts with fewer existing CP VMs
@@ -488,21 +530,34 @@ func isManagedHost(h maasclient.VMHost) bool {
 // Returns an error if VM listing fails, so the caller can skip this host
 // rather than incorrectly treating it as having 0 CP VMs.
 func countCPVMsOnHost(ctx context.Context, client lxdHostSelectorClient, host maasclient.VMHost, clusterTag string, log logr.Logger) (int, error) {
-	// Get VMs on this host
-	vms, err := client.VMHosts().VMHost(host.SystemID()).Machines().List(ctx)
+	// Get the host's backing machine system ID - VMs on this host have Parent() == HostSystemID
+	hostSystemID := host.HostSystemID()
+	if hostSystemID == "" {
+		// No backing machine means no VMs can be parented to it
+		return 0, nil
+	}
+
+	// Query all machines - MAAS doesn't have a direct endpoint to list VMs on a host
+	// We filter by Parent() which identifies the host machine for LXD VMs
+	allMachines, err := client.Machines().List(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to list VMs on host %s: %w", host.Name(), err)
+		return 0, fmt.Errorf("failed to list machines for CP count on host %s: %w", host.Name(), err)
 	}
 
 	count := 0
-	for _, vm := range vms {
-		// Get full VM details to access tags
-		vmDetails, err := vm.Get(ctx)
+	for _, m := range allMachines {
+		// Get full machine details to access Parent and Tags
+		vmDetails, err := m.Get(ctx)
 		if err != nil {
-			// Skip individual VM fetch errors - VM may be in transition
-			log.V(1).Info("Failed to get VM details, skipping", "vm", vm.SystemID(), "error", err.Error())
+			// Skip individual fetch errors - machine may be in transition
 			continue
 		}
+
+		// Only count VMs that are parented to this host
+		if vmDetails.Parent() != hostSystemID {
+			continue
+		}
+
 		tags := vmDetails.Tags()
 
 		// Check if this VM is a control-plane node for the target cluster.

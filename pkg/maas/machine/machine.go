@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -534,6 +535,9 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		return nil, errors.Wrap(err, "failed to compose VM on LXD host")
 	}
 
+	// Debug: log what Compose() returned
+	fmt.Printf("[DEBUG Compose] returned machine: systemID=%q, hostname=%q, state=%q\n", m.SystemID(), m.Hostname(), m.State())
+
 	// Set IDs early so system-id/providerID are recorded
 	if m.SystemID() != "" {
 		s.scope.SetSystemID(m.SystemID())
@@ -547,6 +551,9 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		if s.scope.IsControlPlane() {
 			s.tagCPVM(ctx, m.SystemID())
 		}
+	} else {
+		// SystemID is empty - this is a bug in maas-client-go or MAAS API response
+		s.scope.Error(nil, "CRITICAL: Compose() returned machine with empty systemID", "hostname", m.Hostname())
 	}
 	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
 
@@ -1048,13 +1055,35 @@ func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string
 	return nil
 }
 
+// isTypedNil checks if an interface value holds a nil concrete value (typed nil).
+// In Go, an interface is only nil if both its type and value are nil.
+// This function returns true if the interface has a type but the value is nil.
+func isTypedNil(i interface{}) bool {
+	if i == nil {
+		return false
+	}
+	v := reflect.ValueOf(i)
+	return v.Kind() == reflect.Ptr && v.IsNil()
+}
+
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
+	// Debug logging to trace nil pointer issues
+	fmt.Printf("[DEBUG fromSDKTypeToMachine] systemID=%s, hostname=%s\n", m.SystemID(), m.Hostname())
+
+	az := ""
+	// Use reflect to check for typed nil (interface not nil but concrete value is nil)
+	zone := m.Zone()
+	fmt.Printf("[DEBUG fromSDKTypeToMachine] zone is nil: %v, isTypedNil: %v\n", zone == nil, isTypedNil(zone))
+	if zone != nil && !isTypedNil(zone) {
+		az = zone.Name()
+		fmt.Printf("[DEBUG fromSDKTypeToMachine] zone name: %s\n", az)
+	}
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
 		Hostname:         m.Hostname(),
 		State:            infrav1beta1.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
-		AvailabilityZone: m.Zone().Name(),
+		AvailabilityZone: az,
 	}
 
 	if m.FQDN() != "" {

@@ -135,6 +135,15 @@ func (m *fakeMachine) BootInterfaceName() string                           { ret
 func (m *fakeMachine) Tags() []string                                      { return m.tags }
 func (m *fakeMachine) Parent() string                                      { return "" }
 
+// fakeMachineWithParent extends fakeMachine to support Parent() for VM counting tests
+type fakeMachineWithParent struct {
+	fakeMachine
+	parent string
+}
+
+func (m *fakeMachineWithParent) Get(ctx context.Context) (maasclient.Machine, error) { return m, nil }
+func (m *fakeMachineWithParent) Parent() string                                      { return m.parent }
+
 // ---- Full fake client for new interface ----
 
 type fakeFullClient struct {
@@ -509,19 +518,24 @@ func TestSelectLXDHost_PreferLessCPCount(t *testing.T) {
 	machines.EXPECT().Machine("H1").Return(m1).AnyTimes()
 	machines.EXPECT().Machine("H2").Return(m2).AnyTimes()
 
-	// Create VMs on host1 with CP tags for cluster "test-cluster"
+	// Create a CP VM parented to H1 (host1's backing machine)
 	clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID("test-cluster")
-	cpVM := &fakeMachine{systemID: "VM1", powerState: "on", state: "Deployed", tags: []string{maintenance.TagVMControlPlane, clusterTag}}
+	cpVM := &fakeMachineWithParent{
+		fakeMachine: fakeMachine{systemID: "VM1", powerState: "on", state: "Deployed", tags: []string{maintenance.TagVMControlPlane, clusterTag}},
+		parent:      "H1", // Parented to host1's backing machine
+	}
+
+	// Mock Machines().List() to return all machines including the CP VM
+	machines.EXPECT().List(gomock.Any(), gomock.Any()).Return([]maasclient.Machine{cpVM}, nil).AnyTimes()
+	machines.EXPECT().Machine("VM1").Return(cpVM).AnyTimes()
 
 	host1 := &fakeVMHost{
 		name: "host-with-cp", systemID: "1", hostSystemID: "H1",
 		zone: &fakeZone{name: "z1", id: 1}, pool: &fakeResourcePool{name: "p1", id: 1},
-		vmHostMachines: &fakeVMHostMachines{machines: []maasclient.Machine{cpVM}},
 	}
 	host2 := &fakeVMHost{
 		name: "host-no-cp", systemID: "2", hostSystemID: "H2",
 		zone: &fakeZone{name: "z1", id: 1}, pool: &fakeResourcePool{name: "p1", id: 1},
-		vmHostMachines: &fakeVMHostMachines{machines: []maasclient.Machine{}},
 	}
 
 	hosts := []maasclient.VMHost{host1, host2}
@@ -540,7 +554,7 @@ func TestSelectLXDHost_PreferLessCPCount(t *testing.T) {
 	}
 }
 
-// U14: Multiple eligible, same CP count, prefer more memory
+// U14: Multiple eligible, same CP count, prefer higher combined resource score
 func TestSelectLXDHost_PreferMoreMemory(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -551,15 +565,20 @@ func TestSelectLXDHost_PreferMoreMemory(t *testing.T) {
 	machines.EXPECT().Machine("H1").Return(m1).AnyTimes()
 	machines.EXPECT().Machine("H2").Return(m2).AnyTimes()
 
+	// Both hosts have same cores (8), different memory
+	// host-lowmem: score = 8/4 + 16384/8192 = 2 + 2 = 4
+	// host-highmem: score = 8/4 + 32768/8192 = 2 + 4 = 6 (wins)
 	hosts := []maasclient.VMHost{
 		&fakeVMHost{
 			name: "host-lowmem", systemID: "1", hostSystemID: "H1",
 			zone: &fakeZone{name: "z1", id: 1}, pool: &fakeResourcePool{name: "p1", id: 1},
+			availableCores:  8,
 			availableMemory: 16384, // 16GB
 		},
 		&fakeVMHost{
 			name: "host-highmem", systemID: "2", hostSystemID: "H2",
 			zone: &fakeZone{name: "z1", id: 1}, pool: &fakeResourcePool{name: "p1", id: 1},
+			availableCores:  8,
 			availableMemory: 32768, // 32GB
 		},
 	}
@@ -569,7 +588,7 @@ func TestSelectLXDHost_PreferMoreMemory(t *testing.T) {
 		vmHosts:  &fakeVMHosts{hosts: map[string]maasclient.VMHost{"1": hosts[0], "2": hosts[1]}},
 	}
 
-	selected, err := SelectLXDHostWithMaasClient(client, hosts, SelectOptions{})
+	selected, err := SelectLXDHostWithMaasClient(client, hosts, SelectOptions{MinCores: 4, MinMemory: 8192})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
