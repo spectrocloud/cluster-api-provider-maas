@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -258,129 +259,304 @@ type machineGetter interface {
 	Machines() maasclient.Machines
 }
 
-// SelectLXDHostWithMaasClient selects an LXD host based on availability, AZ, and resource pool
-func SelectLXDHostWithMaasClient(client machineGetter, hosts []maasclient.VMHost, az, resourcePool string) (maasclient.VMHost, error) {
+// lxdHostSelectorClient extends machineGetter with VMHosts for CP distribution counting
+type lxdHostSelectorClient interface {
+	machineGetter
+	VMHosts() maasclient.VMHosts
+}
+
+// SelectOptions holds placement constraints and hints for LXD host selection.
+// Semantics align with MAAS allocator params for BM: each field is optional;
+// when set, it is enforced strictly; when zero/empty, that dimension is unconstrained.
+type SelectOptions struct {
+	Zone         string   // FailureDomain / AZ; empty = any
+	ResourcePool string   // MAAS resource pool; empty = any
+	Tags         []string // All required on VM host (host.Tags()); nil/empty = any
+	MinCores     int      // Minimum available cores on host; 0 = no minimum
+	MinMemory    int      // Minimum available memory (MB) on host; 0 = no minimum
+
+	// ClusterID When set (non-empty), the selector counts how many control-plane VMs for this
+	// cluster already exist on each eligible host. Hosts with fewer existing CP VMs
+	// are preferred, distributing CP VMs across multiple physical hosts.
+	ClusterID string
+}
+
+// candidateHost holds a VM host along with computed metrics for ranking.
+// The cpCount field is used for anti-affinity: hosts with lower cpCount are preferred
+// to spread control-plane VMs across multiple physical hosts.
+// The resourceScore combines available cores and memory into a single metric for ranking.
+type candidateHost struct {
+	host          maasclient.VMHost
+	cpCount       int     // number of CP VMs for the target cluster already on this host (0 = ideal for anti-affinity)
+	resourceScore float64 // combined resource availability score (higher = more resources)
+}
+
+// SelectLXDHostWithMaasClient selects an LXD host based on SelectOptions.
+// It implements a filter-then-rank approach:
+//   - Filter: zone, pool, tags (all must match when set), resources, health, maintenance
+//   - Rank: fewer CP VMs for cluster → combined resource score (cores + memory) → managed host
+//
+// No fallback or constraint relaxation: if no host passes all filters, an error is returned.
+func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclient.VMHost, opts SelectOptions) (maasclient.VMHost, error) {
 	log := textlogger.NewLogger(textlogger.NewConfig())
+	ctx := context.Background()
 
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no LXD hosts available")
 	}
 
-	// If either AZ or resource pool is specified, enforce strict placement on the provided constraints.
-	// By design, AZ and pool are optional; but if specified, they must be honored strictly.
-	strictConstraints := (az != "" || resourcePool != "")
-
-	// Helper to detect Palette-managed hosts by naming convention
-	isManagedHost := func(h maasclient.VMHost) bool {
-		return strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Name())), "lxd-host-")
+	// Build cluster tag for CP distribution counting.
+	// When ClusterID is set, we look for VMs tagged with both:
+	//   - TagVMControlPlane ("maas-lxd-wlc-cp"): marks VM as a control-plane node
+	//   - TagVMClusterPrefix + clusterID: identifies which cluster the VM belongs to
+	// This allows us to count how many CP VMs from THIS cluster are already on each host.
+	clusterTag := ""
+	if opts.ClusterID != "" {
+		clusterTag = maintenance.TagVMClusterPrefix + maintenance.SanitizeID(opts.ClusterID)
 	}
 
-	// First pass (strict matching): collect healthy, non-maintenance hosts matching AZ/pool
-	var strictManaged maasclient.VMHost
-	var strictAny maasclient.VMHost
+	cpCountByHost := make(map[string]int)
+	if clusterTag != "" {
+		allMachines, err := client.Machines().List(ctx, nil)
+		if err != nil {
+			log.Info("Warning: failed to list machines for CP counting, proceeding without anti-affinity", "error", err.Error())
+		} else {
+			cpCountByHost = computeCPCountsByHost(allMachines, clusterTag)
+		}
+	}
+
+	// Filter phase: collect eligible hosts
+	log.Info("Starting host selection", "totalHosts", len(hosts), "opts", fmt.Sprintf("%+v", opts))
+	var candidates []candidateHost
 	for _, host := range hosts {
 		hostZone := ""
 		if host.Zone() != nil {
 			hostZone = host.Zone().Name()
 		}
-
 		hostPool := ""
 		if host.ResourcePool() != nil {
 			hostPool = host.ResourcePool().Name()
 		}
+		log.Info("Evaluating host", "name", host.Name(), "zone", hostZone, "pool", hostPool,
+			"tags", host.Tags(), "cores", host.AvailableCores(), "memory", host.AvailableMemory(),
+			"hostSystemID", host.HostSystemID())
 
-		if (az == "" || hostZone == az) && (resourcePool == "" || hostPool == resourcePool) {
-			hostSystemID := host.HostSystemID()
-			if hostSystemID == "" {
+		// 1. Zone filter
+		if opts.Zone != "" {
+			if hostZone != opts.Zone {
+				log.Info("Skipping host: zone mismatch", "host", host.Name(), "hostZone", hostZone, "requiredZone", opts.Zone)
 				continue
 			}
-			// Check host health and maintenance state
-			ctx := context.Background()
-			machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
-			if err != nil {
-				log.Info("Failed to get machine details", "system-id", hostSystemID, "error", err.Error())
+		}
+
+		// 2. Resource pool filter
+		if opts.ResourcePool != "" {
+			if hostPool != opts.ResourcePool {
+				log.Info("Skipping host: pool mismatch", "host", host.Name(), "hostPool", hostPool, "requiredPool", opts.ResourcePool)
 				continue
 			}
-			powerState := machine.PowerState()
-			machineState := machine.State()
-			if powerState != "on" || machineState != "Deployed" {
+		}
+
+		// 3. Tags filter: host must have ALL specified tags
+		if len(opts.Tags) > 0 {
+			if !hostHasAllTags(host, opts.Tags) {
+				log.Info("Skipping host: missing required tags", "host", host.Name(), "hostTags", host.Tags(), "requiredTags", opts.Tags)
 				continue
 			}
-			if isHostUnderMaintenance(client, hostSystemID, log) {
-				log.Info("Skipping LXD host under maintenance", "host-name", host.Name(), "host-id", hostSystemID)
-				continue
-			}
-
-			// Prefer managed host, but allow OOB within constraints
-			if isManagedHost(host) && strictManaged == nil {
-				strictManaged = host
-			}
-			if strictAny == nil {
-				strictAny = host
-			}
 		}
+
+		// 4. Resource filter: check available cores and memory
+		if opts.MinCores > 0 && host.AvailableCores() < opts.MinCores {
+			log.Info("Skipping host: insufficient cores", "host", host.Name(),
+				"available", host.AvailableCores(), "required", opts.MinCores)
+			continue
+		}
+		if opts.MinMemory > 0 && host.AvailableMemory() < opts.MinMemory {
+			log.Info("Skipping host: insufficient memory", "host", host.Name(),
+				"available", host.AvailableMemory(), "required", opts.MinMemory)
+			continue
+		}
+
+		// 5. Health check: backing machine must be powered on and Deployed
+		hostSystemID := host.HostSystemID()
+		if hostSystemID == "" {
+			continue
+		}
+		machine, err := client.Machines().Machine(hostSystemID).Get(ctx)
+		if err != nil {
+			log.Info("Failed to get backing machine", "host", host.Name(), "system-id", hostSystemID, "error", err.Error())
+			continue
+		}
+		if machine.PowerState() != "on" || machine.State() != "Deployed" {
+			log.Info("Skipping unhealthy host", "host", host.Name(),
+				"power", machine.PowerState(), "state", machine.State())
+			continue
+		}
+
+		// 6. Maintenance check
+		if hasMaintenanceTag(machine.Tags()) {
+			log.Info("Skipping host under maintenance", "host", host.Name())
+			continue
+		}
+
+		// Look up pre-computed CP count for this host
+		cpCount := cpCountByHost[hostSystemID]
+
+		// Compute combined resource score.
+		// Score = (availableCores / minCores) + (availableMemory / minMemory)
+		// This balances both resources: a host with more headroom on both resources scores higher.
+		// If minCores or minMemory is 0, that dimension contributes 0 to the score.
+		resourceScore := computeResourceScore(host.AvailableCores(), host.AvailableMemory(), opts.MinCores, opts.MinMemory)
+
+		candidates = append(candidates, candidateHost{
+			host:          host,
+			cpCount:       cpCount,
+			resourceScore: resourceScore,
+		})
 	}
 
-	if strictConstraints {
-		if strictManaged != nil {
-			log.Info("Selected LXD host (managed, strict)", "host-name", strictManaged.Name(), "host-id", strictManaged.SystemID())
-			return strictManaged, nil
-		}
-		if strictAny != nil {
-			log.Info("Selected LXD host (strict)", "host-name", strictAny.Name(), "host-id", strictAny.SystemID())
-			return strictAny, nil
-		}
-		log.Info("Strict LXD host placement enforced; no matching host found", "zone", az, "resourcePool", resourcePool)
-		return nil, fmt.Errorf("no LXD host available matching zone %s and pool %s", az, resourcePool)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no eligible LXD host found (zone=%q, pool=%q, tags=%v, minCores=%d, minMemory=%d)",
+			opts.Zone, opts.ResourcePool, opts.Tags, opts.MinCores, opts.MinMemory)
 	}
 
-	// If strict constraints are provided (AZ and/or resource pool), do not fall back.
-	// Return an error so the caller can retry rather than violating placement constraints.
-	// (Already handled above) If not strict, continue with existing fallback behavior below.
+	// Rank phase: sort candidates by preference to select the best host.
+	//
+	// Priority order (highest to lowest):
+	//   1. Anti-affinity: Prefer hosts with fewer CP VMs for this cluster.
+	//   2. Combined resource score: Prefer hosts with higher combined resource availability.
+	//      The score considers both cores and memory together, not sequentially.
+	//   3. Managed preference: Prefer Palette-managed hosts (lxd-host-*) over OOB hosts.
+	//      Tie-breaker when all else is equal.
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
 
-	// If no host matches the AZ and resource pool, try to find a host in the specified AZ (without maintenance)
-	if resourcePool != "" {
-		for _, host := range hosts {
-			hostZone := ""
-			if host.Zone() != nil {
-				hostZone = host.Zone().Name()
-			}
-
-			if az == "" || hostZone == az {
-				// Check if host is under maintenance
-				if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
-					return host, nil
-				}
-			}
+		// 1. Anti-affinity: fewer CP VMs wins
+		if a.cpCount != b.cpCount {
+			return a.cpCount < b.cpCount
 		}
+
+		// 2. Combined resource score: higher score wins
+		if a.resourceScore != b.resourceScore {
+			return a.resourceScore > b.resourceScore
+		}
+
+		// 3. Prefer managed host over OOB
+		return isManagedHost(a.host) && !isManagedHost(b.host)
+	})
+
+	selected := candidates[0].host
+	log.Info("Selected LXD host", "host", selected.Name(), "host-id", selected.SystemID(),
+		"zone", opts.Zone, "pool", opts.ResourcePool, "cpCount", candidates[0].cpCount,
+		"resourceScore", fmt.Sprintf("%.2f", candidates[0].resourceScore),
+		"availableCores", selected.AvailableCores(), "availableMemory", selected.AvailableMemory())
+	return selected, nil
+}
+
+// computeResourceScore calculates a combined resource availability score.
+// The score normalizes cores and memory relative to the requested minimums,
+// then sums them so that hosts with more headroom on both resources score higher.
+//
+// Formula: score = (availableCores / minCores) + (availableMemory / minMemory)
+//
+// Examples (minCores=4, minMemory=8192):
+//
+//	Host A: 8 cores, 16GB  → score = 8/4 + 16384/8192 = 2.0 + 2.0 = 4.0
+//	Host B: 12 cores, 8GB  → score = 12/4 + 8192/8192 = 3.0 + 1.0 = 4.0
+//	Host C: 4 cores, 32GB  → score = 4/4 + 32768/8192 = 1.0 + 4.0 = 5.0
+//
+// If minCores or minMemory is 0, that dimension contributes 0 to the score.
+func computeResourceScore(availableCores, availableMemory, minCores, minMemory int) float64 {
+	var coreRatio, memRatio float64
+
+	if minCores > 0 {
+		coreRatio = float64(availableCores) / float64(minCores)
+	}
+	if minMemory > 0 {
+		memRatio = float64(availableMemory) / float64(minMemory)
 	}
 
-	// If no host matches the AZ, try to find a host in the specified resource pool (without maintenance)
-	if az != "" {
-		for _, host := range hosts {
-			hostPool := ""
-			if host.ResourcePool() != nil {
-				hostPool = host.ResourcePool().Name()
-			}
+	return coreRatio + memRatio
+}
 
-			if resourcePool == "" || hostPool == resourcePool {
-				// Check if host is under maintenance
-				if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
-					return host, nil
-				}
-			}
+// hostHasAllTags checks if the VM host has all the required tags
+func hostHasAllTags(host maasclient.VMHost, requiredTags []string) bool {
+	hostTags := host.Tags()
+	hostTagSet := make(map[string]struct{}, len(hostTags))
+	for _, t := range hostTags {
+		hostTagSet[t] = struct{}{}
+	}
+	for _, required := range requiredTags {
+		if _, ok := hostTagSet[required]; !ok {
+			return false
 		}
 	}
+	return true
+}
 
-	// If no host matches the criteria, return the first non-maintenance host
-	for _, host := range hosts {
-		if !isHostUnderMaintenance(client, host.HostSystemID(), log) {
-			return host, nil
+// hasMaintenanceTag checks if tags contain maintenance or no-schedule tags
+func hasMaintenanceTag(tags []string) bool {
+	for _, tag := range tags {
+		if tag == maintenance.TagHostMaintenance || tag == maintenance.TagHostNoSchedule {
+			return true
 		}
 	}
+	return false
+}
 
-	// If all hosts are under maintenance, return error
-	return nil, fmt.Errorf("no available LXD hosts (all hosts are under maintenance)")
+// isManagedHost checks if the host is a Palette-managed LXD host by naming convention
+func isManagedHost(h maasclient.VMHost) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Name())), "lxd-host-")
+}
+
+// computeCPCountsByHost builds a map of hostSystemID → CP VM count for a given cluster.
+// It processes all machines in a single pass, avoiding O(N_hosts × N_machines) API calls.
+//
+// The function:
+//   - Filters machines by Parent() to identify which host they belong to
+//   - Checks for TagVMControlPlane to identify control-plane VMs
+//   - Checks for the cluster-specific tag to count only THIS cluster's CPs
+//
+// Example scenario with 3 LXD hosts creating a 3-node control plane:
+//
+//	Host A (H1): 1 CP VM (tagged maas-lxd-wlc-cp + maas-lxd-wlc-<cluster-id>)
+//	Host B (H2): 1 CP VM (same tags)
+//	Host C (H3): 0 CP VMs
+//
+// Returns: {"H1": 1, "H2": 1} (H3 not in map means 0)
+//
+// The caller uses this to prefer hosts with fewer existing CP VMs (anti-affinity).
+func computeCPCountsByHost(machines []maasclient.Machine, clusterTag string) map[string]int {
+	counts := make(map[string]int)
+
+	for _, m := range machines {
+		// Parent() returns the host's system ID for LXD VMs, empty for bare metal
+		parentID := m.Parent()
+		if parentID == "" {
+			continue
+		}
+
+		tags := m.Tags()
+
+		// Check if this VM is a control-plane node for the target cluster.
+		// Both tags must be present:
+		//   - TagVMControlPlane: identifies VM as a control-plane node
+		//   - clusterTag: identifies which cluster this CP node belongs to
+		hasCP := false
+		hasCluster := false
+		for _, tag := range tags {
+			if tag == maintenance.TagVMControlPlane {
+				hasCP = true
+			}
+			if tag == clusterTag {
+				hasCluster = true
+			}
+		}
+		if hasCP && hasCluster {
+			counts[parentID]++
+		}
+	}
+	return counts
 }
 
 // CreateLXDVMWithMaasClient creates a VM on an LXD host using MAAS API

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -325,9 +326,9 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		}
 		_ = s.scope.PatchObject()
 
-		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		// Tag CP VMs for anti-affinity placement and maintenance operations
 		if s.scope.IsControlPlane() {
-			s.tagVMIfMaintenanceActive(ctx, deployingM.SystemID())
+			s.tagCPVM(ctx, deployingM.SystemID())
 		}
 
 		res := fromSDKTypeToMachine(deployingM)
@@ -414,17 +415,33 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		diskSizeGB = *mm.Spec.LXD.VMConfig.DiskSize
 	}
 
-	// Select an LXD VM host based on zone and resource pool
+	// Select an LXD VM host based on zone, resource pool, tags, resources, and distribution
 	hosts, err := s.maasClient.VMHosts().List(ctx, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to list LXD VM hosts")
 	}
-	selectedHost, err := lxd.SelectLXDHostWithMaasClient(s.maasClient, hosts, zone, resourcePool)
+
+	// Build SelectOptions from MaasMachine spec
+	selectOpts := lxd.SelectOptions{
+		Zone:         zone,
+		ResourcePool: resourcePool,
+		Tags:         mm.Spec.Tags,
+		MinCores:     cpu,
+		MinMemory:    mem,
+	}
+
+	if s.scope.IsControlPlane() {
+		selectOpts.ClusterID = s.deriveClusterID()
+	}
+
+	selectedHost, err := lxd.SelectLXDHostWithMaasClient(s.maasClient, hosts, selectOpts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to select LXD VM host")
 	}
 
-	s.scope.Info("Selected LXD host for VM", "host-name", selectedHost.Name(), "host-id", selectedHost.SystemID(), "zone", zone, "resource-pool", resourcePool)
+	s.scope.Info("Selected LXD host for VM", "host-name", selectedHost.Name(), "host-id", selectedHost.SystemID(),
+		"zone", zone, "resource-pool", resourcePool, "tags", mm.Spec.Tags,
+		"isControlPlane", s.scope.IsControlPlane())
 
 	zoneID := selectedHost.Zone().ID()
 	rp := selectedHost.ResourcePool()
@@ -527,9 +544,9 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		}
 		_ = s.scope.PatchObject()
 
-		// Check for active maintenance ConfigMap and tag VM if found (CP only)
+		// Tag CP VMs for anti-affinity placement and maintenance operations
 		if s.scope.IsControlPlane() {
-			s.tagVMIfMaintenanceActive(ctx, m.SystemID())
+			s.tagCPVM(ctx, m.SystemID())
 		}
 	}
 	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
@@ -1032,13 +1049,29 @@ func (s *Service) createBootInterfaceBridge(ctx context.Context, systemID string
 	return nil
 }
 
+// hasNilValue checks if an interface value holds a nil concrete value (typed nil).
+// In Go, an interface is only nil if both its type and value are nil.
+// This function returns true if the interface has a type but the underlying value is nil.
+func hasNilValue(i interface{}) bool {
+	if i == nil {
+		return false
+	}
+	v := reflect.ValueOf(i)
+	return v.Kind() == reflect.Ptr && v.IsNil()
+}
+
 func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
+	az := ""
+	zone := m.Zone()
+	if zone != nil && !hasNilValue(zone) {
+		az = zone.Name()
+	}
 	machine := &infrav1beta1.Machine{
 		ID:               m.SystemID(),
 		Hostname:         m.Hostname(),
 		State:            infrav1beta1.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
-		AvailabilityZone: m.Zone().Name(),
+		AvailabilityZone: az,
 	}
 
 	if m.FQDN() != "" {
@@ -1061,6 +1094,28 @@ func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 func (s *Service) PowerOnMachine() error {
 	_, err := s.maasClient.Machines().Machine(s.scope.GetSystemID()).PowerManagerOn().WithPowerOnComment("maas provider power on").PowerOn(context.Background())
 	return err
+}
+
+// tagCPVM tags a control-plane VM with identity tags for anti-affinity placement and maintenance.
+//
+// Tags applied:
+//   - TagVMControlPlane ("maas-lxd-wlc-cp"): identifies VM as a control-plane node
+//   - TagVMClusterPrefix + clusterID: identifies which cluster the VM belongs to
+func (s *Service) tagCPVM(ctx context.Context, systemID string) {
+	if systemID == "" {
+		return
+	}
+
+	clusterId := s.deriveClusterID()
+	if clusterId == "" {
+		s.scope.V(1).Info("Could not derive cluster ID for CP tagging", "systemID", systemID)
+		return
+	}
+
+	clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
+
+	s.tagVM(ctx, systemID, []string{maintenance.TagVMControlPlane, clusterTag})
+	s.scope.Info("Tagged CP VM for anti-affinity and maintenance", "systemID", systemID, "clusterTag", clusterTag)
 }
 
 // tagVMIfMaintenanceActive checks for active maintenance ConfigMaps and tags the VM with cluster identity
@@ -1096,33 +1151,16 @@ func (s *Service) tagVMIfMaintenanceActive(ctx context.Context, systemID string)
 			continue
 		}
 
-		s.scope.Info("Found active maintenance session, tagging VM with CP and cluster identity", "opID", opID, "systemID", systemID)
+		s.scope.Info("Found active maintenance session, updating ConfigMap", "opID", opID, "systemID", systemID)
 
-		// Derive clusterId: extract from cluster name or use namespace
+		// Reuse common tagging function (idempotent, safe if already tagged by tagCPVM)
 		clusterId := s.deriveClusterID()
-		clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
-
-		// Tag the VM with maas-lxd-wlc-cp and maas-lxd-wlc-<clusterId>
-		tagsClient := s.maasClient.Tags()
-		if tagsClient != nil {
-			// Tag as control-plane VM, error is ignored as tag already exists
-			_ = tagsClient.Create(ctx, maintenance.TagVMControlPlane)
-			if err := tagsClient.Assign(ctx, maintenance.TagVMControlPlane, systemID); err != nil {
-				s.scope.Error(err, "Failed to tag VM with CP tag", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
-			} else {
-				s.scope.Info("Successfully tagged VM as control-plane", "tag", maintenance.TagVMControlPlane, "systemID", systemID)
-			}
-
-			// Tag with cluster identity, error is ignored as tag already exists
-			_ = tagsClient.Create(ctx, clusterTag)
-			if err := tagsClient.Assign(ctx, clusterTag, systemID); err != nil {
-				s.scope.Error(err, "Failed to tag VM with cluster tag", "tag", clusterTag, "systemID", systemID)
-			} else {
-				s.scope.Info("Successfully tagged VM with cluster identity", "tag", clusterTag, "systemID", systemID)
-			}
+		if clusterId != "" {
+			clusterTag := maintenance.TagVMClusterPrefix + maintenance.SanitizeID(clusterId)
+			s.tagVM(ctx, systemID, []string{maintenance.TagVMControlPlane, clusterTag})
 		}
 
-		// Update ConfigMap with the new VM systemID
+		// Update ConfigMap with the new VM systemID (maintenance-specific logic)
 		if cm.Data == nil {
 			cm.Data = make(map[string]string)
 		}
@@ -1161,11 +1199,28 @@ func (s *Service) deriveClusterID() string {
 	return hashStr
 }
 
-//// ReconcileDNS reconciles the load balancers for the given cluster.
-//func (s *Service) ReconcileDNS() error {
-//	s.scope.V(2).Info("Reconciling DNS")
-//
-//	s.scope.SetDNSName("cluster1.maas")
-//	return nil
-//}
-//
+// tagVM applies the specified tags to a VM in MAAS.
+func (s *Service) tagVM(ctx context.Context, systemID string, tags []string) {
+	if systemID == "" || len(tags) == 0 {
+		return
+	}
+
+	tagsClient := s.maasClient.Tags()
+	if tagsClient == nil {
+		s.scope.V(1).Info("Tags client not available", "systemID", systemID)
+		return
+	}
+
+	for _, tag := range tags {
+		if tag == "" {
+			continue
+		}
+		// Create is idempotent - ignores error if tag already exists
+		_ = tagsClient.Create(ctx, tag)
+		if err := tagsClient.Assign(ctx, tag, systemID); err != nil {
+			s.scope.Error(err, "Failed to tag VM", "tag", tag, "systemID", systemID)
+		} else {
+			s.scope.V(1).Info("Tagged VM", "tag", tag, "systemID", systemID)
+		}
+	}
+}
