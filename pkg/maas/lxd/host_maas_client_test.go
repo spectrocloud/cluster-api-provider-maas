@@ -122,7 +122,7 @@ func (m *fakeMachine) Hostname() string                                    { ret
 func (m *fakeMachine) IPAddresses() []net.IP                               { return nil }
 func (m *fakeMachine) State() string                                       { return m.state }
 func (m *fakeMachine) OSSystem() string                                    { return "" }
-func (m *fakeMachine) DeployedAtMemory() bool                              { return false }
+func (m *fakeMachine) DeployedInMemory() bool                              { return false }
 func (m *fakeMachine) DistroSeries() string                                { return "" }
 func (m *fakeMachine) SwapSize() int                                       { return 0 }
 func (m *fakeMachine) PowerManagerOn() maasclient.PowerManagerOn           { return nil }

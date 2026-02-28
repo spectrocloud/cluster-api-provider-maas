@@ -315,6 +315,16 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 		clusterTag = maintenance.TagVMClusterPrefix + maintenance.SanitizeID(opts.ClusterID)
 	}
 
+	cpCountByHost := make(map[string]int)
+	if clusterTag != "" {
+		allMachines, err := client.Machines().List(ctx, nil)
+		if err != nil {
+			log.Info("Warning: failed to list machines for CP counting, proceeding without anti-affinity", "error", err.Error())
+		} else {
+			cpCountByHost = computeCPCountsByHost(allMachines, clusterTag)
+		}
+	}
+
 	// Filter phase: collect eligible hosts
 	log.Info("Starting host selection", "totalHosts", len(hosts), "opts", fmt.Sprintf("%+v", opts))
 	var candidates []candidateHost
@@ -389,20 +399,13 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 			continue
 		}
 
-		cpCount := 0
-		if clusterTag != "" {
-			var err error
-			cpCount, err = countCPVMsOnHost(ctx, client, host, clusterTag, log)
-			if err != nil {
-				log.Info("Skipping host: failed to count CP VMs", "host", host.Name(), "error", err.Error())
-				continue
-			}
-		}
+		// Look up pre-computed CP count for this host
+		cpCount := cpCountByHost[hostSystemID]
 
 		// Compute combined resource score.
 		// Score = (availableCores / minCores) + (availableMemory / minMemory)
 		// This balances both resources: a host with more headroom on both resources scores higher.
-		// If minCores or minMemory is 0, we use raw values normalized to a reasonable scale.
+		// If minCores or minMemory is 0, that dimension contributes 0 to the score.
 		resourceScore := computeResourceScore(host.AvailableCores(), host.AvailableMemory(), opts.MinCores, opts.MinMemory)
 
 		candidates = append(candidates, candidateHost{
@@ -506,66 +509,39 @@ func isManagedHost(h maasclient.VMHost) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(h.Name())), "lxd-host-")
 }
 
-// countCPVMsOnHost counts control-plane VMs for a given cluster on the specified host.
+// computeCPCountsByHost builds a map of hostSystemID → CP VM count for a given cluster.
+// It processes all machines in a single pass, avoiding O(N_hosts × N_machines) API calls.
 //
-//   - It queries all machines and filters by Parent() matching the host's HostSystemID
-//   - It identifies CP VMs by checking for TagVMControlPlane ("maas-lxd-wlc-cp")
-//   - It filters to only THIS cluster's VMs using the cluster-specific tag
-//   - The returned count is used to prefer hosts with fewer existing CP VMs
+// The function:
+//   - Filters machines by Parent() to identify which host they belong to
+//   - Checks for TagVMControlPlane to identify control-plane VMs
+//   - Checks for the cluster-specific tag to count only THIS cluster's CPs
 //
 // Example scenario with 3 LXD hosts creating a 3-node control plane:
 //
-//	Host A: 1 CP VM (tagged maas-lxd-wlc-cp + maas-lxd-wlc-<cluster-id>)
-//	Host B: 1 CP VM (same tags)
-//	Host C: 0 CP VMs
+//	Host A (H1): 1 CP VM (tagged maas-lxd-wlc-cp + maas-lxd-wlc-<cluster-id>)
+//	Host B (H2): 1 CP VM (same tags)
+//	Host C (H3): 0 CP VMs
 //
-// When placing the 3rd CP VM, this function returns:
+// Returns: {"H1": 1, "H2": 1} (H3 not in map means 0)
 //
-//	countCPVMsOnHost(hostA) = 1
-//	countCPVMsOnHost(hostB) = 1
-//	countCPVMsOnHost(hostC) = 0  ← selected (lowest count)
-//
-// Result: CP VMs distributed across all 3 hosts, no SPOF.
-//
-// Returns an error if VM listing fails, so the caller can skip this host
-// rather than incorrectly treating it as having 0 CP VMs.
-func countCPVMsOnHost(ctx context.Context, client lxdHostSelectorClient, host maasclient.VMHost, clusterTag string, log logr.Logger) (int, error) {
-	// Get the host's backing machine system ID - VMs on this host have Parent() == HostSystemID
-	hostSystemID := host.HostSystemID()
-	if hostSystemID == "" {
-		// No backing machine means no VMs can be parented to it
-		return 0, nil
-	}
+// The caller uses this to prefer hosts with fewer existing CP VMs (anti-affinity).
+func computeCPCountsByHost(machines []maasclient.Machine, clusterTag string) map[string]int {
+	counts := make(map[string]int)
 
-	// Query all machines - MAAS doesn't have a direct endpoint to list VMs on a host
-	// We filter by Parent() which identifies the host machine for LXD VMs
-	allMachines, err := client.Machines().List(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to list machines for CP count on host %s: %w", host.Name(), err)
-	}
-
-	count := 0
-	for _, m := range allMachines {
-		// Get full machine details to access Parent and Tags
-		vmDetails, err := m.Get(ctx)
-		if err != nil {
-			// Skip individual fetch errors - machine may be in transition
+	for _, m := range machines {
+		// Parent() returns the host's system ID for LXD VMs, empty for bare metal
+		parentID := m.Parent()
+		if parentID == "" {
 			continue
 		}
 
-		// Only count VMs that are parented to this host
-		if vmDetails.Parent() != hostSystemID {
-			continue
-		}
-
-		tags := vmDetails.Tags()
+		tags := m.Tags()
 
 		// Check if this VM is a control-plane node for the target cluster.
 		// Both tags must be present:
 		//   - TagVMControlPlane: identifies VM as a control-plane node
 		//   - clusterTag: identifies which cluster this CP node belongs to
-		// This ensures we only count CP VMs from the SAME cluster, not other
-		// clusters that may share the same LXD host infrastructure.
 		hasCP := false
 		hasCluster := false
 		for _, tag := range tags {
@@ -577,10 +553,10 @@ func countCPVMsOnHost(ctx context.Context, client lxdHostSelectorClient, host ma
 			}
 		}
 		if hasCP && hasCluster {
-			count++
+			counts[parentID]++
 		}
 	}
-	return count, nil
+	return counts
 }
 
 // CreateLXDVMWithMaasClient creates a VM on an LXD host using MAAS API
