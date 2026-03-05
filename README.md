@@ -19,6 +19,47 @@ Spectro Cloud public images
 ## Custom Image Generation
 Refer [image-generation/](image-generation/README.md)
 
+## MAAS In-Memory Deployment
+
+MAAS in-memory deployment allows machines to run directly from RAM without writing to disk. This feature is useful for ephemeral workloads, testing environments, or scenarios where you want to preserve disk state.
+
+### MAAS Version Compatibility
+
+To use the in-memory deployment feature, your MAAS installation must be running one of the following versions:
+
+| MAAS Version | Status      |
+|--------------|-------------|
+| \>= 3.5.10   | ✅ Supported |
+| \>= 3.6.3    | ✅ Supported |
+| \>= 3.7.1    | ✅ Supported |
+
+### Requirements
+
+- **Minimum RAM**: Machines must have at least **16GB of RAM** for proper functionality when using in-memory deployment.
+
+### Usage Example
+
+To enable in-memory deployment, set `deployInMemory: true` in your `MaasMachineTemplate` spec:
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  annotations:
+  name: mt-worker-memory
+  namespace: test
+spec:
+  template:
+    spec:
+      deployInMemory: true
+      image: custom/your-image
+      minCPU: 4
+      minMemory: 16384
+      resourcePool: default
+      tags:
+      - memory
+```
+
 ## Hello world
 
 - Create kind cluster
@@ -53,11 +94,11 @@ WORKER_MACHINE_TAG: hello-world
 ```
 - Initialize infrastructure
 ```bash
-clusterctl init --infrastructure maas:v0.5.0
+clusterctl init --infrastructure maas:v0.7.0
 ```
 - Generate and create cluster
 ```
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
 ## Developer Guide
@@ -96,23 +137,23 @@ make dev-manifests
 
 - Run
 ```shell
-clusterctl init --infrastructure maas:v0.5.0
+clusterctl init --infrastructure maas:v0.7.0
 ```
 
 
 ## Install CRDs
-### v1beta1 v0.5.0 release
+### v1beta1 v0.7.0 release
 - Generate cluster using
 ```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.5.0 | kubectl apply -f -
+clusterctl generate cluster t-cluster  --infrastructure=maas:v0.7.0 | kubectl apply -f -
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.5.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```

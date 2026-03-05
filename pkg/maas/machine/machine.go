@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/maas-client-go/maasclient"
@@ -127,9 +128,14 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 
 	s.scope.Info("Swap disabled", "system-id", m.SystemID())
 
+	if mm.Spec.DeployInMemory {
+		s.scope.Info("Machine will be deployed in memory", "system-id", m.SystemID())
+	}
+
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
 		SetOSSystem("custom").
+		SetEphemeralDeploy(mm.Spec.DeployInMemory).
 		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
@@ -144,6 +150,7 @@ func fromSDKTypeToMachine(m maasclient.Machine) *infrav1beta1.Machine {
 		Hostname:         m.Hostname(),
 		State:            infrav1beta1.MachineState(m.State()),
 		Powered:          m.PowerState() == "on",
+		DeployedInMemory: m.DeployedInMemory(),
 		AvailabilityZone: m.Zone().Name(),
 	}
 

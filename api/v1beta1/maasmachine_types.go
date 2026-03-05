@@ -63,6 +63,10 @@ type MaasMachineSpec struct {
 	// Image will be the MaaS image id
 	// +kubebuilder:validation:MinLength=1
 	Image string `json:"image"`
+
+	// DeployInMemory indicates to maas to deploy machine in memory
+	// +kubebuilder:default=false
+	DeployInMemory bool `json:"deployInMemory,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
