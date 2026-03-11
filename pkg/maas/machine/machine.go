@@ -26,10 +26,11 @@ import (
 
 // Service manages the MaaS machine
 var (
-	ErrBrokenMachine = errors.New("broken machine encountered")
-	ErrVMComposing   = errors.New("vm composing/commissioning")
-	reHostID         = regexp.MustCompile(`host (\d+)`)
-	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
+	ErrBrokenMachine      = errors.New("broken machine encountered")
+	ErrVMComposing        = errors.New("vm composing/commissioning")
+	ErrMachineCommissioning = errors.New("machine is commissioning")
+	reHostID              = regexp.MustCompile(`host (\d+)`)
+	reMachineID           = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
 )
 
 const (
@@ -827,8 +828,7 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 		// Special handling for Commissioning state: skip static IP configuration to avoid blocking commissioning
 		if machineState == "Commissioning" {
 			s.scope.Info("Machine is commissioning, skipping static IP configuration to avoid interfering with commissioning process. Will configure after commissioning completes", "systemID", systemID)
-			// Return error to requeue - static IP will be configured after commissioning completes
-			return fmt.Errorf("machine is commissioning, static IP configuration will be retried after commissioning completes")
+			return ErrMachineCommissioning
 		}
 
 		// For other non-allowed states, check if static IP is already correctly configured
