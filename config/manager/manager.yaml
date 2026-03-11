@@ -16,6 +16,9 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - command:
         - /manager
@@ -23,6 +26,14 @@ spec:
         - --leader-elect
         image: controller:latest
         name: manager
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
+          capabilities:
+            drop:
+            - ALL
         resources:
           limits:
             cpu: 200m
