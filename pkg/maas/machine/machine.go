@@ -432,11 +432,12 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 
 	// Build SelectOptions from MaasMachine spec
 	selectOpts := lxd.SelectOptions{
-		Zone:         zone,
-		ResourcePool: resourcePool,
-		Tags:         mm.Spec.Tags,
-		MinCores:     cpu,
-		MinMemory:    mem,
+		Zone:          zone,
+		ResourcePool:  resourcePool,
+		Tags:          mm.Spec.Tags,
+		MinCores:      cpu,
+		MinMemory:     mem,
+		MinDiskSizeGB: diskSizeGB,
 	}
 
 	if s.scope.IsControlPlane() {
