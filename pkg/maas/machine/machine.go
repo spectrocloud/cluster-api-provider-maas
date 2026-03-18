@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
@@ -59,6 +60,7 @@ func logVMHostDiagnostics(s *Service, err error) {
 		sys := m[1]
 		s.scope.Info("Releasing broken machine", "system-id", sys)
 		ctx := context.TODO()
+		s.releaseIPsForMachine(ctx, sys)
 		_, _ = s.maasClient.Machines().Machine(sys).Releaser().WithForce().Release(ctx)
 	}
 
@@ -97,18 +99,76 @@ func (s *Service) GetMachine(systemID string) (*infrav1beta1.Machine, error) {
 	return machine, nil
 }
 
+// releaseIPBestEffort releases a single IP in MAAS. Used to avoid "User reserved" IP exhaustion
+// when a machine is never released (e.g. crash, force delete) or release fails. Logs errors only.
+func (s *Service) releaseIPBestEffort(ctx context.Context, ip string) {
+	if ip == "" {
+		return
+	}
+	if err := s.maasClient.IPAddresses().Release(ctx, ip); err != nil {
+		s.scope.V(1).Info("Best-effort IP release failed (may already be released)", "ip", ip, "error", err)
+	}
+}
+
+// releaseIPsForMachine fetches the machine by systemID and releases each of its IPs (best-effort).
+// Used so force-release and other paths that do not call ReleaseMachine still release IPs.
+func (s *Service) releaseIPsForMachine(ctx context.Context, systemID string) {
+	if systemID == "" {
+		return
+	}
+	m, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if err != nil {
+		return
+	}
+	for _, ip := range m.IPAddresses() {
+		if ip != nil {
+			s.releaseIPBestEffort(ctx, ip.String())
+		}
+	}
+}
+
+// ReleaseIP releases a single IP address in MAAS. Used when the machine is gone (e.g. force-deleted)
+// but the MaasMachine spec still had a static IP that may remain "User reserved". Best-effort.
+func (s *Service) ReleaseIP(ip string) {
+	ctx := context.TODO()
+	s.releaseIPBestEffort(ctx, ip)
+}
+
+// ReleaseMachine releases the MAAS machine and its IP allocations. It explicitly releases any
+// IPs associated with the machine before calling MAAS Release(), and retries Release() on
+// transient failures to reduce "User reserved" IP exhaustion from failed releases.
 func (s *Service) ReleaseMachine(systemID string) error {
 	ctx := context.TODO()
 
-	_, err := s.maasClient.Machines().
-		Machine(systemID).
-		Releaser().
-		Release(ctx)
-	if err != nil {
-		return errors.Wrapf(err, "Unable to release machine")
+	// Fetch machine to release its IPs explicitly before release. IPs can remain "User reserved"
+	// if Release() is never called (crash, force delete, migration failure) or if Release() fails.
+	m, getErr := s.maasClient.Machines().Machine(systemID).Get(ctx)
+	if getErr == nil {
+		for _, ip := range m.IPAddresses() {
+			if ip != nil {
+				s.releaseIPBestEffort(ctx, ip.String())
+			}
+		}
+	} else {
+		// Machine already gone; release scope static IP so it does not stay "User reserved".
+		s.releaseIPBestEffort(ctx, s.scope.GetStaticIP())
 	}
+	// Proceed with machine release even if Get failed (e.g. machine already gone).
 
-	return nil
+	const maxAttempts = 3
+	const backoff = 2 * time.Second
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		_, lastErr = s.maasClient.Machines().Machine(systemID).Releaser().Release(ctx)
+		if lastErr == nil {
+			return nil
+		}
+		s.scope.V(1).Info("Machine release attempt failed, will retry", "attempt", attempt, "systemID", systemID, "error", lastErr)
+		if attempt < maxAttempts {
+			time.Sleep(backoff)
+		}
+	}
+	return errors.Wrapf(lastErr, "Unable to release machine after %d attempts", maxAttempts)
 }
 
 func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, rerr error) {
@@ -181,6 +241,7 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 			if pt == "lxd" || pt == "lxdvm" || pt == "virsh" {
 				s.scope.Info("Rejecting VM host allocation for node(s) under HCP; releasing and retrying",
 					"system-id", m.SystemID(), "powerType", pt, "zone", m.ZoneName(), "pool", m.ResourcePoolName())
+				s.releaseIPsForMachine(ctx, m.SystemID())
 				_, _ = m.Releaser().WithForce().Release(ctx)
 				return nil, ErrBrokenMachine
 			}
@@ -226,10 +287,26 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	defer func() {
 		if rerr != nil {
 			s.scope.Info("Attempting to release machine which failed to deploy")
-			_, err := m.Releaser().Release(ctx)
-			if err != nil {
-				// Is it right to NOT set rerr so we can see the original issue?
-				log.Error(err, "Unable to release properly")
+			// Release static IP if we had one to avoid "User reserved" IP exhaustion
+			if staticIP := s.scope.GetStaticIP(); staticIP != "" {
+				s.releaseIPBestEffort(ctx, staticIP)
+			}
+			// Retry machine release to reduce stuck allocations when Release() fails transiently
+			const maxAttempts = 3
+			const backoff = 2 * time.Second
+			var releaseErr error
+			for attempt := 1; attempt <= maxAttempts; attempt++ {
+				_, releaseErr = m.Releaser().Release(ctx)
+				if releaseErr == nil {
+					break
+				}
+				log.Error(releaseErr, "Unable to release machine on deploy failure", "attempt", attempt)
+				if attempt < maxAttempts {
+					time.Sleep(backoff)
+				}
+			}
+			if releaseErr != nil {
+				log.Error(releaseErr, "Unable to release properly after retries (IP/machine may need manual release in MAAS)")
 			}
 
 			// Clear IDs so the next reconcile can allocate a different machine instead of
@@ -287,6 +364,13 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get existing VM by system-id")
 		}
+		cleanupOnError := false
+		defer func() {
+			if cleanupOnError {
+				s.releaseIPBestEffort(ctx, s.scope.GetStaticIP())
+				_ = s.ReleaseMachine(m.SystemID())
+			}
+		}()
 		// Best-effort: set hostname and static IP before deploy
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
@@ -296,6 +380,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 			if staticIP := s.scope.GetStaticIP(); staticIP != "" {
 				if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
 					// Fail fast so we don't attempt Deploy without a network link configured
+					cleanupOnError = true
 					return nil, errors.Wrap(err, "failed to configure static IP before deploy")
 				}
 			}
@@ -305,6 +390,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 			SetOSSystem("custom").
 			SetDistroSeries(mm.Spec.Image).Deploy(ctx)
 		if err != nil {
+			cleanupOnError = true
 			return nil, errors.Wrap(err, "failed to deploy existing VM")
 		}
 		// Determine fallback zone

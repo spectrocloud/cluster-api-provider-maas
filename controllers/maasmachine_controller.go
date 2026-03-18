@@ -206,6 +206,10 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 			machineScope.Info("Not removing finalizer yet; waiting for deletion age threshold", "age", deletionAge.String())
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
+		// Release static IP from spec if set, so it does not remain "User reserved" in MAAS (e.g. force-deleted machine).
+		if maasMachine.Spec.StaticIP != nil && maasMachine.Spec.StaticIP.IP != "" {
+			machineSvc.ReleaseIP(maasMachine.Spec.StaticIP.IP)
+		}
 		machineScope.V(2).Info("Unable to locate MaaS instance by ID or tags", "system-id", machineScope.GetInstanceID())
 		r.Recorder.Eventf(maasMachine, corev1.EventTypeWarning, "NoMachineFound", "Unable to find matching MaaS machine")
 		controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
