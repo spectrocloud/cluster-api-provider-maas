@@ -498,6 +498,26 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		}
 	}
 
+	// Before composing: check if the static IP is already allocated in MAAS
+	if s.scope.IsControlPlane() {
+		if staticIPToCheck := s.scope.GetStaticIP(); staticIPToCheck != "" {
+			s.scope.Info("Checking static IP availability before VM compose", "ip", staticIPToCheck)
+			existingIP, ipErr := s.maasClient.IPAddresses().GetAll(ctx, staticIPToCheck)
+			if ipErr == nil {
+				if ifaces := existingIP.InterfaceSet(); len(ifaces) > 0 {
+					return nil, fmt.Errorf("static IP %s is already in use (allocated to %d interface(s)); cannot compose VM — will retry when IP is available", staticIPToCheck, len(ifaces))
+				}
+				// IP exists with no interfaces — stale/floating allocation; release before compose
+				s.scope.Info("Static IP has stale allocation with no interfaces; releasing before compose", "ip", staticIPToCheck)
+				if releaseErr := s.maasClient.IPAddresses().Release(ctx, staticIPToCheck); releaseErr != nil {
+					return nil, fmt.Errorf("static IP %s has a stale allocation that could not be released before compose: %w", staticIPToCheck, releaseErr)
+				}
+				s.scope.Info("Released stale IP allocation, proceeding with compose", "ip", staticIPToCheck)
+			}
+			// ipErr != nil means IP not found in MAAS — available, proceed normally
+		}
+	}
+
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
