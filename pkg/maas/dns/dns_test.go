@@ -33,6 +33,7 @@ func (f *fakeClientSet) Spaces() maasclient.Spaces                       { retur
 func (f *fakeClientSet) Users() maasclient.Users                         { return nil }
 func (f *fakeClientSet) Zones() maasclient.Zones                         { return nil }
 func (f *fakeClientSet) SSHKeys() maasclient.SSHKeys                     { return nil }
+func (f *fakeClientSet) Subnets() maasclient.Subnets                     { return nil }
 func (f *fakeClientSet) VMHosts() maasclient.VMHosts                     { return nil }
 
 // fakeIPAddress satisfies maasclient.IPAddress for tests
