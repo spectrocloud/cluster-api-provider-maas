@@ -470,12 +470,6 @@ func (r *MaasMachineReconciler) reconcileNormal(ctx context.Context, machineScop
 				// VM just composed and is commissioning; requeue shortly
 				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
-			if err != nil && strings.Contains(err.Error(), "machine is commissioning") {
-				// Machine is still commissioning in MaaS; we have no control over it during this stage
-				machineScope.Info("Machine is commissioning in MaaS; static IP configuration will be retried after commissioning completes")
-				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "waiting for commissioning to complete")
-				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-			}
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return ctrl.Result{}, err
