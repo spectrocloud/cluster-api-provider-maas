@@ -141,7 +141,14 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 		// Check if KCP is stable
 		kcp, err := r.getKubeadmControlPlane(ctx, cluster)
-		if err != nil || !r.isKCPStable(kcp, log) {
+		if err != nil {
+			// Log at Error level so RBAC or connectivity issues are immediately
+			// visible instead of silently looping. This was the root cause of
+			// PCP-XXXX where missing RBAC caused VEC to loop for hours.
+			log.Error(err, "failed to get KubeadmControlPlane during active session — check RBAC for controlplane.cluster.x-k8s.io", "opID", activeOpID)
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		if !r.isKCPStable(kcp, log) {
 			log.V(1).Info("KCP not yet stable, waiting", "opID", activeOpID)
 			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 		}
