@@ -329,6 +329,9 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		// Tag CP VMs for anti-affinity placement and maintenance operations
 		if s.scope.IsControlPlane() {
 			s.tagCPVM(ctx, deployingM.SystemID())
+			// If there's an active maintenance session, update the VEC ConfigMap with
+			// this replacement VM's systemID so VEC can tag it with ready-op and complete.
+			s.tagVMIfMaintenanceActive(ctx, deployingM.SystemID())
 		}
 
 		res := fromSDKTypeToMachine(deployingM)
@@ -547,6 +550,9 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		// Tag CP VMs for anti-affinity placement and maintenance operations
 		if s.scope.IsControlPlane() {
 			s.tagCPVM(ctx, m.SystemID())
+			// If there's an active maintenance session, update the VEC ConfigMap with
+			// this replacement VM's systemID so VEC can tag it with ready-op and complete.
+			s.tagVMIfMaintenanceActive(ctx, m.SystemID())
 		}
 	}
 	s.scope.Info("Composed VM (pre-bootstrap)", "system-id", m.SystemID())
