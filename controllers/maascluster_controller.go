@@ -62,6 +62,7 @@ type MaasClusterReconciler struct {
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;patch;update
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
