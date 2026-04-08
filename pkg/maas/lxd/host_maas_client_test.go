@@ -72,6 +72,7 @@ func (h *fakeVMHost) AvailableMemory() int                   { return 0 }
 func (h *fakeVMHost) Capabilities() []string                 { return nil }
 func (h *fakeVMHost) Projects() []string                     { return nil }
 func (h *fakeVMHost) StoragePools() []maasclient.StoragePool { return nil }
+func (h *fakeVMHost) Tags() []string                        { return nil }
 
 type fakeMachine struct {
 	systemID   string
@@ -105,6 +106,7 @@ func (m *fakeMachine) ZoneName() string                                    { ret
 func (m *fakeMachine) BootInterfaceName() string                           { return "" }
 func (m *fakeMachine) Tags() []string                                      { return m.tags }
 func (m *fakeMachine) Parent() string                                      { return "" }
+func (m *fakeMachine) DeployedInMemory() bool                              { return false }
 
 // ---- Tests ----
 
