@@ -173,6 +173,8 @@ github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415123242-024f947b98d
 github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415123242-024f947b98dd/go.mod h1:LSxLlmaNCmkaldtysbp7Beq/O2wptBb6qE5iKj+Y7Lw=
 github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415132224-f1b03bc60568 h1:38czK2+nsQbfsRX9ZIutkg1Ye0VdbLnZntofYw16DOo=
 github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415132224-f1b03bc60568/go.mod h1:LSxLlmaNCmkaldtysbp7Beq/O2wptBb6qE5iKj+Y7Lw=
+github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415132611-a2a4eca78956 h1:i8oeYsR5VIols3jgTuNCZoHpZw3GnD+nBXpNkIftsv0=
+github.com/spectrocloud/maas-client-go v1.0.0-beta1.0.20260415132611-a2a4eca78956/go.mod h1:LSxLlmaNCmkaldtysbp7Beq/O2wptBb6qE5iKj+Y7Lw=
 github.com/spf13/cast v1.7.1 h1:cuNEagBQEHWN1FnbGEjCXL2szYEXqfJPbP2HNUaca9Y=
 github.com/spf13/cast v1.7.1/go.mod h1:ancEpBxwJDODSW/UG4rDrAqiKolqNNh2DX3mk86cAdo=
 github.com/spf13/cobra v1.9.1 h1:CXSaggrXdbHK9CF+8ywj8Amf7PBRmPCOJugH954Nnlo=
