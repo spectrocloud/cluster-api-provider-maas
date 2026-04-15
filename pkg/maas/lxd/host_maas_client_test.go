@@ -134,7 +134,6 @@ func (m *fakeMachine) ZoneName() string                                    { ret
 func (m *fakeMachine) BootInterfaceName() string                           { return "" }
 func (m *fakeMachine) Tags() []string                                      { return m.tags }
 func (m *fakeMachine) Parent() string                                      { return "" }
-func (m *fakeMachine) DeployedInMemory() bool                              { return false }
 
 // fakeMachineWithParent extends fakeMachine to support Parent() for VM counting tests
 type fakeMachineWithParent struct {
