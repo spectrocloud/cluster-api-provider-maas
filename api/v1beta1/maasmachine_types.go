@@ -133,6 +133,12 @@ type VMConfig struct {
 	// +optional
 	Network string `json:"network,omitempty"`
 
+	// InterfaceLinkModes sets the MAAS link mode per interface (e.g. eth0, eth1, eth2).
+	// Keys are interface names ("eth0", "eth1", ...); values: "auto", "dhcp", "static", "link_up".
+	// When unset for an interface: eth0 defaults to "auto", others to "dhcp". Extensible for future interfaces.
+	// +optional
+	InterfaceLinkModes map[string]string `json:"interfaceLinkModes,omitempty"`
+
 	// AutoStart specifies whether the VM should automatically start
 	// +kubebuilder:default=true
 	// +optional

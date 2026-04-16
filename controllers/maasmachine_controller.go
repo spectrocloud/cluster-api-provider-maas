@@ -379,7 +379,7 @@ func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, ma
 	return m, nil
 }
 
-func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasMachineReconciler) reconcileNormal(ctx context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	machineScope.Info("Reconciling MaasMachine")
 
 	maasMachine := machineScope.MaasMachine
@@ -437,6 +437,20 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// TODO(saamalik) confirm that we'll never "recreate" a m; e.g: findMachine should always return err
 	// if there used to be a m
 	if m == nil || !(m.State == infrav1beta1.MachineStateDeployed || m.State == infrav1beta1.MachineStateDeploying) {
+		// If machine is in Ready or Allocated state, verify network interfaces before deploying.
+		// This ensures correct subnet assignment before deployment starts (avoids wrong eth0 subnet
+		// on 2nd VM when MAAS compose links eth0 to a different subnet than requested).
+		if m != nil && machineScope.GetDynamicLXD() &&
+			(m.State == infrav1beta1.MachineStateReady || m.State == infrav1beta1.MachineStateAllocated) {
+			machineScope.Info("Verifying VM network interfaces before deployment", "machineID", m.ID, "state", m.State)
+			if err := machineSvc.VerifyVMNetworkInterfaces(ctx, m.ID); err != nil {
+				machineScope.Error(err, "Failed to verify VM network interfaces before deploy, requeuing", "machineID", m.ID)
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "verifying network interfaces")
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+			machineScope.Info("Network interfaces verified successfully, proceeding with deployment", "machineID", m.ID)
+		}
+
 		// Avoid a flickering condition between Started and Failed if there's a persistent failure with createInstance
 		if conditions.GetReason(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition) != infrav1beta1.MachineDeployFailedReason {
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployStartedReason, clusterv1.ConditionSeverityInfo, "")
@@ -488,7 +502,19 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	switch s := m.State; {
-	case s == infrav1beta1.MachineStateReady, s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
+	case s == infrav1beta1.MachineStateReady, s == infrav1beta1.MachineStateAllocated:
+		machineScope.SetNotReady()
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
+		// Note: Network interface verification happens before deployment is triggered (see above).
+		// This is a safety check in case the machine reached Ready/Allocated through a different path.
+		if machineScope.GetDynamicLXD() {
+			if err := machineSvc.VerifyVMNetworkInterfaces(ctx, m.ID); err != nil {
+				machineScope.Error(err, "Failed to verify VM network interfaces (safety check)", "machineID", m.ID, "state", s)
+				// Requeue to retry verification - deployment should not proceed until interfaces are correct
+				return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			}
+		}
+	case s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
 		machineScope.SetNotReady()
 		machineScope.Info("Unexpected Maas m termination")
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
@@ -508,7 +534,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		machineScope.SetNotReady()
 		machineScope.Info("Machine is powered off!")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
-	case s == infrav1beta1.MachineStateDeploying, s == infrav1beta1.MachineStateAllocated:
+	case s == infrav1beta1.MachineStateDeploying:
 		machineScope.SetNotReady()
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
 	case s == infrav1beta1.MachineStateDeployed:
