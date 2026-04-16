@@ -253,6 +253,11 @@ func (in *MaasMachineSpec) DeepCopyInto(out *MaasMachineSpec) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.Parent != nil {
+		in, out := &in.Parent, &out.Parent
+		*out = new(string)
+		**out = **in
+	}
 	if in.ProviderID != nil {
 		in, out := &in.ProviderID, &out.ProviderID
 		*out = new(string)
@@ -529,6 +534,13 @@ func (in *VMConfig) DeepCopyInto(out *VMConfig) {
 		in, out := &in.DiskSize, &out.DiskSize
 		*out = new(int)
 		**out = **in
+	}
+	if in.InterfaceLinkModes != nil {
+		in, out := &in.InterfaceLinkModes, &out.InterfaceLinkModes
+		*out = make(map[string]string, len(*in))
+		for key, val := range *in {
+			(*out)[key] = val
+		}
 	}
 	if in.AutoStart != nil {
 		in, out := &in.AutoStart, &out.AutoStart
