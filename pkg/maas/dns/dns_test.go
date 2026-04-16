@@ -34,6 +34,8 @@ func (f *fakeClientSet) Users() maasclient.Users                         { retur
 func (f *fakeClientSet) Zones() maasclient.Zones                         { return nil }
 func (f *fakeClientSet) SSHKeys() maasclient.SSHKeys                     { return nil }
 func (f *fakeClientSet) VMHosts() maasclient.VMHosts                     { return nil }
+func (f *fakeClientSet) IPRanges() maasclient.IPRanges                   { return nil }
+func (f *fakeClientSet) Subnets() maasclient.Subnets                     { return nil }
 
 // fakeIPAddress satisfies maasclient.IPAddress for tests
 type fakeIPAddress struct{ ip net.IP }
