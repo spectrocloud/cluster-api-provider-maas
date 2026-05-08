@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"testing"
+	"time"
 
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/klog/v2/klogr"
@@ -237,36 +239,69 @@ func TestReconcileDNSAttachments(t *testing.T) {
 	runningCP := makeCPMachine("cp-1", ns, clusterName, true, infrav1beta1.MachineStateDeployed, cpIP)
 	poweredOffCP := makeCPMachine("cp-1", ns, clusterName, false, infrav1beta1.MachineStateDeployed, cpIP)
 
+	deletedCP := func() *infrav1beta1.MaasMachine {
+		m := makeCPMachine("cp-deleted", ns, clusterName, true, infrav1beta1.MachineStateDeployed, cpIP)
+		m.Finalizers = []string{"test-finalizer"} // required for DeletionTimestamp to be set
+		ts := metav1.NewTime(time.Now())
+		m.DeletionTimestamp = &ts
+		return m
+	}()
+
+	runningCPNoIP := makeCPMachine("cp-no-ip", ns, clusterName, true, infrav1beta1.MachineStateDeployed, "") // powered on but no ExternalIP
+
 	tests := []struct {
-		name            string
-		maasCluster     *infrav1beta1.MaasCluster
-		machines        []client.Object
-		mockSvc         *mockDNSServicer
+		name             string
+		maasCluster      *infrav1beta1.MaasCluster
+		machines         []client.Object
+		mockSvc          *mockDNSServicer
 		wantUpdateCalled bool
-		wantHashSet     bool
-		wantIsDrift     bool
+		wantHashSet      bool
+		wantIsDrift      bool
+		wantErr          bool
 	}{
 		{
-			name:        "CP powered off — DNS not touched, hash not cached",
-			maasCluster: defaultMaasCluster(),
-			machines:    []client.Object{poweredOffCP},
-			mockSvc:     &mockDNSServicer{},
+			name:             "CP powered off — existingCPCount>0, DNS preserved",
+			maasCluster:      defaultMaasCluster(),
+			machines:         []client.Object{poweredOffCP},
+			mockSvc:          &mockDNSServicer{},
 			wantUpdateCalled: false,
 			wantHashSet:      false,
 		},
 		{
-			name:        "no CP machines — DNS not touched, hash not cached",
-			maasCluster: defaultMaasCluster(),
-			machines:    []client.Object{},
-			mockSvc:     &mockDNSServicer{},
+			// Fix for #2: with no CP objects, DNS must be cleared (e.g. rolling replacement gap).
+			// Before this fix, the guard returned nil unconditionally when IPs were empty.
+			name:             "no CP machines — existingCPCount=0, DNS cleared",
+			maasCluster:      defaultMaasCluster(),
+			machines:         []client.Object{},
+			mockSvc:          &mockDNSServicer{},
+			wantUpdateCalled: true,
+			wantHashSet:      true,
+		},
+		{
+			// Fix for #2: CP has DeletionTimestamp → excluded from existingCPCount →
+			// DNS should be cleared, not preserved.
+			name:             "CP with DeletionTimestamp — existingCPCount=0, DNS cleared",
+			maasCluster:      defaultMaasCluster(),
+			machines:         []client.Object{deletedCP},
+			mockSvc:          &mockDNSServicer{},
+			wantUpdateCalled: true,
+			wantHashSet:      true,
+		},
+		{
+			// Fix for #5: CP is running (existingCPCount=1, runningCPCount=1) but has no
+			// ExternalIP (same code path as preferred-subnet mismatch) → DNS preserved.
+			name:             "CP running but no ExternalIP — existingCPCount>0, DNS preserved",
+			maasCluster:      defaultMaasCluster(),
+			machines:         []client.Object{runningCPNoIP},
+			mockSvc:          &mockDNSServicer{},
 			wantUpdateCalled: false,
 			wantHashSet:      false,
 		},
 		{
-			name:        "CP running, no prior annotation — DNS updated and hash cached",
-			maasCluster: defaultMaasCluster(),
-			machines:    []client.Object{runningCP},
-			mockSvc:     &mockDNSServicer{},
+			name:             "CP running, no prior annotation — DNS updated and hash cached",
+			maasCluster:      defaultMaasCluster(),
+			machines:         []client.Object{runningCP},
+			mockSvc:          &mockDNSServicer{},
 			wantUpdateCalled: true,
 			wantHashSet:      true,
 		},
@@ -299,6 +334,14 @@ func TestReconcileDNSAttachments(t *testing.T) {
 			wantIsDrift:      true,
 			wantHashSet:      true,
 		},
+		{
+			// Fix for #6: GetDNSResource error must propagate to the caller.
+			name:        "GetDNSResource error is propagated",
+			maasCluster: defaultMaasCluster(),
+			machines:    []client.Object{runningCP},
+			mockSvc:     &mockDNSServicer{getDNSResourceErr: errors.New("MAAS unreachable")},
+			wantErr:     true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -308,6 +351,10 @@ func TestReconcileDNSAttachments(t *testing.T) {
 
 			err := r.reconcileDNSAttachments(cs, tc.mockSvc)
 
+			if tc.wantErr {
+				g.Expect(err).To(HaveOccurred())
+				return
+			}
 			g.Expect(err).ToNot(HaveOccurred())
 			g.Expect(tc.mockSvc.updateCalled).To(Equal(tc.wantUpdateCalled), "updateCalled mismatch")
 			g.Expect(tc.mockSvc.isDriftCalled).To(Equal(tc.wantIsDrift), "isDriftCalled mismatch")

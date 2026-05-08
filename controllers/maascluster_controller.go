@@ -180,13 +180,19 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return errors.Wrapf(err, "unable to find preferred subnets")
 	}
 
-	// Build desired IPs first (no MAAS call). Track running CP count separately so we can
-	// distinguish "machines powered off" from "machines running but IPs filtered by subnets".
-	var runningCPCount int
+	// Build desired IPs first (no MAAS call). Track two separate counts:
+	//   existingCPCount — CPs that exist and are NOT being deleted (DeletionTimestamp zero).
+	//                     Used to distinguish a transient power-off from a genuine scale-down.
+	//   runningCPCount  — CPs that are powered on and running.
+	//                     Used to detect preferred-subnet misconfiguration.
+	var existingCPCount, runningCPCount int
 	var runningIpAddresses []string
 	for _, m := range machines {
 		if !IsControlPlaneMachine(m) {
 			continue
+		}
+		if m.DeletionTimestamp.IsZero() {
+			existingCPCount++
 		}
 		isRunningHealthy := IsRunning(m)
 		if !m.DeletionTimestamp.IsZero() || !isRunningHealthy {
@@ -199,17 +205,23 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		}
 	}
 
-	// Never wipe DNS when all CP machines are transiently unavailable (e.g. powered off during
-	// a flap). An empty desired set would clear the MAAS A records and the hash would be cached
-	// as SHA-256(""), preventing self-recovery until the controller pod itself is reachable again.
 	if len(runningIpAddresses) == 0 {
-		if runningCPCount > 0 {
-			clusterScope.Info("CP machines are running but no IPs match preferred subnets; preserving existing DNS records",
-				"runningCPs", runningCPCount)
-		} else {
-			clusterScope.Info("No running CP machines found; preserving existing DNS records")
+		if existingCPCount > 0 {
+			// CP objects exist but are transiently unavailable (powered off / IPs not yet
+			// assigned / filtered by preferred subnets). Preserve existing DNS records so
+			// the cluster remains reachable during the flap; DNS self-heals when CPs recover.
+			if runningCPCount > 0 {
+				clusterScope.Info("CP machines are running but no IPs match preferred subnets; preserving existing DNS records",
+					"runningCPs", runningCPCount)
+			} else {
+				clusterScope.Info("No running CP machines found; preserving existing DNS records",
+					"existingCPs", existingCPCount)
+			}
+			return nil
 		}
-		return nil
+		// No CP objects exist or all are pending deletion (scale-down / rolling replacement
+		// with no new CPs provisioned yet). Fall through to clear DNS records.
+		clusterScope.Info("All CP machines absent or pending deletion; clearing DNS records")
 	}
 
 	// Deduplicate before hashing so the annotation always represents the applied IP *set*.
