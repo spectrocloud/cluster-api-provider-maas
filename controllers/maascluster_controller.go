@@ -48,8 +48,17 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
+
+// dnsServicer is the subset of dns.Service used by reconcileDNSAttachments.
+// Extracted as an interface to allow unit testing without a live MAAS endpoint.
+type dnsServicer interface {
+	GetDNSResource() (maasclient.DNSResource, error)
+	UpdateDNSAttachmentsWithResource(maasclient.DNSResource, []string) (bool, error)
+	IsDriftDetected(maasclient.DNSResource, []string) bool
+}
 
 const lastAppliedAnn = "infrastructure.cluster.x-k8s.io/last-applied-dns-hash"
 
@@ -155,7 +164,7 @@ func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScop
 	return reconcile.Result{}, nil
 }
 
-func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc *dns.Service) error {
+func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc dnsServicer) error {
 
 	if clusterScope.IsCustomEndpoint() {
 		return nil
@@ -203,6 +212,12 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return nil
 	}
 
+	// Deduplicate before hashing so the annotation always represents the applied IP *set*.
+	// updateResourceIPs deduplicates via a set internally; without this step the hash could
+	// differ between reconciles if duplicate IPs appear/disappear while MAAS state is unchanged,
+	// causing spurious re-syncs.
+	runningIpAddresses = dedupStringSlice(runningIpAddresses)
+
 	// Fetch DNS resource once — needed for both drift check and potential update.
 	dnsResource, err := dnssvc.GetDNSResource()
 	if err != nil {
@@ -238,6 +253,19 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 	}
 
 	return nil
+}
+
+// dedupStringSlice returns a new slice with duplicate elements removed, preserving order.
+func dedupStringSlice(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // IsControlPlaneMachine checks machine is a control plane node.
