@@ -171,32 +171,54 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return errors.Wrapf(err, "unable to find preferred subnets")
 	}
 
-	// Build desired IPs first (no MAAS call)
+	// Build desired IPs first (no MAAS call). Track running CP count separately so we can
+	// distinguish "machines powered off" from "machines running but IPs filtered by subnets".
+	var runningCPCount int
 	var runningIpAddresses []string
 	for _, m := range machines {
 		if !IsControlPlaneMachine(m) {
 			continue
 		}
-		machineIP := getExternalMachineIP(clusterScope.Logger, preferredSubnets, m)
 		isRunningHealthy := IsRunning(m)
 		if !m.DeletionTimestamp.IsZero() || !isRunningHealthy {
 			continue
 		}
+		runningCPCount++
+		machineIP := getExternalMachineIP(clusterScope.Logger, preferredSubnets, m)
 		if machineIP != "" {
 			runningIpAddresses = append(runningIpAddresses, machineIP)
 		}
 	}
 
-	// Early-exit gate using last-applied hash
-	desiredHash := infrautil.StableHashStringSlice(runningIpAddresses)
-	if clusterScope.MaasCluster.Annotations != nil && clusterScope.MaasCluster.Annotations[lastAppliedAnn] == desiredHash {
+	// Never wipe DNS when all CP machines are transiently unavailable (e.g. powered off during
+	// a flap). An empty desired set would clear the MAAS A records and the hash would be cached
+	// as SHA-256(""), preventing self-recovery until the controller pod itself is reachable again.
+	if len(runningIpAddresses) == 0 {
+		if runningCPCount > 0 {
+			clusterScope.Info("CP machines are running but no IPs match preferred subnets; preserving existing DNS records",
+				"runningCPs", runningCPCount)
+		} else {
+			clusterScope.Info("No running CP machines found; preserving existing DNS records")
+		}
 		return nil
 	}
 
-	// Only now fetch DNS resource once
+	// Fetch DNS resource once — needed for both drift check and potential update.
 	dnsResource, err := dnssvc.GetDNSResource()
 	if err != nil {
 		return errors.Wrap(err, "Unable to get the dns resource")
+	}
+
+	// Early-exit only when the annotation hash matches AND MAAS state agrees with desired IPs.
+	// Verifying MAAS state catches external drift (e.g. DNS records manually wiped while the
+	// desired set was unchanged, so the hash never changed).
+	desiredHash := infrautil.StableHashStringSlice(runningIpAddresses)
+	if clusterScope.MaasCluster.Annotations != nil && clusterScope.MaasCluster.Annotations[lastAppliedAnn] == desiredHash {
+		if !dnssvc.IsDriftDetected(dnsResource, runningIpAddresses) {
+			return nil
+		}
+		clusterScope.Info("DNS drift detected: MAAS state diverges from last-applied annotation; forcing re-sync",
+			"desiredIPs", runningIpAddresses)
 	}
 
 	// Use optimized update with in-resource idempotency
@@ -211,7 +233,6 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 	}
 	clusterScope.MaasCluster.Annotations[lastAppliedAnn] = desiredHash
 
-	// Best-effort requeue hint remains optional; we skip computing current vs attached
 	if updated {
 		clusterScope.Info("DNS attachments updated; will continue monitoring for changes")
 	}

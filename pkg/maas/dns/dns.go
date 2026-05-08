@@ -59,6 +59,24 @@ func (s *Service) ReconcileDNS() error {
 	return nil
 }
 
+// IsDriftDetected returns true if the MAAS DNS resource's current IP set differs from desiredIPs.
+// Used to catch external drift (e.g. manual wipe) even when the annotation hash has not changed.
+func (s *Service) IsDriftDetected(dnsResource maasclient.DNSResource, desiredIPs []string) bool {
+	desired := sets.NewString()
+	for _, ip := range desiredIPs {
+		if ip != "" {
+			desired.Insert(ip)
+		}
+	}
+	current := sets.NewString()
+	for _, addr := range dnsResource.IPAddresses() {
+		if a := addr.IP().String(); a != "" {
+			current.Insert(a)
+		}
+	}
+	return !desired.Equal(current)
+}
+
 // UpdateDNSAttachmentsWithResource updates DNS attachments using a pre-fetched DNS resource,
 // avoiding additional GET API calls. Returns true if an update was performed.
 func (s *Service) UpdateDNSAttachmentsWithResource(dnsResource maasclient.DNSResource, IPs []string) (bool, error) {
@@ -81,6 +99,11 @@ func (s *Service) updateResourceIPs(dnsResource maasclient.DNSResource, IPs []st
 		if ip != "" {
 			desired.Insert(ip)
 		}
+	}
+
+	// Refuse to wipe all A records; callers must guard before reaching here.
+	if desired.Len() == 0 {
+		return false, errors.New("refusing to PUT empty IP set to MAAS DNS resource")
 	}
 
 	// Build current set from resource
