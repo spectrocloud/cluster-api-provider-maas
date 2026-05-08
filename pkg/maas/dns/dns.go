@@ -101,11 +101,6 @@ func (s *Service) updateResourceIPs(dnsResource maasclient.DNSResource, IPs []st
 		}
 	}
 
-	// Refuse to wipe all A records; callers must guard before reaching here.
-	if desired.Len() == 0 {
-		return false, errors.New("refusing to PUT empty IP set to MAAS DNS resource")
-	}
-
 	// Build current set from resource
 	current := sets.NewString()
 	for _, addr := range dnsResource.IPAddresses() {
