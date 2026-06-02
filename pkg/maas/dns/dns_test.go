@@ -35,6 +35,8 @@ func (f *fakeClientSet) Zones() maasclient.Zones                         { retur
 func (f *fakeClientSet) SSHKeys() maasclient.SSHKeys                     { return nil }
 func (f *fakeClientSet) Subnets() maasclient.Subnets                     { return nil }
 func (f *fakeClientSet) VMHosts() maasclient.VMHosts                     { return nil }
+func (f *fakeClientSet) IPRanges() maasclient.IPRanges                   { return nil }
+func (f *fakeClientSet) Subnets() maasclient.Subnets                     { return nil }
 
 // fakeIPAddress satisfies maasclient.IPAddress for tests
 type fakeIPAddress struct{ ip net.IP }
@@ -260,7 +262,8 @@ func TestDNS(t *testing.T) {
 			maasClient: &fakeClientSet{},
 		}
 
-		// Remove all IPs
+		// The helper intentionally allows clearing all IPs (deprovisioning use-case).
+		// The guard against accidental DNS wipe lives in reconcileDNSAttachments, not here.
 		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
 			&fakeIPAddress{ip: net.ParseIP("1.1.1.1")},
 		})
@@ -271,6 +274,105 @@ func TestDNS(t *testing.T) {
 		updated, err := s.UpdateDNSAttachmentsWithResource(mockDNSResource, []string{})
 
 		g.Expect(err).ToNot(HaveOccurred())
-		g.Expect(updated).To(BeTrue(), "should update when removing all IPs")
+		g.Expect(updated).To(BeTrue(), "helper should allow intentional clearing of all IPs")
+	})
+
+	t.Run("IsDriftDetected - no drift when IPs match", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
+			&fakeIPAddress{ip: net.ParseIP("1.1.1.1")},
+			&fakeIPAddress{ip: net.ParseIP("2.2.2.2")},
+		})
+
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"2.2.2.2", "1.1.1.1"})).To(BeFalse())
+	})
+
+	t.Run("IsDriftDetected - drift when MAAS is empty", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{})
+
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"1.1.1.1"})).To(BeTrue())
+	})
+
+	t.Run("IsDriftDetected - drift when MAAS has different IPs", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
+			&fakeIPAddress{ip: net.ParseIP("9.9.9.9")},
+		})
+
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"1.1.1.1"})).To(BeTrue())
+	})
+
+	t.Run("IsDriftDetected - drift when MAAS has extra IPs", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
+			&fakeIPAddress{ip: net.ParseIP("1.1.1.1")},
+			&fakeIPAddress{ip: net.ParseIP("2.2.2.2")},
+		})
+
+		// desired has only one; MAAS has two → drift
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"1.1.1.1"})).To(BeTrue())
+	})
+
+	t.Run("IsDriftDetected - duplicate desired IPs treated as one (no spurious drift)", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		// MAAS has exactly one entry; desired slice has the same IP twice.
+		// IsDriftDetected must deduplicate and report no drift.
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
+			&fakeIPAddress{ip: net.ParseIP("1.1.1.1")},
+		})
+
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"1.1.1.1", "1.1.1.1"})).To(BeFalse())
+	})
+
+	t.Run("IsDriftDetected - empty strings in desired are ignored", func(t *testing.T) {
+		g := NewGomegaWithT(t)
+		ctrl := gomock.NewController(t)
+		mockDNSResource := mockclientset.NewMockDNSResource(ctrl)
+		s := &Service{
+			scope:      &scope.ClusterScope{Logger: log, Cluster: cluster, MaasCluster: maasCluster},
+			maasClient: &fakeClientSet{},
+		}
+
+		mockDNSResource.EXPECT().IPAddresses().Return([]maasclient.IPAddress{
+			&fakeIPAddress{ip: net.ParseIP("1.1.1.1")},
+		})
+
+		g.Expect(s.IsDriftDetected(mockDNSResource, []string{"", "1.1.1.1", ""})).To(BeFalse())
 	})
 }

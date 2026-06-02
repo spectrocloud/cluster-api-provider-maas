@@ -388,6 +388,90 @@ func (mr *MockClientSetInterfaceMockRecorder) Zones() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Zones", reflect.TypeOf((*MockClientSetInterface)(nil).Zones))
 }
 
+// IPAddresses mocks base method.
+func (m *MockClientSetInterface) IPAddresses() maasclient.IPAddresses {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IPAddresses")
+	ret0, _ := ret[0].(maasclient.IPAddresses)
+	return ret0
+}
+
+// IPAddresses indicates an expected call of IPAddresses.
+func (mr *MockClientSetInterfaceMockRecorder) IPAddresses() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IPAddresses", reflect.TypeOf((*MockClientSetInterface)(nil).IPAddresses))
+}
+
+// Tags mocks base method.
+func (m *MockClientSetInterface) Tags() maasclient.Tags {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Tags")
+	ret0, _ := ret[0].(maasclient.Tags)
+	return ret0
+}
+
+// Tags indicates an expected call of Tags.
+func (mr *MockClientSetInterfaceMockRecorder) Tags() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tags", reflect.TypeOf((*MockClientSetInterface)(nil).Tags))
+}
+
+// NetworkInterfaces mocks base method.
+func (m *MockClientSetInterface) NetworkInterfaces() maasclient.NetworkInterfaces {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NetworkInterfaces")
+	ret0, _ := ret[0].(maasclient.NetworkInterfaces)
+	return ret0
+}
+
+// NetworkInterfaces indicates an expected call of NetworkInterfaces.
+func (mr *MockClientSetInterfaceMockRecorder) NetworkInterfaces() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NetworkInterfaces", reflect.TypeOf((*MockClientSetInterface)(nil).NetworkInterfaces))
+}
+
+// Subnets mocks base method.
+func (m *MockClientSetInterface) Subnets() maasclient.Subnets {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Subnets")
+	ret0, _ := ret[0].(maasclient.Subnets)
+	return ret0
+}
+
+// Subnets indicates an expected call of Subnets.
+func (mr *MockClientSetInterfaceMockRecorder) Subnets() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subnets", reflect.TypeOf((*MockClientSetInterface)(nil).Subnets))
+}
+
+// VMHosts mocks base method.
+func (m *MockClientSetInterface) VMHosts() maasclient.VMHosts {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "VMHosts")
+	ret0, _ := ret[0].(maasclient.VMHosts)
+	return ret0
+}
+
+// VMHosts indicates an expected call of VMHosts.
+func (mr *MockClientSetInterfaceMockRecorder) VMHosts() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VMHosts", reflect.TypeOf((*MockClientSetInterface)(nil).VMHosts))
+}
+
+// IPRanges mocks base method.
+func (m *MockClientSetInterface) IPRanges() maasclient.IPRanges {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IPRanges")
+	ret0, _ := ret[0].(maasclient.IPRanges)
+	return ret0
+}
+
+// IPRanges indicates an expected call of IPRanges.
+func (mr *MockClientSetInterfaceMockRecorder) IPRanges() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IPRanges", reflect.TypeOf((*MockClientSetInterface)(nil).IPRanges))
+}
+
 // MockMachines is a mock of Machines interface.
 type MockMachines struct {
 	ctrl     *gomock.Controller
@@ -700,6 +784,146 @@ func (m *MockMachine) Zone() maasclient.Zone {
 func (mr *MockMachineMockRecorder) Zone() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Zone", reflect.TypeOf((*MockMachine)(nil).Zone))
+}
+
+// PowerType mocks base method.
+func (m *MockMachine) PowerType() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PowerType")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// PowerType indicates an expected call of PowerType.
+func (mr *MockMachineMockRecorder) PowerType() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PowerType", reflect.TypeOf((*MockMachine)(nil).PowerType))
+}
+
+// DeployedInMemory mocks base method.
+func (m *MockMachine) DeployedInMemory() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeployedInMemory")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// DeployedInMemory indicates an expected call of DeployedInMemory.
+func (mr *MockMachineMockRecorder) DeployedInMemory() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeployedInMemory", reflect.TypeOf((*MockMachine)(nil).DeployedInMemory))
+}
+
+// BootInterfaceID mocks base method.
+func (m *MockMachine) BootInterfaceID() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BootInterfaceID")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// BootInterfaceID indicates an expected call of BootInterfaceID.
+func (mr *MockMachineMockRecorder) BootInterfaceID() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BootInterfaceID", reflect.TypeOf((*MockMachine)(nil).BootInterfaceID))
+}
+
+// TotalStorageGB mocks base method.
+func (m *MockMachine) TotalStorageGB() float64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TotalStorageGB")
+	ret0, _ := ret[0].(float64)
+	return ret0
+}
+
+// TotalStorageGB indicates an expected call of TotalStorageGB.
+func (mr *MockMachineMockRecorder) TotalStorageGB() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TotalStorageGB", reflect.TypeOf((*MockMachine)(nil).TotalStorageGB))
+}
+
+// GetBootInterfaceType mocks base method.
+func (m *MockMachine) GetBootInterfaceType() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBootInterfaceType")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetBootInterfaceType indicates an expected call of GetBootInterfaceType.
+func (mr *MockMachineMockRecorder) GetBootInterfaceType() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBootInterfaceType", reflect.TypeOf((*MockMachine)(nil).GetBootInterfaceType))
+}
+
+// ResourcePoolName mocks base method.
+func (m *MockMachine) ResourcePoolName() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResourcePoolName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ResourcePoolName indicates an expected call of ResourcePoolName.
+func (mr *MockMachineMockRecorder) ResourcePoolName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResourcePoolName", reflect.TypeOf((*MockMachine)(nil).ResourcePoolName))
+}
+
+// ZoneName mocks base method.
+func (m *MockMachine) ZoneName() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ZoneName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ZoneName indicates an expected call of ZoneName.
+func (mr *MockMachineMockRecorder) ZoneName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ZoneName", reflect.TypeOf((*MockMachine)(nil).ZoneName))
+}
+
+// BootInterfaceName mocks base method.
+func (m *MockMachine) BootInterfaceName() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BootInterfaceName")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// BootInterfaceName indicates an expected call of BootInterfaceName.
+func (mr *MockMachineMockRecorder) BootInterfaceName() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BootInterfaceName", reflect.TypeOf((*MockMachine)(nil).BootInterfaceName))
+}
+
+// Tags mocks base method.
+func (m *MockMachine) Tags() []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Tags")
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// Tags indicates an expected call of Tags.
+func (mr *MockMachineMockRecorder) Tags() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tags", reflect.TypeOf((*MockMachine)(nil).Tags))
+}
+
+// Parent mocks base method.
+func (m *MockMachine) Parent() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Parent")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// Parent indicates an expected call of Parent.
+func (mr *MockMachineMockRecorder) Parent() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Parent", reflect.TypeOf((*MockMachine)(nil).Parent))
 }
 
 // MockDNSResources is a mock of DNSResources interface.

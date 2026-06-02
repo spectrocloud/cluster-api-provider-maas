@@ -48,8 +48,17 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 )
+
+// dnsServicer is the subset of dns.Service used by reconcileDNSAttachments.
+// Extracted as an interface to allow unit testing without a live MAAS endpoint.
+type dnsServicer interface {
+	GetDNSResource() (maasclient.DNSResource, error)
+	UpdateDNSAttachmentsWithResource(maasclient.DNSResource, []string) (bool, error)
+	IsDriftDetected(maasclient.DNSResource, []string) bool
+}
 
 const lastAppliedAnn = "infrastructure.cluster.x-k8s.io/last-applied-dns-hash"
 
@@ -65,6 +74,7 @@ type MaasClusterReconciler struct {
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;patch;update
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
@@ -154,7 +164,7 @@ func (r *MaasClusterReconciler) reconcileDelete(ctx context.Context, clusterScop
 	return reconcile.Result{}, nil
 }
 
-func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc *dns.Service) error {
+func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.ClusterScope, dnssvc dnsServicer) error {
 
 	if clusterScope.IsCustomEndpoint() {
 		return nil
@@ -170,32 +180,72 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 		return errors.Wrapf(err, "unable to find preferred subnets")
 	}
 
-	// Build desired IPs first (no MAAS call)
+	// Build desired IPs first (no MAAS call). Track two separate counts:
+	//   existingCPCount — CPs that exist and are NOT being deleted (DeletionTimestamp zero).
+	//                     Used to distinguish a transient power-off from a genuine scale-down.
+	//   runningCPCount  — CPs that are powered on and running.
+	//                     Used to detect preferred-subnet misconfiguration.
+	var existingCPCount, runningCPCount int
 	var runningIpAddresses []string
 	for _, m := range machines {
 		if !IsControlPlaneMachine(m) {
 			continue
 		}
-		machineIP := getExternalMachineIP(clusterScope.Logger, preferredSubnets, m)
+		if m.DeletionTimestamp.IsZero() {
+			existingCPCount++
+		}
 		isRunningHealthy := IsRunning(m)
 		if !m.DeletionTimestamp.IsZero() || !isRunningHealthy {
 			continue
 		}
+		runningCPCount++
+		machineIP := getExternalMachineIP(clusterScope.Logger, preferredSubnets, m)
 		if machineIP != "" {
 			runningIpAddresses = append(runningIpAddresses, machineIP)
 		}
 	}
 
-	// Early-exit gate using last-applied hash
-	desiredHash := infrautil.StableHashStringSlice(runningIpAddresses)
-	if clusterScope.MaasCluster.Annotations != nil && clusterScope.MaasCluster.Annotations[lastAppliedAnn] == desiredHash {
-		return nil
+	if len(runningIpAddresses) == 0 {
+		if existingCPCount > 0 {
+			// CP objects exist but are transiently unavailable (powered off / IPs not yet
+			// assigned / filtered by preferred subnets). Preserve existing DNS records so
+			// the cluster remains reachable during the flap; DNS self-heals when CPs recover.
+			if runningCPCount > 0 {
+				clusterScope.Info("CP machines are running but no IPs match preferred subnets; preserving existing DNS records",
+					"runningCPs", runningCPCount)
+			} else {
+				clusterScope.Info("No running CP machines found; preserving existing DNS records",
+					"existingCPs", existingCPCount)
+			}
+			return nil
+		}
+		// No CP objects exist or all are pending deletion (scale-down / rolling replacement
+		// with no new CPs provisioned yet). Fall through to clear DNS records.
+		clusterScope.Info("All CP machines absent or pending deletion; clearing DNS records")
 	}
 
-	// Only now fetch DNS resource once
+	// Deduplicate before hashing so the annotation always represents the applied IP *set*.
+	// updateResourceIPs deduplicates via a set internally; without this step the hash could
+	// differ between reconciles if duplicate IPs appear/disappear while MAAS state is unchanged,
+	// causing spurious re-syncs.
+	runningIpAddresses = dedupStringSlice(runningIpAddresses)
+
+	// Fetch DNS resource once — needed for both drift check and potential update.
 	dnsResource, err := dnssvc.GetDNSResource()
 	if err != nil {
 		return errors.Wrap(err, "Unable to get the dns resource")
+	}
+
+	// Early-exit only when the annotation hash matches AND MAAS state agrees with desired IPs.
+	// Verifying MAAS state catches external drift (e.g. DNS records manually wiped while the
+	// desired set was unchanged, so the hash never changed).
+	desiredHash := infrautil.StableHashStringSlice(runningIpAddresses)
+	if clusterScope.MaasCluster.Annotations != nil && clusterScope.MaasCluster.Annotations[lastAppliedAnn] == desiredHash {
+		if !dnssvc.IsDriftDetected(dnsResource, runningIpAddresses) {
+			return nil
+		}
+		clusterScope.Info("DNS drift detected: MAAS state diverges from last-applied annotation; forcing re-sync",
+			"desiredIPs", runningIpAddresses)
 	}
 
 	// Use optimized update with in-resource idempotency
@@ -210,12 +260,24 @@ func (r *MaasClusterReconciler) reconcileDNSAttachments(clusterScope *scope.Clus
 	}
 	clusterScope.MaasCluster.Annotations[lastAppliedAnn] = desiredHash
 
-	// Best-effort requeue hint remains optional; we skip computing current vs attached
 	if updated {
 		clusterScope.Info("DNS attachments updated; will continue monitoring for changes")
 	}
 
 	return nil
+}
+
+// dedupStringSlice returns a new slice with duplicate elements removed, preserving order.
+func dedupStringSlice(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // IsControlPlaneMachine checks machine is a control plane node.

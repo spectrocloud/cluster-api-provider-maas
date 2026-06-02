@@ -1,8 +1,6 @@
 module github.com/spectrocloud/cluster-api-provider-maas
 
-go 1.24.2
-
-toolchain go1.24.11
+go 1.25.10
 
 require (
 	github.com/go-logr/logr v1.4.2
@@ -11,7 +9,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.36.3
 	github.com/pkg/errors v0.9.1
-	github.com/spectrocloud/maas-client-go v0.1.5-beta1
+	github.com/spectrocloud/maas-client-go v0.1.7-beta1
 	github.com/spf13/pflag v1.0.6
 	k8s.io/api v0.32.3
 	k8s.io/apiextensions-apiserver v0.32.3
@@ -60,12 +58,12 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.opentelemetry.io/otel v1.29.0 // indirect
 	go.opentelemetry.io/otel/trace v1.29.0 // indirect
-	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.28.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/term v0.30.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/protobuf v1.36.5 // indirect

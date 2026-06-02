@@ -274,6 +274,7 @@ type SelectOptions struct {
 	Tags         []string // All required on VM host (host.Tags()); nil/empty = any
 	MinCores     int      // Minimum available cores on host; 0 = no minimum
 	MinMemory    int      // Minimum available memory (MB) on host; 0 = no minimum
+	MinDiskSizeGB int     // Minimum uncommitted disk space (GB) on host; 0 = no minimum
 
 	// ClusterID When set (non-empty), the selector counts how many control-plane VMs for this
 	// cluster already exist on each eligible host. Hosts with fewer existing CP VMs
@@ -377,7 +378,33 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 			continue
 		}
 
-		// 5. Health check: backing machine must be powered on and Deployed
+		// 5. Storage filter: ensure at least one local storage pool has enough uncommitted space.
+		// MAAS allows over-commitment by counting pending (allocated but not yet used) storage
+		// as available. We subtract pending to prevent composing VMs onto a host that is
+		// already over-committed at the storage layer.
+		if opts.MinDiskSizeGB > 0 {
+			// MAAS reports storage in decimal bytes (1 GB = 1,000,000,000 bytes),
+			// matching what the MAAS UI displays — use 1000^3, not 1024^3.
+			requiredBytes := int64(opts.MinDiskSizeGB) * 1000 * 1000 * 1000
+			hasStorage := false
+			for _, pool := range host.StoragePools() {
+				if pool.Remote {
+					continue
+				}
+				uncommitted := pool.Available - pool.Pending
+				if uncommitted >= requiredBytes {
+					hasStorage = true
+					break
+				}
+			}
+			if !hasStorage {
+				log.Info("Skipping host: insufficient uncommitted storage", "host", host.Name(),
+					"requiredGB", opts.MinDiskSizeGB, "pools", host.StoragePools())
+				continue
+			}
+		}
+
+		// 7. Health check: backing machine must be powered on and Deployed
 		hostSystemID := host.HostSystemID()
 		if hostSystemID == "" {
 			continue
@@ -393,7 +420,7 @@ func SelectLXDHostWithMaasClient(client lxdHostSelectorClient, hosts []maasclien
 			continue
 		}
 
-		// 6. Maintenance check
+		// 8. Maintenance check
 		if hasMaintenanceTag(machine.Tags()) {
 			log.Info("Skipping host under maintenance", "host", host.Name())
 			continue
