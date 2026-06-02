@@ -2,7 +2,7 @@
 REGISTRY ?= us-east1-docker.pkg.dev/spectro-images/dev/cluster-api
 IMG ?= $(REGISTRY)/capmaas-lxd-initializer
 TAG ?= v0.0.1
-BUILDER_GOLANG_VERSION ?= 1.24
+BUILDER_GOLANG_VERSION ?= 1.26.3
 
 # Build binary
 build:

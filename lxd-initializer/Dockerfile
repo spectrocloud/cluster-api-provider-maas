@@ -1,7 +1,7 @@
 # Build the manager binary
-ARG BUILDER_GOLANG_VERSION=1.23
+ARG BUILDER_GOLANG_VERSION
 # First stage: build the executable.
-FROM us-docker.pkg.dev/palette-images/build-base-images/golang:${BUILDER_GOLANG_VERSION}-alpine AS toolchain
+FROM us-central1-docker.pkg.dev/palette-images-dev/hardened-images/builder/golang:${BUILDER_GOLANG_VERSION}-alpine AS toolchain
 
 FROM toolchain AS builder
 WORKDIR /workspace
