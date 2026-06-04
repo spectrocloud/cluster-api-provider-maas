@@ -192,19 +192,6 @@ func (mr *MockClientSetInterfaceMockRecorder) Tags() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tags", reflect.TypeOf((*MockClientSetInterface)(nil).Tags))
 }
 
-// VMHosts mocks base method.
-func (m *MockClientSetInterface) VMHosts() maasclient.VMHosts {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "VMHosts")
-	ret0, _ := ret[0].(maasclient.VMHosts)
-	return ret0
-}
-
-// VMHosts indicates an expected call of VMHosts.
-func (mr *MockClientSetInterfaceMockRecorder) VMHosts() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "VMHosts", reflect.TypeOf((*MockClientSetInterface)(nil).VMHosts))
-}
 
 // Subnets mocks base method.
 func (m *MockClientSetInterface) Subnets() maasclient.Subnets {
