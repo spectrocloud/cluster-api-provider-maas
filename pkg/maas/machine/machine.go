@@ -513,8 +513,8 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	// Before composing: validate and check the static IP
 	if s.scope.IsControlPlane() {
 		if staticIPToCheck := s.scope.GetStaticIP(); staticIPToCheck != "" {
-			// Verify the static IP falls within a reserved IP range in MAAS
-			if err := s.validateStaticIPInReservedRange(ctx, staticIPToCheck); err != nil {
+			// Reject the static IP if it falls within a reserved IP range in MAAS
+			if err := s.validateStaticIPNotInReservedRange(ctx, staticIPToCheck); err != nil {
 				return nil, err
 			}
 
@@ -1093,16 +1093,16 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 	return nil
 }
 
-// validateStaticIPInReservedRange checks that ip falls within at least one reserved IP range
-// in MAAS. MAAS "reserved" ranges are designated for manual/static assignment, so a static IP
-// that is outside every reserved range will conflict with DHCP or be unroutable.
-func (s *Service) validateStaticIPInReservedRange(ctx context.Context, ip string) error {
+// validateStaticIPNotInReservedRange checks that ip does NOT fall within any reserved IP range
+// in MAAS. MAAS "reserved" ranges contain IPs that MAAS will not allocate — they are set aside
+// for external use. If the requested static IP is inside a reserved range, composing a VM with
+// that IP would conflict with the reservation.
+func (s *Service) validateStaticIPNotInReservedRange(ctx context.Context, ip string) error {
 	parsedIP := net.ParseIP(ip)
 	if parsedIP == nil {
 		return fmt.Errorf("static IP %q is not a valid IP address", ip)
 	}
 
-	// Find the subnet that contains this IP
 	allSubnets, err := s.maasClient.Subnets().List(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list subnets while validating static IP %s: %w", ip, err)
@@ -1124,7 +1124,6 @@ func (s *Service) validateStaticIPInReservedRange(ctx context.Context, ip string
 		return fmt.Errorf("static IP %s is not within any subnet known to MAAS; cannot compose VM", ip)
 	}
 
-	// Get reserved IP ranges for that subnet
 	reservedRanges, err := s.maasClient.Subnets().GetReservedIPRanges(ctx, subnetID)
 	if err != nil {
 		return fmt.Errorf("failed to get reserved IP ranges for subnet (ID: %d) while validating static IP %s: %w", subnetID, ip, err)
@@ -1132,13 +1131,13 @@ func (s *Service) validateStaticIPInReservedRange(ctx context.Context, ip string
 
 	for _, r := range reservedRanges {
 		if ipInRange(r.Start, r.End, parsedIP) {
-			s.scope.Info("Static IP is within reserved range", "ip", ip, "rangeStart", r.Start, "rangeEnd", r.End)
-			return nil
+			return fmt.Errorf("static IP %s falls within reserved range [%s–%s] in subnet (ID: %d); "+
+				"this IP is reserved in MAAS and cannot be used for VM composition", ip, r.Start, r.End, subnetID)
 		}
 	}
 
-	return fmt.Errorf("static IP %s is not within any reserved IP range in subnet (ID: %d); "+
-		"add this IP to a reserved range in MAAS before composing the VM", ip, subnetID)
+	s.scope.Info("Static IP is not in any reserved range, safe to compose", "ip", ip, "subnetID", subnetID)
+	return nil
 }
 
 // ipInRange returns true if ip falls within [startStr, endStr] inclusive (IPv4 only).
