@@ -165,19 +165,6 @@ func (mr *MockClientSetInterfaceMockRecorder) Spaces() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Spaces", reflect.TypeOf((*MockClientSetInterface)(nil).Spaces))
 }
 
-// Tags mocks base method.
-func (m *MockClientSetInterface) Tags() maasclient.Tags {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Tags")
-	ret0, _ := ret[0].(maasclient.Tags)
-	return ret0
-}
-
-// Tags indicates an expected call of Tags.
-func (mr *MockClientSetInterfaceMockRecorder) Tags() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tags", reflect.TypeOf((*MockClientSetInterface)(nil).Tags))
-}
 
 
 // Subnets mocks base method.
