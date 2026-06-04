@@ -167,19 +167,6 @@ func (mr *MockClientSetInterfaceMockRecorder) Spaces() *gomock.Call {
 
 
 
-// Subnets mocks base method.
-func (m *MockClientSetInterface) Subnets() maasclient.Subnets {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Subnets")
-	ret0, _ := ret[0].(maasclient.Subnets)
-	return ret0
-}
-
-// Subnets indicates an expected call of Subnets.
-func (mr *MockClientSetInterfaceMockRecorder) Subnets() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subnets", reflect.TypeOf((*MockClientSetInterface)(nil).Subnets))
-}
 
 
 // MockSubnets is a mock of Subnets interface.
