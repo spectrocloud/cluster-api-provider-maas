@@ -220,19 +220,6 @@ func (mr *MockClientSetInterfaceMockRecorder) Subnets() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subnets", reflect.TypeOf((*MockClientSetInterface)(nil).Subnets))
 }
 
-// IPRanges mocks base method.
-func (m *MockClientSetInterface) IPRanges() maasclient.IPRanges {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IPRanges")
-	ret0, _ := ret[0].(maasclient.IPRanges)
-	return ret0
-}
-
-// IPRanges indicates an expected call of IPRanges.
-func (mr *MockClientSetInterfaceMockRecorder) IPRanges() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IPRanges", reflect.TypeOf((*MockClientSetInterface)(nil).IPRanges))
-}
 
 // MockSubnets is a mock of Subnets interface.
 type MockSubnets struct {
