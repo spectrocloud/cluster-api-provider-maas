@@ -19,6 +19,8 @@ package scope
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
