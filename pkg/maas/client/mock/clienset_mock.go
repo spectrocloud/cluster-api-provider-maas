@@ -94,19 +94,6 @@ func (mr *MockClientSetInterfaceMockRecorder) Domains() *gomock.Call {
 }
 
 
-// IPAddresses mocks base method.
-func (m *MockClientSetInterface) IPAddresses() maasclient.IPAddresses {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IPAddresses")
-	ret0, _ := ret[0].(maasclient.IPAddresses)
-	return ret0
-}
-
-// IPAddresses indicates an expected call of IPAddresses.
-func (mr *MockClientSetInterfaceMockRecorder) IPAddresses() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IPAddresses", reflect.TypeOf((*MockClientSetInterface)(nil).IPAddresses))
-}
 
 // Machines mocks base method.
 func (m *MockClientSetInterface) Machines() maasclient.Machines {
