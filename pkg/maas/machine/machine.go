@@ -27,10 +27,10 @@ import (
 
 // Service manages the MaaS machine
 var (
-	ErrBrokenMachine = errors.New("broken machine encountered")
-	ErrVMComposing   = errors.New("vm composing/commissioning")
-	reHostID         = regexp.MustCompile(`host (\d+)`)
-	reMachineID      = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
+	ErrBrokenMachine      = errors.New("broken machine encountered")
+	ErrVMComposing        = errors.New("vm composing/commissioning")
+	reHostID              = regexp.MustCompile(`host (\d+)`)
+	reMachineID           = regexp.MustCompile(`machine[s]? ([a-z0-9]{4,6})`)
 )
 
 const (
@@ -510,6 +510,31 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		}
 	}
 
+	// Before composing: validate and check the static IP
+	if s.scope.IsControlPlane() {
+		if staticIPToCheck := s.scope.GetStaticIP(); staticIPToCheck != "" {
+			// Reject the static IP if it falls within a reserved IP range in MAAS
+			if err := s.validateStaticIPNotInReservedRange(ctx, staticIPToCheck); err != nil {
+				return nil, err
+			}
+
+			s.scope.Info("Checking static IP availability before VM compose", "ip", staticIPToCheck)
+			existingIP, ipErr := s.maasClient.IPAddresses().GetAll(ctx, staticIPToCheck)
+			if ipErr == nil {
+				if ifaces := existingIP.InterfaceSet(); len(ifaces) > 0 {
+					return nil, fmt.Errorf("static IP %s is already in use (allocated to %d interface(s)); cannot compose VM — will retry when IP is available", staticIPToCheck, len(ifaces))
+				}
+				// IP exists with no interfaces — stale/floating allocation; release before compose
+				s.scope.Info("Static IP has stale allocation with no interfaces; releasing before compose", "ip", staticIPToCheck)
+				if releaseErr := s.maasClient.IPAddresses().Release(ctx, staticIPToCheck); releaseErr != nil {
+					return nil, fmt.Errorf("static IP %s has a stale allocation that could not be released before compose: %w", staticIPToCheck, releaseErr)
+				}
+				s.scope.Info("Released stale IP allocation, proceeding with compose", "ip", staticIPToCheck)
+			}
+			// ipErr != nil means IP not found in MAAS — available, proceed normally
+		}
+	}
+
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
@@ -885,7 +910,6 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 		// Special handling for Commissioning state: skip static IP configuration to avoid blocking commissioning
 		if machineState == "Commissioning" {
 			s.scope.Info("Machine is commissioning, skipping static IP configuration to avoid interfering with commissioning process. Will configure after commissioning completes", "systemID", systemID)
-			// Return error to requeue - static IP will be configured after commissioning completes
 			return fmt.Errorf("machine is commissioning, static IP configuration will be retried after commissioning completes")
 		}
 
@@ -1067,6 +1091,64 @@ func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.Stati
 	}
 
 	return nil
+}
+
+// validateStaticIPNotInReservedRange checks that ip does NOT fall within any reserved IP range
+// in MAAS. MAAS "reserved" ranges contain IPs that MAAS will not allocate — they are set aside
+// for external use. If the requested static IP is inside a reserved range, composing a VM with
+// that IP would conflict with the reservation.
+func (s *Service) validateStaticIPNotInReservedRange(ctx context.Context, ip string) error {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Errorf("static IP %q is not a valid IP address", ip)
+	}
+
+	allSubnets, err := s.maasClient.Subnets().List(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list subnets while validating static IP %s: %w", ip, err)
+	}
+
+	var subnetID int
+	for _, sn := range allSubnets {
+		_, ipNet, parseErr := net.ParseCIDR(sn.CIDR())
+		if parseErr != nil {
+			continue
+		}
+		if ipNet.Contains(parsedIP) {
+			subnetID = sn.ID()
+			break
+		}
+	}
+
+	if subnetID == 0 {
+		return fmt.Errorf("static IP %s is not within any subnet known to MAAS; cannot compose VM", ip)
+	}
+
+	reservedRanges, err := s.maasClient.Subnets().GetReservedIPRanges(ctx, subnetID)
+	if err != nil {
+		return fmt.Errorf("failed to get reserved IP ranges for subnet (ID: %d) while validating static IP %s: %w", subnetID, ip, err)
+	}
+
+	for _, r := range reservedRanges {
+		if ipInRange(r.Start, r.End, parsedIP) {
+			return fmt.Errorf("static IP %s falls within reserved range [%s–%s] in subnet (ID: %d); "+
+				"this IP is reserved in MAAS and cannot be used for VM composition", ip, r.Start, r.End, subnetID)
+		}
+	}
+
+	s.scope.Info("Static IP is not in any reserved range, safe to compose", "ip", ip, "subnetID", subnetID)
+	return nil
+}
+
+// ipInRange returns true if ip falls within [startStr, endStr] inclusive (IPv4 only).
+func ipInRange(startStr, endStr string, ip net.IP) bool {
+	start := net.ParseIP(startStr).To4()
+	end := net.ParseIP(endStr).To4()
+	ip4 := ip.To4()
+	if start == nil || end == nil || ip4 == nil {
+		return false
+	}
+	return bytes.Compare(ip4, start) >= 0 && bytes.Compare(ip4, end) <= 0
 }
 
 // createBootInterfaceBridge creates a bridge on the boot interface using maas-client-go
