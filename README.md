@@ -120,14 +120,14 @@ make docker-build && make docker-push
 make dev-manifests
 ```
 
-- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.5.0 depending on version you are working with
+- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.7.0 depending on version you are working with
 
 ```text
 .
 ├── clusterctl.yaml
 ├── overrides
 │   ├── infrastructure-maas
-│       └── v0.5.0
+│       └── v0.7.0
 │           ├── cluster-template.yaml
 │           ├── infrastructure-components.yaml
 │           └── metadata.yaml
