@@ -78,11 +78,11 @@ MAAS_ENDPOINT: http://<maas-endpoint>/MAAS
 MAAS_DNS_DOMAIN: maas.domain
 
 # Cluster configuration
-KUBERNETES_VERSION: v1.26.4
-CONTROL_PLANE_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
+KUBERNETES_VERSION: v1.33.5
+CONTROL_PLANE_MACHINE_IMAGE: custom/u-2204-0-k-1335-0
 CONTROL_PLANE_MACHINE_MINCPU: 4
 CONTROL_PLANE_MACHINE_MINMEMORY: 8192
-WORKER_MACHINE_IMAGE: custom/u-2204-0-k-1264-0
+WORKER_MACHINE_IMAGE: custom/u-2204-0-k-1335-0
 WORKER_MACHINE_MINCPU: 4
 WORKER_MACHINE_MINMEMORY: 8192
 
@@ -98,7 +98,7 @@ clusterctl init --infrastructure maas:v0.7.0
 ```
 - Generate and create cluster
 ```
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
 ## Developer Guide
@@ -149,11 +149,11 @@ clusterctl generate cluster t-cluster  --infrastructure=maas:v0.7.0 | kubectl ap
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
