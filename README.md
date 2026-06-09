@@ -68,12 +68,35 @@ make docker-build
 
 ### Deploying the provider
 
+- Setup clusterctl configuration `~/.cluster-api/clusterctl.yaml`
+```
+# MAAS access endpoint and key
+MAAS_API_KEY: <maas-api-key>
+MAAS_ENDPOINT: http://<maas-endpoint>/MAAS
+MAAS_DNS_DOMAIN: maas.domain
+
+# Cluster configuration
+KUBERNETES_VERSION: v1.33.5
+CONTROL_PLANE_MACHINE_IMAGE: custom/u-2204-0-k-1335-0
+CONTROL_PLANE_MACHINE_MINCPU: 4
+CONTROL_PLANE_MACHINE_MINMEMORY: 8192
+WORKER_MACHINE_IMAGE: custom/u-2204-0-k-1335-0
+WORKER_MACHINE_MINCPU: 4
+WORKER_MACHINE_MINMEMORY: 8192
+
+# Selecting machine based on resourcepool (optional) and machine tag (optional)
+CONTROL_PLANE_MACHINE_RESOURCEPOOL: resorcepool-controller
+CONTROL_PLANE_MACHINE_TAG: hello-world
+WORKER_MACHINE_RESOURCEPOOL: resourcepool-worker
+WORKER_MACHINE_TAG: hello-world
+```
+- Initialize infrastructure
 ```bash
 clusterctl init --infrastructure maas:v0.7.0
 ```
 - Generate and create cluster
 ```
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
 ### Testing the provider
@@ -84,34 +107,33 @@ make test
 
 ## LXD Integration
 
-This provider supports dynamic LXD VM creation for workload clusters. This involves two main stages:
-
-1. **Control Plane Cluster Creation Flow**: Dynamically convert SpectroCloud-deployed infrastructure Control Plane (CP) nodes into LXD-capable KVM hosts.
-2. **Workload Cluster Creation Flow**: Dynamically provision LXD VMs with static IPs for workload cluster control plane nodes.
-
-### Testing LXD Integration
-
-We've created test utilities to validate the LXD integration:
-
-1. **LXD Initialization Test**: Tests LXD initialization using the official LXD Go client.
-2. **VM Host Registration Test**: Tests VM host registration with MAAS using direct API calls.
-3. **MAAS API Test**: Tests MAAS API integration for VM host management and VM creation.
-
-To build and transfer these test utilities to a target node:
-
-```bash
-cd lxd-test-tmp
-./build-and-transfer.sh --host <target-host> [--key <path/to/key.pem>] [--user <username>]
+- Set `IMG` to the controller image you control (registry + image + tag). This same image must be used for `docker-build`, `docker-push`, and `dev-manifests` so that the generated `infrastructure-components.yaml` points at the image you actually pushed. Export it once so every step picks it up:
+```shell
+export IMG=<your-registry>/cluster-api-provider-maas-controller-amd64:v0.7.0
 ```
 
-Then on the target node:
+- Build and push the controller image:
+```shell
+make docker-build && make docker-push
+```
 
-```bash
-# Test LXD initialization
-sudo ./lxd-test-linux --storage-backend=zfs --storage-size=50 --network-bridge=br0
+- Generate dev manifests. `dev-manifests` requires `IMG` to be set — it errors out if it is empty, since an unset `IMG` produces manifests with an empty controller image:
+```shell
+make dev-manifests IMG=$IMG
+```
 
-# Test VM host registration
-./vmhost-test-linux --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
+- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.7.0 depending on version you are working with
+
+```text
+.
+├── clusterctl.yaml
+├── overrides
+│   ├── infrastructure-maas
+│       └── v0.7.0
+│           ├── cluster-template.yaml
+│           ├── infrastructure-components.yaml
+│           └── metadata.yaml
+└── version.yaml
 
 # Test MAAS API integration
 ./maas-test-linux --test-vm-host --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
@@ -131,12 +153,12 @@ clusterctl generate cluster t-cluster  --infrastructure=maas:v0.7.0 | kubectl ap
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.26.4 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 
