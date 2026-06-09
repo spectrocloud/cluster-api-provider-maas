@@ -116,6 +116,9 @@ release-overrides:
 
 .PHONY: dev-manifests
 dev-manifests:
+ifndef IMG
+	$(error IMG is not set. Set it to the controller image you built and pushed, e.g. make dev-manifests IMG=$(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG). Without it the generated infrastructure-components.yaml will have an empty controller image.)
+endif
 	$(MAKE) manifests STAGE=dev MANIFEST_DIR=$(DEV_DIR) PULL_POLICY=Always IMAGE=$(IMG)
 	cp metadata.yaml $(DEV_DIR)/metadata.yaml
 	$(MAKE) templates OUTPUT_DIR=$(DEV_DIR)

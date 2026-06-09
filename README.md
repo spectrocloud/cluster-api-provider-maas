@@ -109,15 +109,19 @@ kind create cluster --name=maas-cluster
 
 - Install clusterctl v1 depending on the version you are working with
 
-- Makefile set IMG=<your docker repo>
-- Run 
+- Set `IMG` to the controller image you control (registry + image + tag). This same image must be used for `docker-build`, `docker-push`, and `dev-manifests` so that the generated `infrastructure-components.yaml` points at the image you actually pushed. Export it once so every step picks it up:
+```shell
+export IMG=<your-registry>/cluster-api-provider-maas-controller-amd64:v0.7.0
+```
+
+- Build and push the controller image:
 ```shell
 make docker-build && make docker-push
 ```
-    
-- Generate dev manifests
+
+- Generate dev manifests. `dev-manifests` requires `IMG` to be set — it errors out if it is empty, since an unset `IMG` produces manifests with an empty controller image:
 ```shell
-make dev-manifests
+make dev-manifests IMG=$IMG
 ```
 
 - Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.7.0 depending on version you are working with
