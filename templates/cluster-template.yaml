@@ -75,9 +75,6 @@ spec:
       scheduler:
         extraArgs:
     initConfiguration:
-      localAPIEndpoint:
-        advertiseAddress: ""
-        bindPort: 0
       nodeRegistration:
         kubeletExtraArgs:
           event-qps: "0"
@@ -85,10 +82,7 @@ spec:
           read-only-port: "0"
         name: '{{ v1.local_hostname }}'
     joinConfiguration:
-      controlPlane:
-        localAPIEndpoint:
-          advertiseAddress: ""
-          bindPort: 0
+      controlPlane: {}
       discovery: {}
       nodeRegistration:
         kubeletExtraArgs:
