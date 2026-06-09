@@ -167,7 +167,7 @@ docker-build: generate-lxd-template ## Build CAPMAAS controller image (ensures l
 # Push the docker image
 .PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-	docker push ${DRI_IMG}
+	docker push $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 ### --------------------------------------
 ### Docker — All ARCH
