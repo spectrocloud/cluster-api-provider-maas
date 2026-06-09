@@ -1,8 +1,17 @@
+# LXD workload cluster template.
+#
+# Each machine is created as an LXD VM on the HCP hosts via the per-machine
+# spec.lxd block. vmConfig.network attaches the VM to a single subnet (eth0).
+# Run the CAPMAAS controller for this cluster with --cluster-role=wlc to enable
+# the VM evacuation controller.
+#
+# Render with envsubst, e.g.:
+#   export CLUSTER_NAME=wlc NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...
+#   envsubst < templates/lxd-cluster-template.yaml | kubectl apply -f -
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
-  namespace: ${NAMESPACE}
 spec:
   clusterNetwork:
     services:
@@ -18,85 +27,102 @@ spec:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: MaasCluster
     name: ${CLUSTER_NAME}
+
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
   name: ${CLUSTER_NAME}
-  namespace: ${NAMESPACE}
 spec:
-  # MAAS API endpoint
-  apiEndpoint: ${MAAS_API_ENDPOINT}
-  # MAAS API key
-  apiKey:
-    name: ${MAAS_API_KEY_SECRET}
-    key: apiKey
-  # Failure domains (MAAS zones)
-  failureDomains:
-    - default
-  # LXD VM configuration
-  lxdConfig:
-    enabled: true
-    resourcePool: ${LXD_RESOURCE_POOL}
-    storagePool: default
-    network: br0
+  dnsDomain: ${DNS_DOMAIN}
+
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: KubeadmControlPlane
 metadata:
-  name: ${CLUSTER_NAME}-control-plane
-  namespace: ${NAMESPACE}
+  name: "${CLUSTER_NAME}-control-plane"
 spec:
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
-  version: ${KUBERNETES_VERSION}
+  version: "${KUBERNETES_VERSION}"
   machineTemplate:
     infrastructureRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: MaasMachineTemplate
-      name: ${CLUSTER_NAME}-control-plane
+      name: "${CLUSTER_NAME}-control-plane"
   kubeadmConfigSpec:
-    initConfiguration:
-      nodeRegistration:
-        name: '{{ ds.meta_data.hostname }}'
-        kubeletExtraArgs:
-          cloud-provider: external
     clusterConfiguration:
       apiServer:
         extraArgs:
-          cloud-provider: external
+          anonymous-auth: "true"
+          authorization-mode: RBAC,Node
+          default-not-ready-toleration-seconds: "60"
+          default-unreachable-toleration-seconds: "60"
+          disable-admission-plugins: AlwaysAdmit
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+        timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
-          cloud-provider: external
-    joinConfiguration:
+          feature-gates: RotateKubeletServerCertificate=true
+          terminated-pod-gc-threshold: "25"
+          use-service-account-credentials: "true"
+      dns: {}
+      etcd: {}
+      networking: {}
+      scheduler:
+        extraArgs:
+    initConfiguration:
+      localAPIEndpoint:
+        advertiseAddress: ""
+        bindPort: 0
       nodeRegistration:
-        name: '{{ ds.meta_data.hostname }}'
         kubeletExtraArgs:
-          cloud-provider: external
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane:
+        localAPIEndpoint:
+          advertiseAddress: ""
+          bindPort: 0
+      discovery: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+    useExperimentalRetryJoin: true
+
 ---
+# Control-plane VMs created as LXD VMs on the HCP hosts.
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
   name: ${CLUSTER_NAME}-control-plane
-  namespace: ${NAMESPACE}
 spec:
   template:
     spec:
-      minCPU: 2
-      minMemory: 4096
-      # For LXD VMs, we'll use a VM host
-      vmType: lxd
-      # Static IP configuration for LXD VMs
-      staticIP:
+      image: ${MACHINE_IMAGE}
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      resourcePool: ${LXD_RESOURCE_POOL}
+      # Create this machine as an LXD VM on an HCP host.
+      lxd:
         enabled: true
-        cidr: ${STATIC_IP_CIDR}
-        gateway: ${STATIC_IP_GATEWAY}
-        nameservers: ${STATIC_IP_NAMESERVERS}
+        vmConfig:
+          diskSize: ${CONTROL_PLANE_MACHINE_MINSTORAGE}
+          autoStart: true
 ---
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-0
-  namespace: ${NAMESPACE}
 spec:
   clusterName: ${CLUSTER_NAME}
   replicas: ${WORKER_MACHINE_COUNT}
@@ -125,26 +151,33 @@ spec:
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
-  namespace: ${NAMESPACE}
+  name: "${CLUSTER_NAME}-md-0"
 spec:
   template:
     spec:
-      minCPU: 2
-      minMemory: 4096
-      # For worker nodes, we'll use regular MAAS machines
-      vmType: ""
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      tags: [ ${ WORKER_MACHINE_TAG } ]
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
 metadata:
-  name: ${CLUSTER_NAME}-md-0
-  namespace: ${NAMESPACE}
+  name: "${CLUSTER_NAME}-md-0"
 spec:
   template:
     spec:
       joinConfiguration:
         nodeRegistration:
-          name: '{{ ds.meta_data.hostname }}'
           kubeletExtraArgs:
-            cloud-provider: external 
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
+      useExperimentalRetryJoin: true
