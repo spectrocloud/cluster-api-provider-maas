@@ -34,3 +34,4 @@ controllers/templates/*.processed
 lxd-test-tmp/
 utils/maas/lxd-test/.netrc
 .netrc
+vendor/
