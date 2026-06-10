@@ -1,12 +1,10 @@
 package machine
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"reflect"
 	"regexp"
 	"strings"
@@ -289,11 +287,6 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get existing VM by system-id")
 		}
-		// Verify and fix network interfaces (eth0/eth1 subnets) before deploy so that even if MAAS
-		// selected the wrong subnet for eth0 after commissioning/acquire, we correct it before deploy.
-		if err := s.VerifyVMNetworkInterfaces(ctx, m.SystemID()); err != nil {
-			return nil, errors.Wrap(err, "failed to verify VM network interfaces before deploy")
-		}
 		// Best-effort: set hostname and static IP before deploy
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
@@ -466,48 +459,6 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		Set("zone", fmt.Sprintf("%d", zoneID)).
 		Set("pool", fmt.Sprintf("%d", poolID))
 
-	// If spec.LXD.VMConfig.Network is present, check if its values are separated by ","
-	// The values are subnet names that will be passed to compose LXD VMs
-	// Maximum number of subnets is 2
-	if mm.Spec.LXD != nil && mm.Spec.LXD.VMConfig != nil && mm.Spec.LXD.VMConfig.Network != "" {
-		networkStr := strings.TrimSpace(mm.Spec.LXD.VMConfig.Network)
-		// Split by comma to get individual subnet names
-		subnets := strings.Split(networkStr, ",")
-		// Only set interfaces when there are exactly 2 subnets
-		if len(subnets) == 2 {
-			subnet0 := strings.TrimSpace(subnets[0])
-			subnet1 := strings.TrimSpace(subnets[1])
-			if subnet0 == "" || subnet1 == "" {
-				s.scope.Info("Skipping setting network interfaces due to empty subnet name(s)", "subnet0", subnet0, "subnet1", subnet1)
-			} else {
-				// Build interfaces parameter: eth0 = first subnet (typically PXE), eth1 = second subnet (typically management).
-				// eth0 is sent without ip= so it uses DHCP; eth1 gets static IP when configured. Using DHCP on eth0
-				// can cause DHCP-provided routes (e.g. to MAAS controller) to be installed on eth0; if the controller
-				// is on the eth1 network, ensure PXE subnet DHCP does not push those routes, or use static IP for eth0.
-				// Format: "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>" or
-				//         "eth0:subnet=<subnet-name>;eth1:subnet=<subnet-name>,ip=<static-ip>" if static IP is configured
-				interfacesParam := fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s", subnet0, subnet1)
-
-				// Check if static IP is configured for control-plane - include it in compose parameter
-				staticIP := ""
-				if s.scope.IsControlPlane() && s.scope.GetStaticIP() != "" {
-					staticIP = s.scope.GetStaticIP()
-					// Include static IP in the compose parameter: eth1:subnet=<subnet>,ip=<ip>
-					interfacesParam = fmt.Sprintf("eth0:subnet=%s;eth1:subnet=%s,ip=%s", subnet0, subnet1, staticIP)
-				}
-
-				params.Set("interfaces", interfacesParam)
-				if staticIP != "" {
-					s.scope.Info("Setting network interfaces for VM composition with static IP", "interfaces", interfacesParam, "static-ip", staticIP)
-				} else {
-					s.scope.Info("Setting network interfaces for VM composition", "interfaces", interfacesParam)
-				}
-			}
-		} else {
-			s.scope.Info("Network configuration ignored: expected exactly 2 subnets, got", "count", len(subnets), "network", networkStr)
-		}
-	}
-
 	// Create the VM on the selected host
 	m, err := selectedHost.Composer().Compose(ctx, params)
 	if err != nil {
@@ -596,241 +547,6 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 		res.AvailabilityZone = zone
 	}
 	return res, nil
-}
-
-// getSubnetCIDR safely extracts CIDR from a subnet, handling nil pointer panics
-func (s *Service) getSubnetCIDR(subnet maasclient.Subnet) string {
-	if subnet == nil {
-		return ""
-	}
-	// Use recover to handle typed nil interfaces that pass != nil check
-	defer func() {
-		if r := recover(); r != nil {
-			s.scope.V(1).Info("Panic while getting subnet CIDR", "panic", r)
-		}
-	}()
-	return subnet.CIDR()
-}
-
-// resolveLinkMode returns the MAAS link mode for an interface: from VMConfig.InterfaceLinkModes, else default (eth0=auto, others=dhcp).
-func (s *Service) resolveLinkMode(ifaceName string) string {
-	defaultMode := maasclient.ModeDHCP
-	if ifaceName == "eth0" {
-		defaultMode = maasclient.ModeAuto
-	}
-	mm := s.scope.MaasMachine
-	if mm.Spec.LXD == nil || mm.Spec.LXD.VMConfig == nil || len(mm.Spec.LXD.VMConfig.InterfaceLinkModes) == 0 {
-		return defaultMode
-	}
-	m := strings.TrimSpace(mm.Spec.LXD.VMConfig.InterfaceLinkModes[ifaceName])
-	allowed := map[string]bool{maasclient.ModeAuto: true, maasclient.ModeDHCP: true, maasclient.ModeStatic: true, maasclient.ModeLinkUp: true}
-	if m != "" && allowed[m] {
-		return m
-	}
-	return defaultMode
-}
-
-// VerifyVMNetworkInterfaces verifies and fixes LXD VM network interfaces to have expected subnets after commissioning.
-func (s *Service) VerifyVMNetworkInterfaces(ctx context.Context, systemID string) error {
-	mm := s.scope.MaasMachine
-	if mm.Spec.LXD == nil || mm.Spec.LXD.VMConfig == nil || mm.Spec.LXD.VMConfig.Network == "" {
-		return nil
-	}
-
-	subnets := strings.Split(strings.TrimSpace(mm.Spec.LXD.VMConfig.Network), ",")
-	if len(subnets) != 2 {
-		s.scope.Info("VMConfig.Network should contain exactly 2 comma-separated subnets", "network", mm.Spec.LXD.VMConfig.Network, "count", len(subnets))
-		return nil
-	}
-
-	expected0, expected1 := strings.TrimSpace(subnets[0]), strings.TrimSpace(subnets[1])
-	if expected0 == "" || expected1 == "" {
-		return nil
-	}
-
-	machine, err := s.maasClient.Machines().Machine(systemID).Get(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get machine state: %w", err)
-	}
-
-	machineState := machine.State()
-	allowedStates := map[string]bool{"New": true, "Ready": true, "Allocated": true, "Broken": true}
-	if !allowedStates[machineState] {
-		s.scope.Info("Skipping VM network interface verification - machine not in allowed state", "system-id", systemID, "state", machineState, "allowed-states", []string{"New", "Ready", "Allocated", "Broken"})
-		return nil
-	}
-
-	s.scope.Info("Verifying VM network interfaces", "system-id", systemID, "state", machineState, "expected-subnets", fmt.Sprintf("%s,%s", expected0, expected1), "eth0-mode", s.resolveLinkMode("eth0"), "eth1-mode", s.resolveLinkMode("eth1"))
-
-	// Fetch network interfaces - refetch if we encounter issues with subnet data
-	interfaces, err := s.maasClient.NetworkInterfaces().Get(ctx, systemID)
-	if err != nil {
-		return fmt.Errorf("failed to get network interfaces: %w", err)
-	}
-
-	var eth0Iface, eth1Iface maasclient.NetworkInterface
-	var eth0Subnet, eth1Subnet string
-	needsRefetch := false
-
-	// First pass: try to extract subnet information
-	for _, iface := range interfaces {
-		name := iface.Name()
-		if name == "eth0" {
-			eth0Iface = iface
-			for _, link := range iface.Links() {
-				subnet := link.Subnet()
-				if subnet != nil {
-					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
-						eth0Subnet = cidr
-						break
-					} else {
-						needsRefetch = true
-					}
-				}
-			}
-		} else if name == "eth1" {
-			eth1Iface = iface
-			for _, link := range iface.Links() {
-				subnet := link.Subnet()
-				if subnet != nil {
-					if cidr := s.getSubnetCIDR(subnet); cidr != "" {
-						eth1Subnet = cidr
-						break
-					} else {
-						needsRefetch = true
-					}
-				}
-			}
-		}
-	}
-
-	// If we couldn't get subnet info and suspect stale data, refetch interfaces once
-	if needsRefetch && (eth0Subnet == "" || eth1Subnet == "") {
-		s.scope.Info("Refetching network interfaces due to incomplete subnet data", "system-id", systemID)
-		interfaces, err = s.maasClient.NetworkInterfaces().Get(ctx, systemID)
-		if err != nil {
-			return fmt.Errorf("failed to refetch network interfaces: %w", err)
-		}
-
-		// Reset and retry extraction
-		eth0Subnet, eth1Subnet = "", ""
-		for _, iface := range interfaces {
-			name := iface.Name()
-			if name == "eth0" && eth0Subnet == "" {
-				eth0Iface = iface
-				for _, link := range iface.Links() {
-					subnet := link.Subnet()
-					if subnet != nil {
-						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
-							eth0Subnet = cidr
-							break
-						}
-					}
-				}
-			} else if name == "eth1" && eth1Subnet == "" {
-				eth1Iface = iface
-				for _, link := range iface.Links() {
-					subnet := link.Subnet()
-					if subnet != nil {
-						if cidr := s.getSubnetCIDR(subnet); cidr != "" {
-							eth1Subnet = cidr
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// subnetsMatch returns true if actual and expected represent the same subnet (CIDR or name).
-	subnetsMatch := func(actual, expected string) bool {
-		if actual == "" || expected == "" {
-			return false
-		}
-		if strings.EqualFold(actual, expected) {
-			return true
-		}
-		// If both parse as CIDR, compare by network equality (robust to formatting)
-		_, actualNet, err1 := net.ParseCIDR(actual)
-		_, expectedNet, err2 := net.ParseCIDR(expected)
-		if err1 == nil && err2 == nil && actualNet != nil && expectedNet != nil {
-			return actualNet.IP.Equal(expectedNet.IP) && actualNet.Mask != nil && expectedNet.Mask != nil &&
-				bytes.Equal(actualNet.Mask, expectedNet.Mask)
-		}
-		return false
-	}
-
-	var aggErr error
-	if eth0Iface != nil {
-		if eth0Subnet == "" || !subnetsMatch(eth0Subnet, expected0) {
-			s.scope.Info("Fixing eth0 subnet mismatch", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
-			if err := s.fixInterfaceSubnet(ctx, systemID, eth0Iface, expected0, "eth0", s.resolveLinkMode("eth0")); err != nil {
-				s.scope.Error(err, "Failed to fix eth0 subnet", "system-id", systemID, "expected", expected0, "actual", eth0Subnet)
-				aggErr = errors.Wrap(err, "eth0 subnet correction failed")
-			} else {
-				s.scope.Info("Successfully fixed eth0 subnet", "system-id", systemID, "subnet", expected0)
-			}
-		} else {
-			s.scope.V(1).Info("eth0 subnet is correct", "system-id", systemID, "subnet", eth0Subnet)
-		}
-	} else {
-		s.scope.Info("eth0 interface not found, skipping verification", "system-id", systemID)
-	}
-
-	if eth1Iface != nil {
-		if eth1Subnet == "" || !subnetsMatch(eth1Subnet, expected1) {
-			s.scope.Info("Fixing eth1 subnet mismatch", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
-			if err := s.fixInterfaceSubnet(ctx, systemID, eth1Iface, expected1, "eth1", s.resolveLinkMode("eth1")); err != nil {
-				s.scope.Error(err, "Failed to fix eth1 subnet", "system-id", systemID, "expected", expected1, "actual", eth1Subnet)
-				if aggErr != nil {
-					aggErr = errors.Wrap(aggErr, err.Error())
-				} else {
-					aggErr = errors.Wrap(err, "eth1 subnet correction failed")
-				}
-			} else {
-				s.scope.Info("Successfully fixed eth1 subnet", "system-id", systemID, "subnet", expected1)
-			}
-		} else {
-			s.scope.V(1).Info("eth1 subnet is correct", "system-id", systemID, "subnet", eth1Subnet)
-		}
-	} else {
-		s.scope.Info("eth1 interface not found, skipping verification", "system-id", systemID)
-	}
-
-	if aggErr == nil {
-		s.scope.Info("VM network interfaces verified successfully", "system-id", systemID)
-	}
-
-	return aggErr
-}
-
-func (s *Service) fixInterfaceSubnet(ctx context.Context, systemID string, iface maasclient.NetworkInterface, expectedSubnetIdentifier, ifaceName string, linkMode string) error {
-	interfaceID := iface.ID()
-	ifaceClient := s.maasClient.NetworkInterfaces().Interface(systemID, interfaceID)
-
-	// Unlink all existing subnets from this interface
-	for _, link := range iface.Links() {
-		if link.Subnet() != nil {
-			if err := ifaceClient.UnlinkSubnet(ctx, link.ID()); err != nil {
-				return fmt.Errorf("failed to unlink subnet from %s: %w", ifaceName, err)
-			}
-		}
-	}
-
-	// Link the subnet with the given mode (from VMConfig.Eth0LinkMode/Eth1LinkMode or defaults).
-	// When linkMode is empty we use LinkSubnet (client default: auto when no IP).
-	if linkMode != "" {
-		if err := ifaceClient.LinkSubnetWithMode(ctx, expectedSubnetIdentifier, linkMode, ""); err != nil {
-			return fmt.Errorf("failed to link subnet %s to %s (mode=%s): %w", expectedSubnetIdentifier, ifaceName, linkMode, err)
-		}
-	} else {
-		if err := ifaceClient.LinkSubnet(ctx, expectedSubnetIdentifier, ""); err != nil {
-			return fmt.Errorf("failed to link subnet %s to %s: %w", expectedSubnetIdentifier, ifaceName, err)
-		}
-	}
-
-	s.scope.Info("Fixed subnet on interface", "system-id", systemID, "interface", ifaceName, "subnet", expectedSubnetIdentifier, "link-mode", linkMode)
-	return nil
 }
 
 // findExistingVMByHostname searches for an existing VM in MAAS by hostname

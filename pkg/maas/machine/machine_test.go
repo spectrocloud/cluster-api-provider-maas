@@ -2,7 +2,6 @@ package machine
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"testing"
 
@@ -255,7 +254,9 @@ func (f *fakeNetworkInterfaces) Interface(_, _ string) maasclient.NetworkInterfa
 	}
 	return &captureNetworkInterface{}
 }
-func (f *fakeNetworkInterfaces) SetBootInterfaceStaticIP(_ context.Context, _, _ string) error { return nil }
+func (f *fakeNetworkInterfaces) SetBootInterfaceStaticIP(_ context.Context, _, _ string) error {
+	return nil
+}
 func (f *fakeNetworkInterfaces) SetStaticIPOnInterfaceID(_ context.Context, _, _, _ string) error {
 	return nil
 }
@@ -273,9 +274,13 @@ type captureNetworkInterface struct {
 	linkErr          error
 }
 
-func (c *captureNetworkInterface) Get(_ context.Context) (maasclient.NetworkInterface, error) { return c, nil }
-func (c *captureNetworkInterface) Update(_ context.Context, _ maasclient.Params) error         { return nil }
-func (c *captureNetworkInterface) LinkSubnet(_ context.Context, _ string, _ string) error      { return c.linkErr }
+func (c *captureNetworkInterface) Get(_ context.Context) (maasclient.NetworkInterface, error) {
+	return c, nil
+}
+func (c *captureNetworkInterface) Update(_ context.Context, _ maasclient.Params) error { return nil }
+func (c *captureNetworkInterface) LinkSubnet(_ context.Context, _ string, _ string) error {
+	return c.linkErr
+}
 func (c *captureNetworkInterface) LinkSubnetWithMode(_ context.Context, subnetID, mode, _ string) error {
 	c.capturedSubnetID = subnetID
 	c.capturedMode = mode
@@ -290,16 +295,16 @@ func (c *captureNetworkInterface) UnlinkSubnet(_ context.Context, _ string) erro
 func (c *captureNetworkInterface) UpdateIPConfiguration(_ context.Context, _ maasclient.IPConfigurationUpdate) error {
 	return nil
 }
-func (c *captureNetworkInterface) SetStaticIP(_ context.Context, _ string) error          { return nil }
-func (c *captureNetworkInterface) SetDHCP(_ context.Context, _ string) error              { return nil }
-func (c *captureNetworkInterface) ID() string                                             { return "" }
-func (c *captureNetworkInterface) Name() string                                           { return "" }
-func (c *captureNetworkInterface) Type() string                                           { return "" }
-func (c *captureNetworkInterface) Enabled() bool                                          { return true }
-func (c *captureNetworkInterface) MACAddress() string                                     { return "" }
-func (c *captureNetworkInterface) Links() []maasclient.NetworkInterfaceLink                { return nil }
-func (c *captureNetworkInterface) Children() []string                                     { return nil }
-func (c *captureNetworkInterface) VLAN() maasclient.VLAN                                  { return nil }
+func (c *captureNetworkInterface) SetStaticIP(_ context.Context, _ string) error { return nil }
+func (c *captureNetworkInterface) SetDHCP(_ context.Context, _ string) error     { return nil }
+func (c *captureNetworkInterface) ID() string                                    { return "" }
+func (c *captureNetworkInterface) Name() string                                  { return "" }
+func (c *captureNetworkInterface) Type() string                                  { return "" }
+func (c *captureNetworkInterface) Enabled() bool                                 { return true }
+func (c *captureNetworkInterface) MACAddress() string                            { return "" }
+func (c *captureNetworkInterface) Links() []maasclient.NetworkInterfaceLink      { return nil }
+func (c *captureNetworkInterface) Children() []string                            { return nil }
+func (c *captureNetworkInterface) VLAN() maasclient.VLAN                         { return nil }
 
 // fakeNetworkInterface is an in-memory NetworkInterface with a configurable name, ID, and links.
 type fakeNetworkInterface struct {
@@ -308,25 +313,31 @@ type fakeNetworkInterface struct {
 	links []maasclient.NetworkInterfaceLink
 }
 
-func (f *fakeNetworkInterface) Get(_ context.Context) (maasclient.NetworkInterface, error) { return f, nil }
-func (f *fakeNetworkInterface) Update(_ context.Context, _ maasclient.Params) error         { return nil }
-func (f *fakeNetworkInterface) LinkSubnet(_ context.Context, _, _ string) error             { return nil }
-func (f *fakeNetworkInterface) LinkSubnetWithMode(_ context.Context, _, _, _ string) error  { return nil }
-func (f *fakeNetworkInterface) LinkSubnetWithForce(_ context.Context, _, _, _ string) error { return nil }
-func (f *fakeNetworkInterface) UnlinkSubnet(_ context.Context, _ string) error              { return nil }
+func (f *fakeNetworkInterface) Get(_ context.Context) (maasclient.NetworkInterface, error) {
+	return f, nil
+}
+func (f *fakeNetworkInterface) Update(_ context.Context, _ maasclient.Params) error { return nil }
+func (f *fakeNetworkInterface) LinkSubnet(_ context.Context, _, _ string) error     { return nil }
+func (f *fakeNetworkInterface) LinkSubnetWithMode(_ context.Context, _, _, _ string) error {
+	return nil
+}
+func (f *fakeNetworkInterface) LinkSubnetWithForce(_ context.Context, _, _, _ string) error {
+	return nil
+}
+func (f *fakeNetworkInterface) UnlinkSubnet(_ context.Context, _ string) error { return nil }
 func (f *fakeNetworkInterface) UpdateIPConfiguration(_ context.Context, _ maasclient.IPConfigurationUpdate) error {
 	return nil
 }
-func (f *fakeNetworkInterface) SetStaticIP(_ context.Context, _ string) error          { return nil }
-func (f *fakeNetworkInterface) SetDHCP(_ context.Context, _ string) error              { return nil }
-func (f *fakeNetworkInterface) ID() string                                             { return f.id }
-func (f *fakeNetworkInterface) Name() string                                           { return f.name }
-func (f *fakeNetworkInterface) Type() string                                           { return "" }
-func (f *fakeNetworkInterface) Enabled() bool                                          { return true }
-func (f *fakeNetworkInterface) MACAddress() string                                     { return "" }
-func (f *fakeNetworkInterface) Links() []maasclient.NetworkInterfaceLink               { return f.links }
-func (f *fakeNetworkInterface) Children() []string                                     { return nil }
-func (f *fakeNetworkInterface) VLAN() maasclient.VLAN                                  { return nil }
+func (f *fakeNetworkInterface) SetStaticIP(_ context.Context, _ string) error { return nil }
+func (f *fakeNetworkInterface) SetDHCP(_ context.Context, _ string) error     { return nil }
+func (f *fakeNetworkInterface) ID() string                                    { return f.id }
+func (f *fakeNetworkInterface) Name() string                                  { return f.name }
+func (f *fakeNetworkInterface) Type() string                                  { return "" }
+func (f *fakeNetworkInterface) Enabled() bool                                 { return true }
+func (f *fakeNetworkInterface) MACAddress() string                            { return "" }
+func (f *fakeNetworkInterface) Links() []maasclient.NetworkInterfaceLink      { return f.links }
+func (f *fakeNetworkInterface) Children() []string                            { return nil }
+func (f *fakeNetworkInterface) VLAN() maasclient.VLAN                         { return nil }
 
 // fakeNetworkInterfaceLink is a minimal NetworkInterfaceLink with a configurable subnet.
 type fakeNetworkInterfaceLink struct {
@@ -349,386 +360,3 @@ func (s *fakeSubnet) Name() string          { return s.cidr }
 func (s *fakeSubnet) Space() string         { return "" }
 func (s *fakeSubnet) VLAN() maasclient.VLAN { return nil }
 func (s *fakeSubnet) CIDR() string          { return s.cidr }
-
-// ---- TestResolveLinkMode ----
-
-func TestResolveLinkMode(t *testing.T) {
-	cases := []struct {
-		name      string
-		lxd       *infrav1beta1.MachineLXDConfig
-		ifaceName string
-		expected  string
-	}{
-		// Bullet 1: default mode selection
-		{
-			name:      "default eth0 no lxd config",
-			ifaceName: "eth0",
-			expected:  maasclient.ModeAuto,
-		},
-		{
-			name:      "default eth1 no lxd config",
-			ifaceName: "eth1",
-			expected:  maasclient.ModeDHCP,
-		},
-		{
-			name:      "default eth2 no lxd config",
-			ifaceName: "eth2",
-			expected:  maasclient.ModeDHCP,
-		},
-		// Bullet 2: custom mode from InterfaceLinkModes map
-		{
-			name:      "custom static on eth0",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth0": maasclient.ModeStatic}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeStatic,
-		},
-		{
-			name:      "custom link_up on eth1",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth1": maasclient.ModeLinkUp}}},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeLinkUp,
-		},
-		{
-			name:      "custom dhcp on eth0 overrides auto default",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth0": maasclient.ModeDHCP}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeDHCP,
-		},
-		// Bullet 3: all four allowed modes are accepted
-		{
-			name:      "valid auto on eth1",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth1": maasclient.ModeAuto}}},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeAuto,
-		},
-		{
-			name:      "valid dhcp on eth1",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth1": maasclient.ModeDHCP}}},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeDHCP,
-		},
-		{
-			name:      "valid static on eth1",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth1": maasclient.ModeStatic}}},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeStatic,
-		},
-		// Bullet 4: invalid/empty modes fall back to the interface default
-		{
-			name:      "invalid mode eth0 falls back to auto",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth0": "bogus"}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeAuto,
-		},
-		{
-			name:      "invalid mode eth1 falls back to dhcp",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth1": "bogus"}}},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeDHCP,
-		},
-		{
-			name:      "empty mode eth0 falls back to auto",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth0": ""}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeAuto,
-		},
-		{
-			name:      "whitespace-only mode falls back to auto",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{"eth0": "  "}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeAuto,
-		},
-		// Nil guards
-		{
-			name:      "lxd present vmconfig nil",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: nil},
-			ifaceName: "eth1",
-			expected:  maasclient.ModeDHCP,
-		},
-		{
-			name:      "interface link modes empty map",
-			lxd:       &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{InterfaceLinkModes: map[string]string{}}},
-			ifaceName: "eth0",
-			expected:  maasclient.ModeAuto,
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := &Service{
-				scope: &scope.MachineScope{
-					MaasMachine: &infrav1beta1.MaasMachine{
-						Spec: infrav1beta1.MaasMachineSpec{LXD: tc.lxd},
-					},
-				},
-			}
-			got := s.resolveLinkMode(tc.ifaceName)
-			if got != tc.expected {
-				t.Errorf("resolveLinkMode(%q) = %q, want %q", tc.ifaceName, got, tc.expected)
-			}
-		})
-	}
-}
-
-// ---- TestVerifyVMNetworkInterfaces ----
-
-func TestVerifyVMNetworkInterfaces(t *testing.T) {
-	log := klogr.New()
-
-	// helpers to build fake interfaces with a single link pointing to a named subnet
-	eth0With := func(cidr string) *fakeNetworkInterface {
-		return &fakeNetworkInterface{
-			id:   "iface-0",
-			name: "eth0",
-			links: []maasclient.NetworkInterfaceLink{
-				&fakeNetworkInterfaceLink{id: "link-0", subnet: &fakeSubnet{cidr: cidr}},
-			},
-		}
-	}
-	eth1With := func(cidr string) *fakeNetworkInterface {
-		return &fakeNetworkInterface{
-			id:   "iface-1",
-			name: "eth1",
-			links: []maasclient.NetworkInterfaceLink{
-				&fakeNetworkInterfaceLink{id: "link-1", subnet: &fakeSubnet{cidr: cidr}},
-			},
-		}
-	}
-
-	t.Run("lxd nil returns nil immediately", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger:      log,
-				MaasMachine: &infrav1beta1.MaasMachine{Spec: infrav1beta1.MaasMachineSpec{LXD: nil}},
-			},
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("vmconfig nil returns nil immediately", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: nil},
-					},
-				},
-			},
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("network empty returns nil immediately", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: ""}},
-					},
-				},
-			},
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("network with one subnet skips verification", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: "only-one-subnet"}},
-					},
-				},
-			},
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("machine in Deployed state is skipped", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCS := mockclientset.NewMockClientSetInterface(ctrl)
-		mockMachines := mockclientset.NewMockMachines(ctrl)
-		mockMachine := mockclientset.NewMockMachine(ctrl)
-
-		mockCS.EXPECT().Machines().Return(mockMachines)
-		mockMachines.EXPECT().Machine("sys-1").Return(mockMachine)
-		mockMachine.EXPECT().Get(gomock.Any()).Return(mockMachine, nil)
-		mockMachine.EXPECT().State().Return("Deployed")
-
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: "sn0,sn1"}},
-					},
-				},
-			},
-			maasClient: mockCS,
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("subnets already match no fixes applied", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCS := mockclientset.NewMockClientSetInterface(ctrl)
-		mockMachines := mockclientset.NewMockMachines(ctrl)
-		mockMachine := mockclientset.NewMockMachine(ctrl)
-
-		mockCS.EXPECT().Machines().Return(mockMachines)
-		mockMachines.EXPECT().Machine("sys-1").Return(mockMachine)
-		mockMachine.EXPECT().Get(gomock.Any()).Return(mockMachine, nil)
-		mockMachine.EXPECT().State().Return("Ready")
-		mockCS.EXPECT().NetworkInterfaces().Return(&fakeNetworkInterfaces{
-			ifaces: []maasclient.NetworkInterface{eth0With("sn0"), eth1With("sn1")},
-		})
-
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: "sn0,sn1"}},
-					},
-				},
-			},
-			maasClient: mockCS,
-		}
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-	})
-
-	t.Run("eth0 subnet mismatch fixed with default auto mode", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCS := mockclientset.NewMockClientSetInterface(ctrl)
-		mockMachines := mockclientset.NewMockMachines(ctrl)
-		mockMachine := mockclientset.NewMockMachine(ctrl)
-
-		captureIface := &captureNetworkInterface{}
-		fakeNI := &fakeNetworkInterfaces{
-			ifaces:   []maasclient.NetworkInterface{eth0With("10.0.0.0/24"), eth1With("sn1")},
-			captured: captureIface,
-		}
-
-		mockCS.EXPECT().Machines().Return(mockMachines)
-		mockMachines.EXPECT().Machine("sys-1").Return(mockMachine)
-		mockMachine.EXPECT().Get(gomock.Any()).Return(mockMachine, nil)
-		mockMachine.EXPECT().State().Return("New")
-		mockCS.EXPECT().NetworkInterfaces().Return(fakeNI).AnyTimes()
-
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: "sn0,sn1"}},
-					},
-				},
-			},
-			maasClient: mockCS,
-		}
-
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-		if captureIface.capturedMode != maasclient.ModeAuto {
-			t.Errorf("link mode = %q, want %q", captureIface.capturedMode, maasclient.ModeAuto)
-		}
-		if captureIface.capturedSubnetID != "sn0" {
-			t.Errorf("subnet ID = %q, want %q", captureIface.capturedSubnetID, "sn0")
-		}
-	})
-
-	t.Run("eth0 subnet mismatch fixed with custom static mode", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCS := mockclientset.NewMockClientSetInterface(ctrl)
-		mockMachines := mockclientset.NewMockMachines(ctrl)
-		mockMachine := mockclientset.NewMockMachine(ctrl)
-
-		captureIface := &captureNetworkInterface{}
-		fakeNI := &fakeNetworkInterfaces{
-			ifaces:   []maasclient.NetworkInterface{eth0With("10.0.0.0/24"), eth1With("sn1")},
-			captured: captureIface,
-		}
-
-		mockCS.EXPECT().Machines().Return(mockMachines)
-		mockMachines.EXPECT().Machine("sys-1").Return(mockMachine)
-		mockMachine.EXPECT().Get(gomock.Any()).Return(mockMachine, nil)
-		mockMachine.EXPECT().State().Return("New")
-		mockCS.EXPECT().NetworkInterfaces().Return(fakeNI).AnyTimes()
-
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{
-							VMConfig: &infrav1beta1.VMConfig{
-								Network:            "sn0,sn1",
-								InterfaceLinkModes: map[string]string{"eth0": maasclient.ModeStatic},
-							},
-						},
-					},
-				},
-			},
-			maasClient: mockCS,
-		}
-
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(Succeed())
-		if captureIface.capturedMode != maasclient.ModeStatic {
-			t.Errorf("link mode = %q, want %q", captureIface.capturedMode, maasclient.ModeStatic)
-		}
-	})
-
-	t.Run("fixInterfaceSubnet error is propagated", func(t *testing.T) {
-		g := NewGomegaWithT(t)
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-
-		mockCS := mockclientset.NewMockClientSetInterface(ctrl)
-		mockMachines := mockclientset.NewMockMachines(ctrl)
-		mockMachine := mockclientset.NewMockMachine(ctrl)
-
-		captureIface := &captureNetworkInterface{linkErr: fmt.Errorf("link failed")}
-		fakeNI := &fakeNetworkInterfaces{
-			ifaces:   []maasclient.NetworkInterface{eth0With("10.0.0.0/24"), eth1With("sn1")},
-			captured: captureIface,
-		}
-
-		mockCS.EXPECT().Machines().Return(mockMachines)
-		mockMachines.EXPECT().Machine("sys-1").Return(mockMachine)
-		mockMachine.EXPECT().Get(gomock.Any()).Return(mockMachine, nil)
-		mockMachine.EXPECT().State().Return("New")
-		mockCS.EXPECT().NetworkInterfaces().Return(fakeNI).AnyTimes()
-
-		s := &Service{
-			scope: &scope.MachineScope{
-				Logger: log,
-				MaasMachine: &infrav1beta1.MaasMachine{
-					Spec: infrav1beta1.MaasMachineSpec{
-						LXD: &infrav1beta1.MachineLXDConfig{VMConfig: &infrav1beta1.VMConfig{Network: "sn0,sn1"}},
-					},
-				},
-			},
-			maasClient: mockCS,
-		}
-
-		g.Expect(s.VerifyVMNetworkInterfaces(context.Background(), "sys-1")).To(HaveOccurred())
-	})
-}
