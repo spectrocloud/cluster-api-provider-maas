@@ -64,14 +64,63 @@ spec:
                         description: Image will be the MaaS image id
                         minLength: 1
                         type: string
+                      lxd:
+                        description: |-
+                          LXD contains configuration for creating this machine as an LXD VM on a host
+                          when enabled. When nil or disabled, this machine is created on bare metal.
+                        properties:
+                          enabled:
+                            default: false
+                            description: Enabled specifies whether this machine should
+                              be created as an LXD VM
+                            type: boolean
+                          vmConfig:
+                            description: VMConfig contains additional VM configuration
+                            properties:
+                              autoStart:
+                                default: true
+                                description: AutoStart specifies whether the VM should
+                                  automatically start
+                                type: boolean
+                              diskSize:
+                                default: 60
+                                description: DiskSize is the size of the VM disk in
+                                  GB
+                                type: integer
+                              interfaceLinkModes:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  InterfaceLinkModes sets the MAAS link mode per interface (e.g. eth0, eth1, eth2).
+                                  Keys are interface names ("eth0", "eth1", ...); values: "auto", "dhcp", "static", "link_up".
+                                  When unset for an interface: eth0 defaults to "auto", others to "dhcp". Extensible for future interfaces.
+                                type: object
+                              network:
+                                description: Network is the network to connect the
+                                  VM to
+                                type: string
+                              storagePool:
+                                description: StoragePool is the storage pool to use
+                                  for the VM
+                                type: string
+                            type: object
+                        type: object
                       minCPU:
                         description: MinCPU minimum number of CPUs
+                        minimum: 0
+                        type: integer
+                      minDiskSize:
+                        description: MinDiskSizeInGB minimum disk size in GB
                         minimum: 0
                         type: integer
                       minMemory:
                         description: MinMemoryInMB minimum memory in MB
                         minimum: 0
                         type: integer
+                      parent:
+                        description: Parent is the system ID of the parent host machine
+                          (for LXD VMs)
+                        type: string
                       providerID:
                         description: ProviderID will be the name in ProviderID format
                           (maas://<zone>/system_id)

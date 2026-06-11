@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -43,6 +44,7 @@ import (
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -60,6 +62,7 @@ type MaasClusterReconciler struct {
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=maasclusters/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;patch;update
 
 // Reconcile reads that state of the cluster for a MaasCluster object and makes changes based on the state read
 // and what is in the MaasCluster.Spec
@@ -282,7 +285,56 @@ func (r *MaasClusterReconciler) reconcileNormal(_ context.Context, clusterScope 
 	conditions.MarkTrue(maasCluster, infrav1beta1.APIServerAvailableCondition)
 	clusterScope.Info("API Server is available")
 
+	// Set API server readiness label on target cluster's kube-system namespace
+	if err := r.ensureClusterReadinessLabel(clusterScope); err != nil {
+		clusterScope.Error(err, "failed to set API server readiness label")
+		return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	if clusterScope.IsLXDHostEnabled() {
+		// Check readiness label on the TARGET cluster (not management)
+		remoteClient, err := clusterScope.GetWorkloadClusterClient(context.TODO())
+		if err != nil {
+			clusterScope.Info("Target cluster client not available yet; will retry")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for target cluster client")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		ns := &corev1.Namespace{}
+		if e := remoteClient.Get(context.TODO(), types.NamespacedName{Name: "kube-system"}, ns); e != nil {
+			clusterScope.Info("kube-system namespace not found on target; will retry")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for kube-system on target cluster")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+		if ns.Labels == nil || ns.Labels[infrautil.APIServerReadinessLabel] != "true" {
+			clusterScope.Info("Target cluster not ready for DaemonSet deployment - API server readiness label not found")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Waiting for API server readiness label on target cluster")
+			return reconcile.Result{RequeueAfter: 30 * time.Second}, nil
+		}
+
+		clusterScope.Info("Target cluster ready for DaemonSet deployment")
+
+		// Ensure LXD initializer DaemonSet exists/absent as needed
+		if err := r.ensureLXDInitializerDS(context.Background(), clusterScope); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD initializer DaemonSet")
+			return reconcile.Result{}, err
+		}
+
+		lxdService := lxd.NewService(clusterScope)
+		if err := lxdService.ReconcileLXD(); err != nil {
+			clusterScope.Error(err, "failed to reconcile LXD hosts")
+			conditions.MarkFalse(maasCluster, infrav1beta1.LXDReadyCondition, infrav1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			return reconcile.Result{}, err
+		}
+		conditions.MarkTrue(maasCluster, infrav1beta1.LXDReadyCondition)
+		clusterScope.Info("LXD hosts are available")
+	}
+
 	return ctrl.Result{}, nil
+}
+
+// ensureClusterReadinessLabel sets the API server readiness label on the target cluster's kube-system namespace
+func (r *MaasClusterReconciler) ensureClusterReadinessLabel(clusterScope *scope.ClusterScope) error {
+	return clusterScope.EnsureClusterReadinessLabel()
 }
 
 // SetupWithManager will add watches for this controller

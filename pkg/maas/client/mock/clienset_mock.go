@@ -247,6 +247,35 @@ func (mr *MockClientSetInterfaceMockRecorder) Zones() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Zones", reflect.TypeOf((*MockClientSetInterface)(nil).Zones))
 }
 
+
+// Subnets mocks base method.
+func (m *MockClientSetInterface) Subnets() maasclient.Subnets {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Subnets")
+	ret0, _ := ret[0].(maasclient.Subnets)
+	return ret0
+}
+
+// Subnets indicates an expected call of Subnets.
+func (mr *MockClientSetInterfaceMockRecorder) Subnets() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subnets", reflect.TypeOf((*MockClientSetInterface)(nil).Subnets))
+}
+
+// IPRanges mocks base method.
+func (m *MockClientSetInterface) IPRanges() maasclient.IPRanges {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IPRanges")
+	ret0, _ := ret[0].(maasclient.IPRanges)
+	return ret0
+}
+
+// IPRanges indicates an expected call of IPRanges.
+func (mr *MockClientSetInterfaceMockRecorder) IPRanges() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IPRanges", reflect.TypeOf((*MockClientSetInterface)(nil).IPRanges))
+}
+
 // MockMachines is a mock of Machines interface.
 type MockMachines struct {
 	ctrl     *gomock.Controller

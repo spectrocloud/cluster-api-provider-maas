@@ -19,11 +19,18 @@ package scope
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
-	v1 "k8s.io/api/core/v1"
+	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -33,8 +40,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sync"
-	"time"
 )
 
 const (
@@ -83,6 +88,11 @@ func NewClusterScope(params ClusterScopeParams) (*ClusterScope, error) {
 		tracker:             params.Tracker,
 		clusterEventChannel: params.ClusterEventChannel,
 	}, nil
+}
+
+// Client returns the Kubernetes client
+func (s *ClusterScope) Client() client.Client {
+	return s.client
 }
 
 // PatchObject persists the cluster configuration and status.
@@ -171,6 +181,116 @@ func (s *ClusterScope) GetClusterMaasMachines() ([]*infrav1beta1.MaasMachine, er
 	return machines, nil
 }
 
+// GetControlPlaneMaasMachines returns all MaasMachine objects associated with control plane machines in the cluster
+func (s *ClusterScope) GetControlPlaneMaasMachines() ([]*infrav1beta1.MaasMachine, error) {
+	machines, err := s.GetClusterMaasMachines()
+	if err != nil {
+		return nil, err
+	}
+
+	var cpMachines []*infrav1beta1.MaasMachine
+	for _, machine := range machines {
+		// Check for control plane label
+		if _, ok := machine.ObjectMeta.Labels[clusterv1.MachineControlPlaneLabel]; ok {
+			cpMachines = append(cpMachines, machine)
+		}
+	}
+
+	return cpMachines, nil
+}
+
+// SetStatus sets the MaasCluster status
+func (s *ClusterScope) SetStatus(status infrav1beta1.MaasClusterStatus) {
+	s.MaasCluster.Status = status
+}
+
+// GetMaasClientIdentity returns the MAAS client identity
+func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
+	// Try to get MAAS credentials from a secret
+	// The secret is expected to be in the same namespace as the MaasCluster
+	// and named "maas-credentials" by default
+	// Secret containing MAAS endpoint/token created by Palette bootstrapper
+	// Default name switched from "maas-credentials" to "capmaas-manager-bootstrap-credentials"
+	secretName := "capmaas-manager-bootstrap-credentials"
+
+	// Get the secret
+	secret := &corev1.Secret{}
+	key := types.NamespacedName{
+		Namespace: s.MaasCluster.Namespace,
+		Name:      secretName,
+	}
+
+	// Try to get the secret
+	err := s.client.Get(context.Background(), key, secret)
+	if err != nil {
+		// If the secret doesn't exist, fall back to environment variables or default values
+		s.Info("Failed to get MAAS bootstrap credentials secret, using fallback values", "error", err)
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	// Get the credentials from the secret
+	url := string(secret.Data["MAAS_ENDPOINT"])
+	token := string(secret.Data["MAAS_API_KEY"])
+
+	// Validate the credentials
+	if url == "" || token == "" {
+		s.Info("Invalid MAAS credentials in secret, using fallback values")
+		return ClientIdentity{
+			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
+			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
+		}
+	}
+
+	return ClientIdentity{
+		URL:   url,
+		Token: token,
+	}
+}
+
+// getEnvOrDefault returns the value of the environment variable or the default value if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// ClientIdentity contains MAAS client identity information
+type ClientIdentity struct {
+	URL   string
+	Token string
+}
+
+const (
+	maasPreferredSubnetConfigmap = "maas-preferred-subnet"
+	preferredSubnetKey           = "preferredSubnets"
+)
+
+func (s *ClusterScope) GetPreferredSubnets() ([]string, error) {
+	maasPreferredSubnet := &corev1.ConfigMap{}
+	err := s.client.Get(context.Background(), types.NamespacedName{
+		Namespace: s.Cluster.GetNamespace(),
+		Name:      maasPreferredSubnetConfigmap,
+	}, maasPreferredSubnet)
+	switch {
+	case err != nil && !apierrors.IsNotFound(err):
+		return nil, err
+	case err != nil && apierrors.IsNotFound(err):
+		return nil, nil
+	}
+
+	subnetsString := maasPreferredSubnet.Data[preferredSubnetKey]
+	var result []string
+	for _, subnet := range strings.Split(subnetsString, ",") {
+		result = append(result, strings.TrimSpace(subnet))
+	}
+	return result, nil
+}
+
 var (
 	// apiServerTriggers is used to prevent multiple goroutines for a single
 	// Cluster that poll to see if the target API server is online.
@@ -239,7 +359,71 @@ func (s *ClusterScope) IsAPIServerOnline() (bool, error) {
 		return false, nil
 	}
 
-	err = remoteClient.List(ctx, new(v1.NodeList))
+	err = remoteClient.List(ctx, new(corev1.NodeList))
 
 	return err == nil, nil
+}
+
+// IsLXDHostEnabled returns true if LXD host registration is enabled for the infrastructure cluster.
+// Prefer the explicit flag on LXDConfig.
+func (s *ClusterScope) IsLXDHostEnabled() bool {
+	// New preferred switch
+	if s.MaasCluster.Spec.LXDConfig != nil && s.MaasCluster.Spec.LXDConfig.Enabled != nil {
+		return *s.MaasCluster.Spec.LXDConfig.Enabled
+	}
+
+	return false
+}
+
+// GetLXDConfig returns the LXD configuration
+func (s *ClusterScope) GetLXDConfig() *infrav1beta1.LXDConfig {
+	return s.MaasCluster.Spec.LXDConfig
+}
+
+// GetWorkloadClusterClient returns a client for the workload cluster
+func (s *ClusterScope) GetWorkloadClusterClient(ctx context.Context) (client.Client, error) {
+	return s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+}
+
+// EnsureClusterReadinessLabel sets the readiness label on the target cluster when API server is available
+func (s *ClusterScope) EnsureClusterReadinessLabel() error {
+	ctx := context.TODO()
+
+	// Get remote client for target cluster
+	remoteClient, err := s.tracker.GetClient(ctx, util.ObjectKey(s.Cluster))
+	if err != nil {
+		// Remote cluster not accessible yet
+		s.V(2).Info("Cannot get remote client to set readiness label")
+		return nil // Not an error, just not ready yet
+	}
+
+	// Check if label is already set
+	namespace := &corev1.Namespace{}
+	namespaceName := types.NamespacedName{Name: "kube-system"}
+
+	if err := remoteClient.Get(ctx, namespaceName, namespace); err != nil {
+		if apierrors.IsNotFound(err) {
+			s.V(2).Info("kube-system namespace not found in target cluster")
+			return nil
+		}
+		return err
+	}
+
+	if labelValue, exists := namespace.Labels[infrautil.APIServerReadinessLabel]; exists && labelValue == "true" {
+		s.V(2).Info("API server readiness label already set on kube-system namespace")
+		return nil
+	}
+
+	// Set the readiness label immediately since API server is available
+	if namespace.Labels == nil {
+		namespace.Labels = make(map[string]string)
+	}
+	namespace.Labels[infrautil.APIServerReadinessLabel] = "true"
+
+	if err := remoteClient.Update(ctx, namespace); err != nil {
+		return fmt.Errorf("failed to set API server readiness label on kube-system namespace: %w", err)
+	}
+
+	s.Info("Successfully set API server readiness label", "label", infrautil.APIServerReadinessLabel)
+	return nil
 }

@@ -1,0 +1,148 @@
+# Sample configuration for a cluster with LXD VM support
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: lxd-cluster
+  namespace: default
+spec:
+  dnsDomain: maas.example.com
+  # Enable LXD control plane cluster
+  lxdControlPlaneCluster: true
+  # LXD configuration
+  lxdConfig:
+    storageBackend: zfs
+    storageSize: "50"
+    networkBridge: br0
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: lxd-cluster
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: lxd-cluster-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: lxd-cluster
+---
+# Control plane machine template with LXD VM support
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: lxd-cluster-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 2
+      minMemory: 4096
+      resourcePool: lxd-pool
+      tags:
+      - lxd-control-plane
+      # Enable dynamic LXD VM creation
+      dynamicLXD: true
+      # Optional: specify static IP for the VM
+      staticIP: "10.11.130.75"
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: lxd-cluster-control-plane
+  namespace: default
+spec:
+  replicas: 3
+  version: v1.26.4
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: lxd-cluster-control-plane
+      namespace: default
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs:
+        - "lxd-cluster.maas.example.com"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+---
+# Worker machine template with LXD VM support
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: lxd-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 4
+      minMemory: 8192
+      resourcePool: lxd-pool
+      tags:
+      - lxd-worker
+      # Enable dynamic LXD VM creation for workers
+      dynamicLXD: true
+      # Optional: specify static IP for the VM
+      staticIP: "10.11.130.76"
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: lxd-cluster-worker
+  namespace: default
+spec:
+  clusterName: lxd-cluster
+  replicas: 3
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: lxd-cluster-worker
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: lxd-cluster-worker
+    spec:
+      clusterName: lxd-cluster
+      version: v1.26.4
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: lxd-cluster-worker
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: lxd-cluster-worker
+        namespace: default
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: lxd-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external 

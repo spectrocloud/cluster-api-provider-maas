@@ -16,7 +16,7 @@ bin
 # Kubernetes Generated files - skip generated files, except for vendored files
 
 !vendor/**/zz_generated.*
-
+vendor
 # editor and IDE paraphernalia
 .idea
 *.swp
@@ -26,4 +26,12 @@ bin
 maas-credentials.env
 
 _build
+
+# Generated processed templates (created by envsubst during build)
+controllers/templates/*.processed
+
+# LXD test directory
+lxd-test-tmp/
+utils/maas/lxd-test/.netrc
+.netrc
 vendor/

@@ -1,0 +1,140 @@
+# Test configuration for standard non-LXD cluster
+# This ensures backward compatibility is maintained
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: standard-cluster
+  namespace: default
+spec:
+  dnsDomain: maas.example.com
+  # Note: lxdControlPlaneCluster is NOT set (defaults to false)
+  # Note: lxdConfig is NOT set
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: standard-cluster
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: standard-cluster-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: standard-cluster
+---
+# Standard control plane machine template (no LXD)
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: standard-cluster-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 4
+      minMemory: 8192
+      resourcePool: standard-pool
+      tags:
+      - standard-control-plane
+      # Note: dynamicLXD is NOT set (defaults to false)
+      # Note: staticIP is NOT set
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: standard-cluster-control-plane
+  namespace: default
+spec:
+  replicas: 3
+  version: v1.26.4
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: standard-cluster-control-plane
+      namespace: default
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs:
+        - "standard-cluster.maas.example.com"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+---
+# Standard worker machine template (no LXD)
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: standard-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 4
+      minMemory: 8192
+      resourcePool: standard-pool
+      tags:
+      - standard-worker
+      # Note: dynamicLXD is NOT set (defaults to false)
+      # Note: staticIP is NOT set
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: standard-cluster-worker
+  namespace: default
+spec:
+  clusterName: standard-cluster
+  replicas: 3
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: standard-cluster-worker
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: standard-cluster-worker
+    spec:
+      clusterName: standard-cluster
+      version: v1.26.4
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: standard-cluster-worker
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: standard-cluster-worker
+        namespace: default
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: standard-cluster-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external 

@@ -40,6 +40,10 @@ type MaasMachineSpec struct {
 	// +optional
 	SystemID *string `json:"systemID,omitempty"`
 
+	// Parent is the system ID of the parent host machine (for LXD VMs)
+	// +optional
+	Parent *string `json:"parent,omitempty"`
+
 	// ProviderID will be the name in ProviderID format (maas://<zone>/system_id)
 	// +optional
 	ProviderID *string `json:"providerID,omitempty"`
@@ -56,6 +60,11 @@ type MaasMachineSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	MinMemoryInMB *int `json:"minMemory"`
 
+	// MinDiskSizeInGB minimum disk size in GB
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MinDiskSizeInGB *int `json:"minDiskSize,omitempty"`
+
 	// Tags for placement
 	// +optional
 	Tags []string `json:"tags,omitempty"`
@@ -67,6 +76,49 @@ type MaasMachineSpec struct {
 	// DeployInMemory indicates to maas to deploy machine in memory
 	// +kubebuilder:default=false
 	DeployInMemory bool `json:"deployInMemory,omitempty"`
+	// LXD contains configuration for creating this machine as an LXD VM on a host
+	// when enabled. When nil or disabled, this machine is created on bare metal.
+	// +optional
+	LXD *MachineLXDConfig `json:"lxd,omitempty"`
+}
+
+// MachineLXDConfig defines LXD VM creation options for a machine
+type MachineLXDConfig struct {
+	// Enabled specifies whether this machine should be created as an LXD VM
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// VMConfig contains additional VM configuration
+	// +optional
+	VMConfig *VMConfig `json:"vmConfig,omitempty"`
+}
+
+// VMConfig contains additional VM configuration
+type VMConfig struct {
+	// DiskSize is the size of the VM disk in GB
+	// +kubebuilder:default=60
+	// +optional
+	DiskSize *int `json:"diskSize,omitempty"`
+
+	// StoragePool is the storage pool to use for the VM
+	// +optional
+	StoragePool string `json:"storagePool,omitempty"`
+
+	// Network is the network to connect the VM to
+	// +optional
+	Network string `json:"network,omitempty"`
+
+	// InterfaceLinkModes sets the MAAS link mode per interface (e.g. eth0, eth1, eth2).
+	// Keys are interface names ("eth0", "eth1", ...); values: "auto", "dhcp", "static", "link_up".
+	// When unset for an interface: eth0 defaults to "auto", others to "dhcp". Extensible for future interfaces.
+	// +optional
+	InterfaceLinkModes map[string]string `json:"interfaceLinkModes,omitempty"`
+
+	// AutoStart specifies whether the VM should automatically start
+	// +kubebuilder:default=true
+	// +optional
+	AutoStart *bool `json:"autoStart,omitempty"`
 }
 
 // MaasMachineStatus defines the observed state of MaasMachine
