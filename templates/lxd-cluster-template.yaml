@@ -108,6 +108,7 @@ metadata:
 spec:
   template:
     spec:
+      failureDomain: ${LXD_ZONE}
       image: ${MACHINE_IMAGE}
       minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
       minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
@@ -155,6 +156,7 @@ metadata:
 spec:
   template:
     spec:
+      failureDomain: ${WORKER_ZONE}
       minCPU: ${WORKER_MACHINE_MINCPU}
       minMemory: ${WORKER_MACHINE_MINMEMORY}
       image: ${WORKER_MACHINE_IMAGE}

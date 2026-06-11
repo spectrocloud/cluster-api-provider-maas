@@ -162,7 +162,7 @@ generate-manifests:  ## Generate manifests
 .PHONY: docker-build
 docker-build: generate-lxd-template ## Build CAPMAAS controller image (ensures lxd-initializer template is processed first with correct image tag)
 	@# Template is already processed by generate-lxd-template with correct image tag via kustomize
-	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
+	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
 .PHONY: docker-push
