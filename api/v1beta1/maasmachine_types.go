@@ -80,10 +80,6 @@ type MaasMachineSpec struct {
 	// when enabled. When nil or disabled, this machine is created on bare metal.
 	// +optional
 	LXD *MachineLXDConfig `json:"lxd,omitempty"`
-
-	// StaticIP configuration for VMs
-	// +optional
-	StaticIP *StaticIPConfig `json:"staticIP,omitempty"`
 }
 
 // MachineLXDConfig defines LXD VM creation options for a machine
@@ -96,26 +92,6 @@ type MachineLXDConfig struct {
 	// VMConfig contains additional VM configuration
 	// +optional
 	VMConfig *VMConfig `json:"vmConfig,omitempty"`
-}
-
-// StaticIPConfig defines the static IP configuration for a VM
-type StaticIPConfig struct {
-
-	// IP is the static IP address to assign
-	// +optional
-	IP string `json:"ip"`
-
-	// CIDR is the network CIDR
-	// +optional
-	CIDR string `json:"cidr,omitempty"`
-
-	// Gateway is the network gateway
-	// +optional
-	Gateway string `json:"gateway,omitempty"`
-
-	// Nameservers is a list of DNS servers
-	// +optional
-	Nameservers []string `json:"nameservers,omitempty"`
 }
 
 // VMConfig contains additional VM configuration

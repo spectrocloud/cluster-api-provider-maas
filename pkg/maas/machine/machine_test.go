@@ -254,12 +254,7 @@ func (f *fakeNetworkInterfaces) Interface(_, _ string) maasclient.NetworkInterfa
 	}
 	return &captureNetworkInterface{}
 }
-func (f *fakeNetworkInterfaces) SetBootInterfaceStaticIP(_ context.Context, _, _ string) error {
-	return nil
-}
-func (f *fakeNetworkInterfaces) SetStaticIPOnInterfaceID(_ context.Context, _, _, _ string) error {
-	return nil
-}
+
 func (f *fakeNetworkInterfaces) CreateBridge(_ context.Context, _, _, _ string) (maasclient.NetworkInterface, error) {
 	return nil, nil
 }

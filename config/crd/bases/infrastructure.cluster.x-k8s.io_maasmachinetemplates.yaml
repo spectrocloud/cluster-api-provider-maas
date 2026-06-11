@@ -87,6 +87,14 @@ spec:
                                 description: DiskSize is the size of the VM disk in
                                   GB
                                 type: integer
+                              interfaceLinkModes:
+                                additionalProperties:
+                                  type: string
+                                description: |-
+                                  InterfaceLinkModes sets the MAAS link mode per interface (e.g. eth0, eth1, eth2).
+                                  Keys are interface names ("eth0", "eth1", ...); values: "auto", "dhcp", "static", "link_up".
+                                  When unset for an interface: eth0 defaults to "auto", others to "dhcp". Extensible for future interfaces.
+                                type: object
                               network:
                                 description: Network is the network to connect the
                                   VM to
@@ -109,6 +117,10 @@ spec:
                         description: MinMemoryInMB minimum memory in MB
                         minimum: 0
                         type: integer
+                      parent:
+                        description: Parent is the system ID of the parent host machine
+                          (for LXD VMs)
+                        type: string
                       providerID:
                         description: ProviderID will be the name in ProviderID format
                           (maas://<zone>/system_id)
@@ -116,24 +128,6 @@ spec:
                       resourcePool:
                         description: ResourcePool will be the MAAS Machine resourcepool
                         type: string
-                      staticIP:
-                        description: StaticIP configuration for VMs
-                        properties:
-                          cidr:
-                            description: CIDR is the network CIDR
-                            type: string
-                          gateway:
-                            description: Gateway is the network gateway
-                            type: string
-                          ip:
-                            description: IP is the static IP address to assign
-                            type: string
-                          nameservers:
-                            description: Nameservers is a list of DNS servers
-                            items:
-                              type: string
-                            type: array
-                        type: object
                       systemID:
                         description: SystemID will be the MaaS machine ID
                         type: string

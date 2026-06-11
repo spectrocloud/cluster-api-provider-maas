@@ -345,25 +345,3 @@ func (m *MachineScope) GetDynamicLXD() bool {
 	}
 	return false
 }
-
-// GetStaticIP returns the static IP to assign to the machine, if configured
-func (m *MachineScope) GetStaticIP() string {
-	if m.MaasMachine.Spec.StaticIP == nil {
-		m.Info("StaticIP config is nil")
-		return ""
-	}
-
-	m.Info("StaticIP config found", "ip", m.MaasMachine.Spec.StaticIP.IP)
-	return m.MaasMachine.Spec.StaticIP.IP
-}
-
-// GetStaticIPConfig returns the full static IP configuration if configured
-func (m *MachineScope) GetStaticIPConfig() *infrav1beta1.StaticIPConfig {
-	if m.MaasMachine.Spec.StaticIP == nil {
-		m.V(1).Info("StaticIPConfig: StaticIP config is nil")
-		return nil
-	}
-
-	m.V(1).Info("StaticIPConfig: returning config", "ip", m.MaasMachine.Spec.StaticIP.IP)
-	return m.MaasMachine.Spec.StaticIP
-}

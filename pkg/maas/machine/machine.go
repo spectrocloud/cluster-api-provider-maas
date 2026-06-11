@@ -250,17 +250,6 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 		s.scope.Info("Machine will be deployed in memory", "system-id", m.SystemID())
 	}
 
-	// Configure static IP before deployment
-	if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-		staticIPConfig := s.scope.GetStaticIPConfig()
-		if staticIPConfig != nil {
-			err := s.setMachineStaticIP(m.SystemID(), staticIPConfig)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to configure static IP")
-			}
-		}
-	}
-
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
@@ -291,12 +280,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		machineName := s.scope.Machine.Name
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
-		if staticIP := s.scope.GetStaticIP(); staticIP != "" {
-			if err := s.setMachineStaticIP(m.SystemID(), &infrav1beta1.StaticIPConfig{IP: staticIP}); err != nil {
-				// Fail fast so we don't attempt Deploy without a network link configured
-				return nil, errors.Wrap(err, "failed to configure static IP before deploy")
-			}
-		}
+
 		deployingM, err := m.Deployer().
 			SetUserData(userDataB64).
 			SetOSSystem("custom").
@@ -597,44 +581,6 @@ func (s *Service) reuseExistingVM(m maasclient.Machine, zone string) (*infrav1be
 		res.AvailabilityZone = zone
 	}
 	return res, nil
-}
-
-// setMachineStaticIP configures static IP for a machine using the simplified networkInterfaceImpl branch API
-// It first checks if the IP is already allocated elsewhere and releases it if necessary
-func (s *Service) setMachineStaticIP(systemID string, config *infrav1beta1.StaticIPConfig) error {
-	ctx := context.TODO()
-
-	// Check if the IP is already allocated elsewhere
-	s.scope.V(1).Info("Checking existing IP allocation", "ip", config.IP)
-	existingIP, err := s.maasClient.IPAddresses().Get(ctx, config.IP)
-	if err == nil {
-		// IP exists - check if it's actually allocated to any interfaces
-		interfaces := existingIP.InterfaceSet()
-		if len(interfaces) > 0 {
-			s.scope.Info("Found existing IP allocation with interfaces, skipping release", "ip", config.IP, "interfaceCount", len(interfaces))
-		} else {
-			s.scope.Info("Found IP with no interfaces, releasing to clean up stale state", "ip", config.IP)
-
-			// Try normal release only - no force release to avoid risky operations
-			if releaseErr := s.maasClient.IPAddresses().Release(ctx, config.IP); releaseErr != nil {
-				return fmt.Errorf("failed to release existing IP allocation %s: %w (manual intervention may be required)", config.IP, releaseErr)
-			}
-			s.scope.Info("Successfully released IP", "ip", config.IP)
-		}
-	} else {
-		// IP doesn't exist or GetAll failed - this is fine, we can proceed with assignment
-		s.scope.V(1).Info("IP not found in existing allocations (expected for new assignments)", "ip", config.IP)
-	}
-
-	// Now set the static IP on the target machine's boot interface
-	s.scope.Info("Setting static IP on boot interface", "ip", config.IP, "systemID", systemID)
-	err = s.maasClient.NetworkInterfaces().SetBootInterfaceStaticIP(ctx, systemID, config.IP)
-	if err != nil {
-		return fmt.Errorf("failed to set static IP %s on boot interface for machine %s: %w", config.IP, systemID, err)
-	}
-
-	s.scope.Info("Static IP configured successfully", "ip", config.IP, "systemID", systemID)
-	return nil
 }
 
 // createBootInterfaceBridge creates a bridge on the boot interface using maas-client-go
