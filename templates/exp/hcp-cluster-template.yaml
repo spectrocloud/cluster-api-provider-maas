@@ -57,23 +57,48 @@ spec:
       kind: MaasMachineTemplate
       name: ${CLUSTER_NAME}-control-plane
   kubeadmConfigSpec:
-    initConfiguration:
-      nodeRegistration:
-        name: '{{ ds.meta_data.hostname }}'
-        kubeletExtraArgs:
-          cloud-provider: external
     clusterConfiguration:
       apiServer:
         extraArgs:
-          cloud-provider: external
+          anonymous-auth: "true"
+          authorization-mode: RBAC,Node
+          default-not-ready-toleration-seconds: "60"
+          default-unreachable-toleration-seconds: "60"
+          disable-admission-plugins: AlwaysAdmit
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+        timeoutForControlPlane: 10m0s
       controllerManager:
         extraArgs:
-          cloud-provider: external
-    joinConfiguration:
+          feature-gates: RotateKubeletServerCertificate=true
+          terminated-pod-gc-threshold: "25"
+          use-service-account-credentials: "true"
+      dns: {}
+      etcd: {}
+      networking: {}
+      scheduler:
+        extraArgs:
+    initConfiguration:
       nodeRegistration:
-        name: '{{ ds.meta_data.hostname }}'
         kubeletExtraArgs:
-          cloud-provider: external
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane: {}
+      discovery: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+    useExperimentalRetryJoin: true
 ---
 # Control-plane hosts run on bare metal (no spec.lxd block).
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -149,6 +174,14 @@ spec:
     spec:
       joinConfiguration:
         nodeRegistration:
-          name: '{{ ds.meta_data.hostname }}'
           kubeletExtraArgs:
-            cloud-provider: external
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
+      useExperimentalRetryJoin: true

@@ -65,6 +65,12 @@ var (
 const (
 	HCPClusterRoleValue = "hcp"
 	WLCClusterRoleValue = "wlc"
+	// StandardClusterRoleValue is the default role: a standard cluster that runs
+	// only the base infrastructure controllers (no VM evacuation, no HMC). It is a
+	// non-empty sentinel because clusterctl treats an empty variable default as a
+	// required (unset) variable, so the deployment manifest defaults
+	// CAPMAAS_CLUSTER_ROLE to this value rather than the empty string.
+	StandardClusterRoleValue = "standard"
 )
 
 func init() {
@@ -90,9 +96,10 @@ func main() {
 		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
 	}
 
-	// Validate cluster role if provided
-	if clusterRole != "" && clusterRole != HCPClusterRoleValue && clusterRole != WLCClusterRoleValue {
-		setupLog.Error(nil, "invalid cluster-role value", "provided", clusterRole, "valid_values", []string{HCPClusterRoleValue, WLCClusterRoleValue})
+	// Validate cluster role if provided. Empty and "standard" both mean a standard
+	// cluster running only the base infrastructure controllers.
+	if clusterRole != "" && clusterRole != StandardClusterRoleValue && clusterRole != HCPClusterRoleValue && clusterRole != WLCClusterRoleValue {
+		setupLog.Error(nil, "invalid cluster-role value", "provided", clusterRole, "valid_values", []string{StandardClusterRoleValue, HCPClusterRoleValue, WLCClusterRoleValue})
 		os.Exit(1)
 	}
 
@@ -242,7 +249,7 @@ func initFlags(fs *pflag.FlagSet) {
 		"Namespace that the controller watches to reconcile cluster-api objects. If unspecified, the controller watches for cluster-api objects across all namespaces.",
 	)
 	fs.StringVar(&clusterRole, "cluster-role", "",
-		"Role of this cluster: 'hcp' (Host Control Plane) or 'wlc' (Workload Cluster). When set to 'wlc', enables VM evacuation controller.",
+		"Role of this cluster: 'standard' (or empty) runs only the base infrastructure controllers; 'wlc' (Workload Cluster) additionally enables the VM evacuation controller; 'hcp' (Host Control Plane) additionally enables the HMC maintenance controller.",
 	)
 
 	feature.MutableGates.AddFlag(fs)
