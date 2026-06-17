@@ -10,12 +10,14 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
 
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/util/trust"
@@ -52,21 +54,23 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return nil
 	}
 
-	// Gate: ensure pivot completed. Require mgmt namespace to have clusterEnv=target
-	isTarget, clusterEnv := r.namespaceIsTarget(ctx, dsNamespace)
-	if !isTarget {
-		r.Log.Info("Namespace not marked as target; deferring LXD initializer", "namespace", dsNamespace, "clusterEnv", clusterEnv)
+	// wait until the control plane is fully available (KCP unavailableReplicas == 0)
+	// before deploying the initializer onto the target cluster.
+	if !r.controlPlaneReady(ctx, clusterScope) {
+		r.Log.Info("Control plane not fully available; deferring LXD initializer", "namespace", dsNamespace, "ds", dsName)
 		return nil
 	}
 
-	// Gate: derive desired CP count from MaasCloudConfig; fallback to KCP
+	// desiredTotal (CP + workers) gates DS deletion so we don't tear it down before
+	// worker nodes have joined the target cluster.
 	desiredCP, _ := r.computeDesiredControlPlane(ctx, dsNamespace, cluster.Name)
+	desiredTotal := desiredCP + r.desiredWorkerReplicas(ctx, dsNamespace, cluster.Name)
 
 	// New gate: proceed if any node needs initialization. This avoids deadlock during upgrades
 	// when an old node is NotReady due to HMC constraints but new nodes must be initialized.
 	if !r.anyNodeNeedsInitialization(ctx, remoteClient) {
 		r.Log.Info("All nodes already labeled initialized; considering DS cleanup", "namespace", dsNamespace, "ds", dsName)
-		if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+		if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredTotal, dsName); err != nil {
 			r.Log.Error(err, "failed to maybe short circuit delete", "namespace", dsNamespace, "ds", dsName)
 			return err
 		} else if done {
@@ -77,14 +81,25 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return nil
 	}
 
-	//TODO: Check if we require this
-	// if ok := r.enoughNodesReady(ctx, remoteClient, desiredCP, readyByKCP); !ok {
-	// 	return nil
-	// }
-
 	if err := r.deleteExistingInitializerDS(ctx, remoteClient, dsNamespace); err != nil {
 		r.Log.Error(err, "failed to delete existing initializer DS", "namespace", dsNamespace, "ds", dsName)
 		return err
+	}
+
+	// The DS and its RBAC live in the same namespace as the HCP cluster. That namespace
+	// may not exist on the target cluster (e.g. a non-default namespace, no pivot), so
+	// create it before laying down RBAC and the DaemonSet.
+	if err := r.ensureNamespaceOnTarget(ctx, remoteClient, dsNamespace); err != nil {
+		r.Log.Error(err, "failed to ensure namespace on target", "namespace", dsNamespace, "ds", dsName)
+		return fmt.Errorf("failed to ensure namespace %s on target: %v", dsNamespace, err)
+	}
+
+	// The lxd-initializer runs on the target cluster and authenticates to MAAS using the
+	// capmaas-manager-bootstrap-credentials secret (it searches all namespaces for it). That
+	// secret only exists on the management cluster, so sync it onto the target before the DS.
+	if err := r.ensureLXDInitializerCredentialsOnTarget(ctx, remoteClient, dsNamespace); err != nil {
+		r.Log.Error(err, "failed to ensure MAAS credentials on target", "namespace", dsNamespace, "ds", dsName)
+		return fmt.Errorf("failed to ensure MAAS credentials on target: %v", err)
 	}
 
 	// Ensure RBAC resources are created on the target cluster
@@ -93,7 +108,7 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 		return fmt.Errorf("failed to ensure LXD initializer RBAC: %v", err)
 	}
 
-	if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredCP, dsName); err != nil {
+	if done, err := r.maybeShortCircuitDelete(ctx, remoteClient, dsNamespace, desiredTotal, dsName); err != nil {
 		r.Log.Error(err, "failed to maybe short circuit delete", "namespace", dsNamespace, "ds", dsName)
 		return err
 	} else if done {
@@ -147,6 +162,47 @@ func (r *MaasClusterReconciler) ensureLXDInitializerDS(ctx context.Context, clus
 	return nil
 }
 
+// ensureNamespaceOnTarget creates the given namespace on the target cluster if it
+// does not already exist. The default namespace always exists, so it is a no-op there.
+func (r *MaasClusterReconciler) ensureNamespaceOnTarget(ctx context.Context, remoteClient client.Client, namespace string) error {
+	if namespace == "" || namespace == metav1.NamespaceDefault {
+		return nil
+	}
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: namespace}}
+	_, err := controllerutil.CreateOrPatch(ctx, remoteClient, ns, func() error { return nil })
+	return err
+}
+
+// ensureLXDInitializerCredentialsOnTarget copies the MAAS bootstrap credentials from the
+// management cluster into the target cluster so the lxd-initializer DaemonSet (which runs on
+// the target and searches all namespaces for this secret) can authenticate to MAAS.
+func (r *MaasClusterReconciler) ensureLXDInitializerCredentialsOnTarget(ctx context.Context, remoteClient client.Client, namespace string) error {
+	// Read creds on the management side: secret in `namespace`, falling back to the
+	// controller's MAAS_ENDPOINT / MAAS_API_KEY env vars.
+	endpoint, apiKey, err := maintenance.GetMAASCredentials(r.Client, namespace)
+	if err != nil {
+		return fmt.Errorf("failed to read MAAS credentials on management cluster: %w", err)
+	}
+
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      maintenance.MAASBootstrapCredentialsSecretName,
+			Namespace: namespace,
+		},
+	}
+	_, err = controllerutil.CreateOrPatch(ctx, remoteClient, secret, func() error {
+		if secret.Data == nil {
+			secret.Data = map[string][]byte{}
+		}
+		secret.Data["MAAS_ENDPOINT"] = []byte(endpoint)
+		secret.Data["MAAS_API_KEY"] = []byte(apiKey)
+		secret.Type = corev1.SecretTypeOpaque
+		return nil
+	})
+	return err
+}
+
 // ensureLXDInitializerRBACOnTarget creates the RBAC resources for lxd-initializer on the target cluster
 func (r *MaasClusterReconciler) ensureLXDInitializerRBACOnTarget(ctx context.Context, remoteClient client.Client, namespace string) error {
 	// Parse RBAC template into separate resources
@@ -191,19 +247,6 @@ func (r *MaasClusterReconciler) getTargetClient(ctx context.Context, clusterScop
 	return remoteClient, nil
 }
 
-// namespaceIsTarget checks if the management namespace is annotated as clusterEnv=target
-func (r *MaasClusterReconciler) namespaceIsTarget(ctx context.Context, namespace string) (bool, string) {
-	mgmtNS := &corev1.Namespace{}
-	if err := r.Client.Get(ctx, client.ObjectKey{Name: namespace}, mgmtNS); err != nil {
-		return false, ""
-	}
-	if mgmtNS.Annotations == nil {
-		return false, ""
-	}
-	v := strings.TrimSpace(mgmtNS.Annotations["clusterEnv"])
-	return v == "target", v
-}
-
 // computeDesiredControlPlane determines desired control-plane replicas and ready count from KubeadmControlPlane
 func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, namespace, clusterName string) (int32, int32) {
 	desiredCP := int32(1)
@@ -229,27 +272,78 @@ func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, 
 	return desiredCP, readyByKCP
 }
 
-// enoughNodesReady checks the target cluster for Ready nodes (both control-plane and worker)
-func (r *MaasClusterReconciler) enoughNodesReady(ctx context.Context, remoteClient client.Client, desiredCP, readyByKCP int32) bool {
-	nodeList := &corev1.NodeList{}
-	// Check all nodes, not just control-plane
-	if err := remoteClient.List(ctx, nodeList); err == nil {
-		ready := 0
-		for _, n := range nodeList.Items {
-			for _, c := range n.Status.Conditions {
-				if c.Type == corev1.NodeReady && c.Status == corev1.ConditionTrue {
-					ready++
-					break
-				}
-			}
-		}
-		// Require at least the desired CP count of nodes to be ready
-		if int64(len(nodeList.Items)) < int64(desiredCP) || int64(ready) < int64(desiredCP) {
-			r.Log.Info("Not enough nodes present/ready yet; skipping DS for now", "desiredCP", desiredCP, "readyByKCP", readyByKCP, "nodeList", len(nodeList.Items), "ready", ready)
-			return false
+// controlPlaneReady reports whether the cluster's control plane is fully available:
+// spec.replicas > 0, status is current (observedGeneration == generation), no unavailable
+// replicas, and readyReplicas == replicas.
+//
+// The control plane object is resolved via the Cluster's spec.controlPlaneRef rather than
+// a label selector, because a KubeadmControlPlane created directly from a template does not
+// reliably carry the cluster.x-k8s.io/cluster-name label.
+func (r *MaasClusterReconciler) controlPlaneReady(ctx context.Context, clusterScope *scope.ClusterScope) bool {
+	cluster := clusterScope.Cluster
+	cpRef := cluster.Spec.ControlPlaneRef
+	if cpRef == nil {
+		r.Log.Info("Cluster has no controlPlaneRef; control plane not ready", "cluster", cluster.Name)
+		return false
+	}
+
+	namespace := cpRef.Namespace
+	if namespace == "" {
+		namespace = cluster.Namespace
+	}
+
+	cp := &unstructured.Unstructured{}
+	cp.SetGroupVersionKind(cpRef.GroupVersionKind())
+	if err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cpRef.Name}, cp); err != nil {
+		r.Log.Info("Control plane object not found yet; control plane not ready", "ref", cpRef.Name, "namespace", namespace, "error", err.Error())
+		return false
+	}
+
+	replicas, _, _ := unstructured.NestedInt64(cp.Object, "spec", "replicas")
+	if replicas == 0 {
+		return false
+	}
+
+	// Make sure the status we read reflects the current spec generation.
+	gen, _, _ := unstructured.NestedInt64(cp.Object, "metadata", "generation")
+	observed, _, _ := unstructured.NestedInt64(cp.Object, "status", "observedGeneration")
+	if observed < gen {
+		r.Log.Info("Control plane status is stale; waiting for it to settle", "generation", gen, "observedGeneration", observed)
+		return false
+	}
+
+	// unavailableReplicas is omitempty, so an absent field means zero.
+	if unavailable, found, _ := unstructured.NestedInt64(cp.Object, "status", "unavailableReplicas"); found && unavailable > 0 {
+		r.Log.Info("Control plane has unavailable replicas; waiting", "unavailableReplicas", unavailable)
+		return false
+	}
+
+	if ready, _, _ := unstructured.NestedInt64(cp.Object, "status", "readyReplicas"); ready < replicas {
+		r.Log.Info("Control plane not fully ready; waiting", "readyReplicas", ready, "replicas", replicas)
+		return false
+	}
+
+	return true
+}
+
+// desiredWorkerReplicas sums spec.replicas across all MachineDeployments for the cluster.
+// Used to avoid deleting the initializer DaemonSet before worker nodes have joined.
+func (r *MaasClusterReconciler) desiredWorkerReplicas(ctx context.Context, namespace, clusterName string) int32 {
+	mdList := &unstructured.UnstructuredList{}
+	mdList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.x-k8s.io", Version: "v1beta1", Kind: "MachineDeploymentList"})
+	if err := r.Client.List(ctx, mdList, client.InNamespace(namespace), client.MatchingLabels{
+		"cluster.x-k8s.io/cluster-name": clusterName,
+	}); err != nil {
+		return 0
+	}
+
+	var total int32
+	for i := range mdList.Items {
+		if v, found, _ := unstructured.NestedInt64(mdList.Items[i].Object, "spec", "replicas"); found && v > 0 {
+			total += util.SafeInt64ToInt32(v)
 		}
 	}
-	return true
+	return total
 }
 
 // anyNodeNeedsInitialization returns true if any node (control-plane or worker) needs initialization.
@@ -313,8 +407,10 @@ func (r *MaasClusterReconciler) deleteExistingInitializerDS(ctx context.Context,
 }
 
 // maybeShortCircuitDelete deletes the DS if all nodes are already initialized
-// BUT only if we have exactly desiredCP nodes - avoids deleting during maintenance when new nodes are joining
-func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredCP int32, dsName string) (bool, error) {
+// BUT only once we have at least desiredTotal nodes (control-plane + workers) present -
+// avoids deleting the DS before worker nodes join, which would otherwise force a
+// delete/recreate cycle each time a worker appears.
+func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, remoteClient client.Client, namespace string, desiredTotal int32, dsName string) (bool, error) {
 	shortCircuitNodes := &corev1.NodeList{}
 	// Check all nodes, not just control-plane
 	if err := remoteClient.List(ctx, shortCircuitNodes); err != nil || len(shortCircuitNodes.Items) == 0 {
@@ -338,10 +434,11 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 		}
 	}
 
-	// Delete initializer DS only when ALL nodes (control-plane + worker) are initialized.
-	// This matches the new requirement to register both CP and worker nodes.
+	// Delete initializer DS only when ALL expected nodes (control-plane + worker) are
+	// present and initialized. Requiring totalNodes >= desiredTotal prevents tearing the
+	// DS down before workers have joined the cluster.
 	totalNodes := len(shortCircuitNodes.Items)
-	if totalNodes > 0 && initCount == totalNodes {
+	if totalNodes > 0 && initCount == totalNodes && int32(totalNodes) >= desiredTotal {
 		shortCircuitDSList := &appsv1.DaemonSetList{}
 		if err := remoteClient.List(ctx, shortCircuitDSList, client.InNamespace(namespace), client.MatchingLabels{"app": dsName}); err == nil {
 			for _, ds := range shortCircuitDSList.Items {
@@ -349,7 +446,7 @@ func (r *MaasClusterReconciler) maybeShortCircuitDelete(ctx context.Context, rem
 			}
 		}
 		r.Log.Info("Deleted LXD initializer DaemonSet - all nodes initialized",
-			"desiredCP", desiredCP, "totalNodes", totalNodes, "readyNodes", readyCount, "initializedNodes", initCount)
+			"desiredTotal", desiredTotal, "totalNodes", totalNodes, "readyNodes", readyCount, "initializedNodes", initCount)
 		return true, nil
 	}
 	return false, nil

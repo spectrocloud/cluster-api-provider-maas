@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	infrautil "github.com/spectrocloud/cluster-api-provider-maas/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -211,7 +212,7 @@ func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
 	// and named "maas-credentials" by default
 	// Secret containing MAAS endpoint/token created by Palette bootstrapper
 	// Default name switched from "maas-credentials" to "capmaas-manager-bootstrap-credentials"
-	secretName := "capmaas-manager-bootstrap-credentials"
+	secretName := maintenance.MAASBootstrapCredentialsSecretName
 
 	// Get the secret
 	secret := &corev1.Secret{}

@@ -25,6 +25,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const MAASBootstrapCredentialsSecretName = "capmaas-manager-bootstrap-credentials"
+
 // maasTagService implements the TagService interface using the MAAS client.
 // Underlying it uses ClientSetInterface.
 type maasTagService struct {
@@ -347,7 +349,7 @@ func NewMAASClient(k8sClient client.Client, namespace string) (maasclient.Client
 // This function implements the same logic as ClusterScope.GetMaasClientIdentity but as a standalone function
 func GetMAASCredentials(k8sClient client.Client, namespace string) (endpoint, apiKey string, err error) {
 	// Secret containing MAAS endpoint/token created by Palette bootstrapper
-	secretName := "capmaas-manager-bootstrap-credentials"
+	secretName := MAASBootstrapCredentialsSecretName
 
 	// Try to get credentials from secret first
 	if k8sClient != nil && namespace != "" {
