@@ -162,12 +162,15 @@ clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-
 kubectl apply -f my_cluster.yaml
 ```
 
-## LXD Integration
+## LXD Integration (HCP & WLC)
 
 This provider supports dynamic LXD VM creation for workload clusters. This involves two main stages:
 
-1. **Control Plane Cluster Creation Flow**: Dynamically convert SpectroCloud-deployed infrastructure Control Plane (CP) nodes into LXD-capable KVM hosts.
-2. **Workload Cluster Creation Flow**: Dynamically provision LXD VMs with static IPs for workload cluster control plane nodes.
+1. **HCP — Host Control Plane**: convert bare-metal MAAS machines into LXD VM hosts.
+2. **WLC — Workload Cluster**: provision LXD VMs on those hosts for workload clusters.
+
+👉 **See [docs/HCP_WLC_GUIDE.md](docs/HCP_WLC_GUIDE.md) for a step-by-step guide**
+(network prerequisites, the `--cluster-role` flag, templates, and field reference).
 
 ### Testing LXD Integration
 
