@@ -94,6 +94,9 @@ WORKER_MACHINE_TAG: hello-world
 ```bash
 clusterctl init --infrastructure maas:v0.7.0
 ```
+  `clusterctl init` substitutes `MAAS_ENDPOINT`/`MAAS_API_KEY` into the
+  `capmaas-manager-bootstrap-credentials` secret (in the `capmaas-system` namespace)
+  and wires it into the controller — you do **not** need to create the secret by hand.
 - Generate and create cluster
 ```
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -

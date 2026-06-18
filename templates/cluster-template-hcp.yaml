@@ -8,7 +8,8 @@
 #
 # Render with envsubst, e.g.:
 #   export CLUSTER_NAME=hcp NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...
-#   envsubst < templates/hcp-cluster-template.yaml | kubectl apply -f -
+#   envsubst < templates/cluster-template-hcp.yaml | kubectl apply -f -
+# Or with clusterctl: clusterctl generate cluster <name> --flavor hcp
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:

@@ -205,40 +205,18 @@ func (s *ClusterScope) SetStatus(status infrav1beta1.MaasClusterStatus) {
 	s.MaasCluster.Status = status
 }
 
-// GetMaasClientIdentity returns the MAAS client identity
+// GetMaasClientIdentity returns the MAAS client identity.
+//
+// Credential resolution is delegated to maintenance.GetMAASCredentials so the
+// logic stays consistent across the codebase: it reads the
+// capmaas-manager-bootstrap-credentials secret (keys MAAS_ENDPOINT/MAAS_API_KEY)
+// in the cluster namespace, then falls back to the MAAS_ENDPOINT/MAAS_API_KEY or
+// MAAS_API_URL/MAAS_API_TOKEN environment variables. If nothing is found, fall
+// back to local defaults.
 func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
-	// Try to get MAAS credentials from a secret
-	// The secret is expected to be in the same namespace as the MaasCluster
-	// and named "maas-credentials" by default
-	// Secret containing MAAS endpoint/token created by Palette bootstrapper
-	// Default name switched from "maas-credentials" to "capmaas-manager-bootstrap-credentials"
-	secretName := maintenance.MAASBootstrapCredentialsSecretName
-
-	// Get the secret
-	secret := &corev1.Secret{}
-	key := types.NamespacedName{
-		Namespace: s.MaasCluster.Namespace,
-		Name:      secretName,
-	}
-
-	// Try to get the secret
-	err := s.client.Get(context.Background(), key, secret)
+	endpoint, apiKey, err := maintenance.GetMAASCredentials(s.client, s.MaasCluster.Namespace)
 	if err != nil {
-		// If the secret doesn't exist, fall back to environment variables or default values
-		s.Info("Failed to get MAAS bootstrap credentials secret, using fallback values", "error", err)
-		return ClientIdentity{
-			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
-			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
-		}
-	}
-
-	// Get the credentials from the secret
-	url := string(secret.Data["MAAS_ENDPOINT"])
-	token := string(secret.Data["MAAS_API_KEY"])
-
-	// Validate the credentials
-	if url == "" || token == "" {
-		s.Info("Invalid MAAS credentials in secret, using fallback values")
+		s.Info("Failed to resolve MAAS credentials, using fallback values", "error", err)
 		return ClientIdentity{
 			URL:   getEnvOrDefault("MAAS_API_URL", "http://localhost:5240/MAAS"),
 			Token: getEnvOrDefault("MAAS_API_TOKEN", "dummy-token"),
@@ -246,8 +224,8 @@ func (s *ClusterScope) GetMaasClientIdentity() ClientIdentity {
 	}
 
 	return ClientIdentity{
-		URL:   url,
-		Token: token,
+		URL:   endpoint,
+		Token: apiKey,
 	}
 }
 

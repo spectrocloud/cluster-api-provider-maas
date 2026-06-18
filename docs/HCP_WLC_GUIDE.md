@@ -25,7 +25,17 @@ are scheduled onto those hosts.
 
 ---
 
-## 1. Network prerequisites (read this first)
+## 1. Prerequisites (read this first)
+
+### 1a. MAAS credentials
+
+MAAS credentials (`MAAS_ENDPOINT` + `MAAS_API_KEY`) are required for **every**
+cluster type, not just HCP/WLC — set them up as described in
+[Deploying the provider](../README.md#deploying-the-provider). `clusterctl`
+substitutes them into the `capmaas-manager-bootstrap-credentials` secret
+automatically, so **no manual secret creation is needed**.
+
+### 1b. Network topology
 
 A bare-metal machine can be turned into an LXD host **only** if its **PXE boot
 interface** has one of these two simple topologies:
@@ -70,7 +80,8 @@ args:
 
 ## 3. Deploy an HCP cluster
 
-Template: `[templates/exp/hcp-cluster-template.yaml](../templates/exp/hcp-cluster-template.yaml)`
+Template: [`templates/cluster-template-hcp.yaml`](../templates/cluster-template-hcp.yaml)
+(or `clusterctl generate cluster <name> --flavor hcp`)
 
 The `MaasCluster` enables LXD on the whole cluster, so every machine it
 provisions is registered as an LXD VM host:
@@ -111,7 +122,7 @@ export WORKER_MACHINE_MINCPU=4
 export WORKER_MACHINE_MINMEMORY=8192
 export WORKER_MACHINE_MINSTORAGE=60
 
-envsubst < templates/exp/hcp-cluster-template.yaml | kubectl apply -f -
+envsubst < templates/cluster-template-hcp.yaml | kubectl apply -f -
 ```
 
 **Verify**: once the nodes are provisioned, open the MAAS UI → **KVM / LXD** and
@@ -127,7 +138,8 @@ confirm each HCP node is registered as an LXD host.
 
 ## 4. Deploy a WLC cluster
 
-Template: `[templates/exp/lxd-cluster-template.yaml](../templates/exp/lxd-cluster-template.yaml)`
+Template: [`templates/cluster-template-lxd.yaml`](../templates/cluster-template-lxd.yaml)
+(or `clusterctl generate cluster <name> --flavor lxd`)
 
 Here individual machines opt into being LXD VMs through the per-machine
 `spec.lxd` block on the `MaasMachineTemplate`:
@@ -175,7 +187,7 @@ export WORKER_MACHINE_IMAGE=custom/u-2204-0-k-1335-0
 export WORKER_MACHINE_RESOURCEPOOL=lxd-hosts   # dedicated pool, not "default"
 export WORKER_MACHINE_TAG=worker
 
-envsubst < templates/exp/lxd-cluster-template.yaml | kubectl apply -f -
+envsubst < templates/cluster-template-lxd.yaml | kubectl apply -f -
 ```
 
 > **Use a dedicated resource pool — do not use `default`.** As with HCP, point
@@ -213,8 +225,12 @@ envsubst < templates/exp/lxd-cluster-template.yaml | kubectl apply -f -
 
 ## 6. Troubleshooting
 
+- **MAAS API calls fail / cluster never reconciles** — confirm `MAAS_ENDPOINT`
+and `MAAS_API_KEY` were set before `clusterctl init`, and that the
+`capmaas-manager-bootstrap-credentials` secret in `capmaas-system` holds valid
+values (see [§1a](#1a-maas-credentials)).
 - **Host never becomes an LXD host** — check the PXE boot interface topology
-(see [§1](#1-network-prerequisites-read-this-first)); bond/VLAN PXE paths are
+(see [§1b](#1b-network-topology)); bond/VLAN PXE paths are
 not supported.
 - **VM creation fails** — confirm the HCP cluster is healthy and its nodes appear
 as LXD hosts in MAAS, and that the host has free CPU/memory/storage.
