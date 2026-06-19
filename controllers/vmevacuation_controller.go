@@ -17,8 +17,8 @@ limitations under the License.
 // VEC runs in each workload cluster (WLC) and coordinates control-plane VM relocation
 // when the Host Control Plane (HCP) marks a physical host for maintenance.
 //
-// Note: VEC is only registered when --cluster-role=wlc is set. WLC clusters do NOT have
-// LXD enabled (isLXDEnabled=false); HCP clusters have LXD enabled (isLXDEnabled=true).
+// Note: VEC watches workload-cluster MaasClusters and skips HCP clusters (those
+// with lxdConfig.enabled) via a watch predicate.
 //
 // Key responsibilities:
 //  1. Detect CP Machines on hosts marked with maintenance tags (maas-lxd-host-maintenance, maas-lxd-host-noschedule)
@@ -53,8 +53,10 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 )
@@ -711,7 +713,31 @@ func (r *VMEvacuationReconciler) tagReplacementVMAndCompleteSession(ctx context.
 func (r *VMEvacuationReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("vec").
-		For(&infrav1beta1.MaasCluster{}).
+		// VEC evacuates LXD VMs in workload clusters; an HCP cluster's own
+		// MaasCluster is never a VEC target. In a shared (clusterctl) management
+		// cluster this filter prevents VEC from reconciling HCP clusters.
+		For(&infrav1beta1.MaasCluster{}, builder.WithPredicates(notHCPClusterPredicate())).
 		WithOptions(options).
 		Complete(r)
+}
+
+// notHCPClusterPredicate accepts only MaasClusters that are NOT HCP clusters
+// (i.e. lxdConfig.enabled is unset/false).
+func notHCPClusterPredicate() predicate.Predicate {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		mc, ok := obj.(*infrav1beta1.MaasCluster)
+		if !ok {
+			return false
+		}
+		return !isHCPMaasCluster(mc)
+	})
+}
+
+// isHCPMaasCluster reports whether a MaasCluster is an HCP host cluster, i.e. its
+// machines are registered as LXD VM hosts (spec.lxdConfig.enabled=true).
+func isHCPMaasCluster(mc *infrav1beta1.MaasCluster) bool {
+	return mc != nil &&
+		mc.Spec.LXDConfig != nil &&
+		mc.Spec.LXDConfig.Enabled != nil &&
+		*mc.Spec.LXDConfig.Enabled
 }

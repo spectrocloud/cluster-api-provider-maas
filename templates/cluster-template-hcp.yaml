@@ -3,8 +3,7 @@
 # The MaasCluster registers bare-metal MAAS machines as LXD VM hosts
 # (spec.lxdConfig.enabled: true). Control-plane and worker machines are
 # provisioned on bare metal and host LXD VMs for downstream workload clusters.
-# Run the CAPMAAS controller for this cluster with --cluster-role=hcp so the
-# Host Maintenance Controller (HMC) is wired.
+# The Host Maintenance Controller (HMC) acts on HCP clusters automatically.
 #
 # Render with envsubst, e.g.:
 #   export CLUSTER_NAME=hcp NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...

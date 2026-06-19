@@ -23,11 +23,3 @@ spec:
         args:
         - "--metrics-bind-addr=127.0.0.1:8080"
         - "--leader-elect"
-        # Role of this controller manager. Set via clusterctl variable substitution
-        # at `clusterctl init` time, e.g. CAPMAAS_CLUSTER_ROLE=wlc or CAPMAAS_CLUSTER_ROLE=hcp.
-        # Defaults to "standard" when the variable is not set (clusterctl treats an
-        # empty default as a required variable, so the default must be non-empty):
-        #   standard -> base infrastructure controllers only
-        #   wlc      -> additionally enables the VM evacuation controller
-        #   hcp      -> additionally enables the HMC maintenance controller
-        - "--cluster-role=${CAPMAAS_CLUSTER_ROLE:=standard}"

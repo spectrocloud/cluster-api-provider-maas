@@ -20,7 +20,6 @@ are scheduled onto those hosts.
    │  worker (BM)   ─ LXD host             │   │             on the HCP hosts  │
    └──────────────────────────────────────┘   └──────────────────────────────┘
         lxdConfig.enabled: true                    spec.lxd.enabled: true
-        --cluster-role=hcp                          --cluster-role=wlc
 ```
 
 ---
@@ -57,28 +56,27 @@ is part of a bond/VLAN stack, the host will not initialize correctly.
 
 ---
 
-## 2. The `--cluster-role` flag
+## 2. Maintenance controllers
 
-The controller enables extra controllers based on the role you run it with:
+Two maintenance controllers back the LXD features, and **both run automatically** —
+there is nothing to configure:
 
+- **HMC** — Host Maintenance Controller; reconciles only machines whose `MaasCluster`
+  has `lxdConfig.enabled` (HCP hosts).
+- **VEC** — VM Evacuation Controller; reconciles workload clusters and skips HCP
+  clusters.
 
-| `--cluster-role`      | Use for               | Extra controller enabled              |
-| --------------------- | --------------------- | ------------------------------------- |
-| `standard` (or empty) | normal MAAS clusters  | none (base infra only)                |
-| `hcp`                 | HCP host clusters     | **HMC** — Host Maintenance Controller |
-| `wlc`                 | LXD workload clusters | **VEC** — VM Evacuation Controller    |
-
-
-Set it on the controller-manager Deployment, e.g.:
-
-```yaml
-args:
-  - --cluster-role=hcp   # or wlc
-```
+Because each filters down to the objects it owns, a single CAPMAAS instance in the
+management cluster can run mixed HCP + WLC clusters across namespaces.
 
 ---
 
 ## 3. Deploy an HCP cluster
+
+> ⚠️ **Use Cilium as the CNI for HCP clusters — not Calico.** HCP hosts attach
+> their LXD bridge to the PXE boot interface; Calico tears down that interface's
+> networking and the bare-metal host loses connectivity. Cilium leaves the bridge
+> intact.
 
 Template: [`templates/cluster-template-hcp.yaml`](../templates/cluster-template-hcp.yaml)
 (or `clusterctl generate cluster <name> --flavor hcp`)
@@ -102,7 +100,7 @@ spec:
 Control-plane and worker machines have **no `spec.lxd` block** — they run on bare
 metal and are tagged `lxd-host`.
 
-Render and apply (controller must run with `--cluster-role=hcp`):
+Render and apply:
 
 ```bash
 export CLUSTER_NAME=hcp
@@ -166,7 +164,7 @@ WLC.
 
 > **Recommendation: run worker nodes on bare metal, not as LXD VMs.**
 
-Render and apply (controller must run with `--cluster-role=wlc`):
+Render and apply:
 
 ```bash
 export CLUSTER_NAME=wlc
@@ -229,11 +227,14 @@ envsubst < templates/cluster-template-lxd.yaml | kubectl apply -f -
 and `MAAS_API_KEY` were set before `clusterctl init`, and that the
 `capmaas-manager-bootstrap-credentials` secret in `capmaas-system` holds valid
 values (see [§1a](#1a-maas-credentials)).
+- **HCP host loses network after CNI install** — you're likely using Calico; HCP
+requires **Cilium** (see [§3](#3-deploy-an-hcp-cluster)).
 - **Host never becomes an LXD host** — check the PXE boot interface topology
 (see [§1b](#1b-network-topology)); bond/VLAN PXE paths are
 not supported.
 - **VM creation fails** — confirm the HCP cluster is healthy and its nodes appear
 as LXD hosts in MAAS, and that the host has free CPU/memory/storage.
-- **Wrong controllers running** — make sure the controller for each cluster is
-started with the correct `--cluster-role` (`hcp` for HCP, `wlc` for WLC).
+- **Host maintenance / VM evacuation not happening** — HMC and VEC both run
+automatically; check the controller logs and confirm the cluster's `lxdConfig` /
+machine `spec.lxd` are set as expected.
 

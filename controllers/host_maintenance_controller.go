@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -145,6 +146,17 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 	// Only process host machines (not VMs)
 	if maasMachine.Spec.Parent != nil && *maasMachine.Spec.Parent != "" {
 		return ctrl.Result{}, nil // This is a VM, skip
+	}
+
+	// HMC manages bare-metal host maintenance for HCP clusters only. In a shared
+	// (clusterctl) management cluster this controller also observes standard/WLC
+	// MaasMachines; skip those so we never start host-maintenance sessions for
+	// non-HCP hosts.
+	if isHCP, err := r.isHCPClusterForMachine(ctx, maasMachine); err != nil {
+		return ctrl.Result{}, err
+	} else if !isHCP {
+		log.V(1).Info("MaasMachine does not belong to an HCP cluster, skipping")
+		return ctrl.Result{}, nil
 	}
 
 	// Get the owner CAPI Machine
@@ -303,6 +315,28 @@ func (r *HMCMaintenanceReconciler) reconcileMaasMachine(ctx context.Context, maa
 
 	log.Info("Host evacuation completed successfully", "host", hostSystemID, "opID", st.OpID)
 	return ctrl.Result{}, nil
+}
+
+// isHCPClusterForMachine reports whether the MaasMachine belongs to an HCP cluster
+// (its MaasCluster has lxdConfig.enabled=true). A missing cluster/MaasCluster is
+// treated as "not HCP" so the machine is simply skipped.
+func (r *HMCMaintenanceReconciler) isHCPClusterForMachine(ctx context.Context, maasMachine *infrav1beta1.MaasMachine) (bool, error) {
+	cluster, err := util.GetClusterFromMetadata(ctx, r.Client, maasMachine.ObjectMeta)
+	if err != nil || cluster == nil {
+		// Missing cluster label or cluster not found yet: not actionable as HCP.
+		return false, nil
+	}
+
+	maasCluster := &infrav1beta1.MaasCluster{}
+	key := types.NamespacedName{
+		Namespace: maasMachine.Namespace,
+		Name:      cluster.Spec.InfrastructureRef.Name,
+	}
+	if err := r.Get(ctx, key, maasCluster); err != nil {
+		return false, client.IgnoreNotFound(err)
+	}
+
+	return isHCPMaasCluster(maasCluster), nil
 }
 
 func (r *HMCMaintenanceReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, options controller.Options) error {

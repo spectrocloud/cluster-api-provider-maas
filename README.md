@@ -173,7 +173,7 @@ This provider supports dynamic LXD VM creation for workload clusters. This invol
 2. **WLC — Workload Cluster**: provision LXD VMs on those hosts for workload clusters.
 
 👉 **See [docs/HCP_WLC_GUIDE.md](docs/HCP_WLC_GUIDE.md) for a step-by-step guide**
-(network prerequisites, the `--cluster-role` flag, templates, and field reference).
+(prerequisites, templates, and field reference).
 
 ### Testing LXD Integration
 

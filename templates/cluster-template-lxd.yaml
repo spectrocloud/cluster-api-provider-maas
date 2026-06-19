@@ -2,8 +2,7 @@
 #
 # Each machine is created as an LXD VM on the HCP hosts via the per-machine
 # spec.lxd block. vmConfig.network attaches the VM to a single subnet (eth0).
-# Run the CAPMAAS controller for this cluster with --cluster-role=wlc to enable
-# the VM evacuation controller.
+# The VM Evacuation Controller (VEC) acts on workload clusters automatically.
 #
 # Render with envsubst, e.g.:
 #   export CLUSTER_NAME=wlc NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...
