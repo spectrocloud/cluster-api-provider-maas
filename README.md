@@ -125,7 +125,7 @@ make docker-build && make docker-push
 make dev-manifests IMG=$IMG
 ```
 
-- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.8.0 depending on version you are working with
+- Move _build/dev/ directory contents to ~/.cluster-api/overrides v0.8.0 depending on version you are working with
 
 ```text
 .
