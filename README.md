@@ -92,14 +92,14 @@ WORKER_MACHINE_TAG: hello-world
 ```
 - Initialize infrastructure
 ```bash
-clusterctl init --infrastructure maas:v0.7.0
+clusterctl init --infrastructure maas:v0.8.0
 ```
   `clusterctl init` substitutes `MAAS_ENDPOINT`/`MAAS_API_KEY` into the
   `capmaas-manager-bootstrap-credentials` secret (in the `capmaas-system` namespace)
   and wires it into the controller — you do **not** need to create the secret by hand.
 - Generate and create cluster
 ```
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.8.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
 ### Testing the provider
@@ -112,7 +112,7 @@ make test
 
 - Set `IMG` to the controller image you control (registry + image + tag). This same image must be used for `docker-build`, `docker-push`, and `dev-manifests` so that the generated `infrastructure-components.yaml` points at the image you actually pushed. Export it once so every step picks it up:
 ```shell
-export IMG=<your-registry>/cluster-api-provider-maas-controller-amd64:v0.7.0
+export IMG=<your-registry>/cluster-api-provider-maas-controller-amd64:v0.8.0
 ```
 
 - Build and push the controller image:
@@ -125,14 +125,14 @@ make docker-build && make docker-push
 make dev-manifests IMG=$IMG
 ```
 
-- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.7.0 depending on version you are working with
+- Move _build/dev/ directory contents to ~/.clusterapi/overrides v0.8.0 depending on version you are working with
 
 ```text
 .
 ├── clusterctl.yaml
 ├── overrides
 │   ├── infrastructure-maas
-│       └── v0.7.0
+│       └── v0.8.0
 │           ├── cluster-template.yaml
 │           ├── infrastructure-components.yaml
 │           └── metadata.yaml
@@ -144,24 +144,24 @@ make dev-manifests IMG=$IMG
 
 - Run
 ```shell
-clusterctl init --infrastructure maas:v0.7.0
+clusterctl init --infrastructure maas:v0.8.0
 ```
 
 
 ## Install CRDs
-### v1beta1 v0.7.0 release
+### v1beta1 v0.8.0 release
 - Generate cluster using
 ```shell
-clusterctl generate cluster t-cluster  --infrastructure=maas:v0.7.0 | kubectl apply -f -
+clusterctl generate cluster t-cluster  --infrastructure=maas:v0.8.0 | kubectl apply -f -
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.8.0 --kubernetes-version v1.33.5 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 or
 ```shell
-clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
+clusterctl generate cluster t-cluster --infrastructure=maas:v0.8.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
 
