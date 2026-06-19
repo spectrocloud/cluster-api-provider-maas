@@ -19,17 +19,19 @@ package main
 import (
 	"context"
 	"flag"
-	"k8s.io/klog/v2/textlogger"
 	"math/rand"
 	"os"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"time"
+
+	"k8s.io/klog/v2/textlogger"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
 
 	"github.com/spf13/pflag"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
@@ -65,6 +67,7 @@ func init() {
 	_ = clientgoscheme.AddToScheme(scheme)
 	_ = clusterv1.AddToScheme(scheme)
 	_ = infrav1beta1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme) // Add this for DaemonSet support
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -74,6 +77,8 @@ func main() {
 	initFlags(pflag.CommandLine)
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
+
+	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
 
 	if watchNamespace != "" {
 		setupLog.Info("Watching cluster-api objects only in namespace for reconciliation", "namespace", watchNamespace)
@@ -152,10 +157,31 @@ func main() {
 	if err := (&controllers.MaasClusterReconciler{
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
+		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
 		Tracker:  tracker,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
+		os.Exit(1)
+	}
+
+	// Both maintenance controllers always run; each filters to the objects it owns
+	// (HMC to HCP-cluster hosts, VEC skips HCP clusters), so one management cluster
+	// serves mixed HCP + WLC fleets.
+	if err := (&controllers.VMEvacuationReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("VEC"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "VEC")
+		os.Exit(1)
+	}
+	if err := (&controllers.HMCMaintenanceReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("HMC"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HMC")
 		os.Exit(1)
 	}
 

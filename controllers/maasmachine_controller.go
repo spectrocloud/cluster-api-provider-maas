@@ -20,8 +20,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/spectrocloud/maas-client-go/maasclient"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/go-logr/logr"
@@ -42,10 +44,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
 	//infrav1alpha3 "github.com/spectrocloud/cluster-api-provider-maas/api/v1alpha3"
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	maasdns "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/dns"
+	lxd "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
 	maasmachine "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/machine"
+	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/maintenance"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 )
 
@@ -77,6 +82,11 @@ func (r *MaasMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Add system-id to logger for better traceability if it's already known
+	if maasMachine.Spec.SystemID != nil && *maasMachine.Spec.SystemID != "" {
+		log = log.WithValues("system-id", *maasMachine.Spec.SystemID)
 	}
 
 	// Fetch the Machine.
@@ -164,6 +174,22 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 
 	maasMachine := machineScope.MaasMachine
 
+	// Check if the host evacuation finalizer is present - if so, requeue for HMC controller
+	if controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		// Evacuation requires the MAAS systemID; if it's missing, there's nothing to evacuate.
+		hasSystemID := maasMachine.Spec.SystemID != nil && *maasMachine.Spec.SystemID != ""
+		if !hasSystemID {
+			machineScope.Info("No systemID/providerID; removing evacuation finalizer to unblock deletion")
+			controllerutil.RemoveFinalizer(maasMachine, HostEvacuationFinalizer)
+			return ctrl.Result{}, nil
+		}
+
+		// Log using Spec.SystemID directly to avoid providerID parse errors
+		machineScope.Info("Host evacuation finalizer present, requeuing for HMC controller to handle evacuation",
+			"systemID", *maasMachine.Spec.SystemID)
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+
 	machineSvc := maasmachine.NewService(machineScope)
 
 	// Find existing instance
@@ -174,6 +200,12 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 	}
 
 	if m == nil {
+		// Gate finalizer removal to avoid races during early delete phases.
+		if gate, _ := r.shouldGateFinalizerRemoval(maasMachine); gate {
+			deletionAge := time.Since(maasMachine.DeletionTimestamp.Time)
+			machineScope.Info("Not removing finalizer yet; waiting for deletion age threshold", "age", deletionAge.String())
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 		machineScope.V(2).Info("Unable to locate MaaS instance by ID or tags", "system-id", machineScope.GetInstanceID())
 		r.Recorder.Eventf(maasMachine, corev1.EventTypeWarning, "NoMachineFound", "Unable to find matching MaaS machine")
 		controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
@@ -190,22 +222,144 @@ func (r *MaasMachineReconciler) reconcileDelete(_ context.Context, machineScope 
 		return ctrl.Result{}, err
 	}
 
-	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
-		machineScope.Error(err, "failed to release machine")
+	// If LXD host feature is enabled and this is a control-plane node, proactively
+	// attempt to unregister the VM host before releasing the machine. This avoids
+	// MAAS 400 errors requiring VM host removal.
+	// unregister the VM host before releasing the machine so upgrades/deletes pass cleanly.
+	if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+		r.bestEffortUnregisterLXDHost(clusterScope, machineScope, m)
+	}
+
+	if err := r.tryReleaseWithVMHostHandling(context.Background(), machineScope, clusterScope, machineSvc, m); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
-	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", m.ID)
+	// If this is an LXD VM, delete it after successful release
+	r.maybeDeleteDynamicLXDVM(clusterScope, machineScope, m.ID)
 
-	// Machine is deleted so remove the finalizer.
-	controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
+	// Finalize deletion: mark conditions, event, and remove finalizer
+	r.finalizeMachineDeletion(machineScope, maasMachine, m.ID)
 
 	//// v1alpah3 MAASMachine finalizer
 	//// Machine is deleted so remove the finalizer.
 	//controllerutil.RemoveFinalizer(maasMachine, infrav1alpha3.MachineFinalizer)
 
 	return reconcile.Result{}, nil
+}
+
+// shouldGateFinalizerRemoval returns true if finalizer removal should be delayed to avoid races during early delete
+func (r *MaasMachineReconciler) shouldGateFinalizerRemoval(maasMachine *infrav1beta1.MaasMachine) (bool, time.Duration) {
+	if maasMachine == nil || maasMachine.DeletionTimestamp.IsZero() {
+		return false, 0
+	}
+	deletionAge := time.Since(maasMachine.DeletionTimestamp.Time)
+	if deletionAge < 2*time.Minute {
+		return true, 30 * time.Second
+	}
+	return false, 0
+}
+
+// bestEffortUnregisterLXDHost unregisters the LXD VM host if possible, logging any errors
+func (r *MaasMachineReconciler) bestEffortUnregisterLXDHost(clusterScope *scope.ClusterScope, machineScope *scope.MachineScope, m *infrav1beta1.Machine) {
+	api := clusterScope.GetMaasClientIdentity()
+	hostName := canonicalLXDHostName(m.Hostname)
+	if hostName == "lxd-host-" {
+		return
+	}
+	if uerr := lxd.UnregisterLXDHostByNameWithMaasClient(api.Token, api.URL, hostName); uerr != nil {
+		machineScope.Error(uerr, "best-effort unregister of LXD VM host before release failed", "hostName", hostName)
+		return
+	}
+	machineScope.Info("Best-effort unregistered LXD VM host before release", "hostName", hostName)
+}
+
+// canonicalLXDHostName returns lxd-host-<lowercase hostname> or an empty suffix if hostname is empty
+func canonicalLXDHostName(hostname string) string {
+	name := strings.ToLower(strings.TrimSpace(hostname))
+	return fmt.Sprintf("lxd-host-%s", name)
+}
+
+// tryReleaseWithVMHostHandling releases the machine, handling VM host dependencies when required
+func (r *MaasMachineReconciler) tryReleaseWithVMHostHandling(ctx context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, machineSvc *maasmachine.Service, m *infrav1beta1.Machine) error {
+	if err := machineSvc.ReleaseMachine(m.ID); err != nil {
+		// If MAAS requires VM host removal first, attempt best-effort unregister and retry once
+		if isVMHostRemovalRequiredError(err) {
+			api := clusterScope.GetMaasClientIdentity()
+
+			// For control-plane BM that backs an LXD VM host, force-delete guest VMs to unblock release
+			if clusterScope.IsLXDHostEnabled() && machineScope.IsControlPlane() {
+				r.forceDeleteGuestVMsIfControlPlane(ctx, clusterScope, machineScope, m.ID)
+			}
+
+			// Unregister by canonical name lxd-host-<hostname>
+			hostName := canonicalLXDHostName(m.Hostname)
+			if hostName == "lxd-host-" {
+				return err
+			}
+			if uerr := lxd.UnregisterLXDHostByNameWithMaasClient(api.Token, api.URL, hostName); uerr != nil {
+				machineScope.Error(uerr, "failed to unregister LXD VM host prior to release")
+				return err
+			}
+			machineScope.Info("Unregistered LXD VM host prior to release", "hostName", hostName)
+			// retry release
+			if rerr := machineSvc.ReleaseMachine(m.ID); rerr != nil {
+				machineScope.Error(rerr, "failed to release machine after unregistering VM host")
+				return rerr
+			}
+			return nil
+		}
+		machineScope.Error(err, "failed to release machine")
+		return err
+	}
+	return nil
+}
+
+// forceDeleteGuestVMsIfControlPlane removes guest VMs from a VM host backed by this control-plane machine
+func (r *MaasMachineReconciler) forceDeleteGuestVMsIfControlPlane(ctx context.Context, clusterScope *scope.ClusterScope, machineScope *scope.MachineScope, hostSystemID string) {
+	api := clusterScope.GetMaasClientIdentity()
+	client := maasclient.NewAuthenticatedClientSet(api.URL, api.Token)
+	if hosts, herr := client.VMHosts().List(ctx, nil); herr == nil {
+		for _, h := range hosts {
+			if h.HostSystemID() == hostSystemID {
+				if guests, gerr := h.Machines().List(ctx); gerr == nil {
+					for _, g := range guests {
+						gid := g.SystemID()
+						if gid == "" {
+							continue
+						}
+						// Fetch details to confirm and delete
+						if gm, ge := client.Machines().Machine(gid).Get(ctx); ge == nil {
+							if derr := client.Machines().Machine(gm.SystemID()).Delete(ctx); derr != nil {
+								machineScope.Error(derr, "failed to delete guest VM during host release cleanup", "guestSystemID", gm.SystemID())
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+}
+
+// maybeDeleteDynamicLXDVM deletes the LXD VM if the MaasMachine was dynamically created
+func (r *MaasMachineReconciler) maybeDeleteDynamicLXDVM(clusterScope *scope.ClusterScope, machineScope *scope.MachineScope, systemID string) {
+	if !machineScope.GetDynamicLXD() {
+		return
+	}
+	machineScope.Info("Deleting LXD VM after release", "system-id", systemID)
+	api := clusterScope.GetMaasClientIdentity()
+	if uerr := lxd.DeleteLXDVMWithMaasClient(api.Token, api.URL, systemID); uerr != nil {
+		machineScope.Error(uerr, "failed to delete LXD VM after release", "system-id", systemID)
+		return
+	}
+	machineScope.Info("Successfully deleted LXD VM after release", "system-id", systemID)
+}
+
+// finalizeMachineDeletion marks conditions, records event, and removes the finalizer
+func (r *MaasMachineReconciler) finalizeMachineDeletion(machineScope *scope.MachineScope, maasMachine *infrav1beta1.MaasMachine, systemID string) {
+	conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, clusterv1.DeletedReason, clusterv1.ConditionSeverityInfo, "")
+	r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeNormal, "SuccessfulRelease", "Released instance %q", systemID)
+	controllerutil.RemoveFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
 }
 
 // findInstance queries the EC2 apis and retrieves the instance if it exists, returns nil otherwise.
@@ -225,7 +379,7 @@ func (r *MaasMachineReconciler) findMachine(machineScope *scope.MachineScope, ma
 	return m, nil
 }
 
-func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
+func (r *MaasMachineReconciler) reconcileNormal(ctx context.Context, machineScope *scope.MachineScope, clusterScope *scope.ClusterScope) (ctrl.Result, error) {
 	machineScope.Info("Reconciling MaasMachine")
 
 	maasMachine := machineScope.MaasMachine
@@ -233,6 +387,19 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
 	if !controllerutil.ContainsFinalizer(maasMachine, infrav1beta1.MachineFinalizer) {
 		controllerutil.AddFinalizer(maasMachine, infrav1beta1.MachineFinalizer)
+		return ctrl.Result{}, nil
+	}
+
+	// For host machines in HCP clusters (where LXD is enabled), proactively add the evacuation finalizer
+	// This ensures VMs are evacuated before the host is deleted
+	// This must be done BEFORE the machine starts being deleted, otherwise Kubernetes
+	// will reject the finalizer addition with "no new finalizers can be added if the object is being deleted"
+	isHostMachine := maasMachine.Spec.Parent == nil || *maasMachine.Spec.Parent == ""
+	isHCPCluster := clusterScope.IsLXDHostEnabled()
+
+	if isHostMachine && isHCPCluster && !controllerutil.ContainsFinalizer(maasMachine, HostEvacuationFinalizer) {
+		machineScope.Info("Adding evacuation finalizer to host machine in HCP cluster")
+		controllerutil.AddFinalizer(maasMachine, HostEvacuationFinalizer)
 		return ctrl.Result{}, nil
 	}
 
@@ -273,9 +440,27 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		}
 		m, err = r.deployMachine(machineScope, machineSvc)
 		if err != nil {
+			if errors.Is(err, maasmachine.ErrBrokenMachine) {
+				machineScope.Info("Broken machine; backing off and retrying")
+				conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "retrying after broken machine")
+				return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+			}
+			if errors.Is(err, maasmachine.ErrVMComposing) {
+				// VM just composed and is commissioning; requeue shortly
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			}
 			machineScope.Error(err, "unable to create m")
 			conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployFailedReason, clusterv1.ConditionSeverityError, "%v", err)
 			return ctrl.Result{}, err
+		}
+
+		// HMC will not know when machine is Deployed.
+		// So MAAS Machine controller only will remove the stale tags.
+		// Clean up stale maintenance tags after successful deployment
+		// This ensures new machines start with a clean tag state
+		if err := r.cleanupStaleTagsAfterDeployment(machineScope, clusterScope, m.ID); err != nil {
+			machineScope.Error(err, "failed to cleanup stale tags after deployment", "systemID", m.ID)
+			// Don't fail the deployment for tag cleanup errors
 		}
 	}
 
@@ -296,7 +481,13 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 	}
 
 	switch s := m.State; {
-	case s == infrav1beta1.MachineStateReady, s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
+	case s == infrav1beta1.MachineStateReady, s == infrav1beta1.MachineStateAllocated:
+		machineScope.SetNotReady()
+		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
+		// Note: Network interface verification happens before deployment is triggered (see above).
+		// This is a safety check in case the machine reached Ready/Allocated through a different path.
+
+	case s == infrav1beta1.MachineStateDiskErasing, s == infrav1beta1.MachineStateReleasing, s == infrav1beta1.MachineStateNew:
 		machineScope.SetNotReady()
 		machineScope.Info("Unexpected Maas m termination")
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnexpectedTermination", "Unexpected Maas m termination")
@@ -316,7 +507,7 @@ func (r *MaasMachineReconciler) reconcileNormal(_ context.Context, machineScope 
 		machineScope.SetNotReady()
 		machineScope.Info("Machine is powered off!")
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachinePoweredOffReason, clusterv1.ConditionSeverityWarning, "")
-	case s == infrav1beta1.MachineStateDeploying, s == infrav1beta1.MachineStateAllocated:
+	case s == infrav1beta1.MachineStateDeploying:
 		machineScope.SetNotReady()
 		conditions.MarkFalse(machineScope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityWarning, "")
 	case s == infrav1beta1.MachineStateDeployed:
@@ -509,4 +700,115 @@ func (r *MaasMachineReconciler) MaasClusterToMaasMachines(_ context.Context, o c
 	}
 
 	return result
+}
+
+// isVMHostRemovalRequiredError returns true if the MAAS error indicates the
+// machine cannot be released until VM hosts are removed. Uses specific patterns
+// and requires HTTP 400 in the message to reduce false positives.
+func isVMHostRemovalRequiredError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "status: 400") {
+		return false
+	}
+	if strings.Contains(msg, "must be removed first") || strings.Contains(msg, "VM hosts") {
+		return true
+	}
+	return false
+}
+
+// getNodeIP selects the best node IP from the machine addresses, preferring
+// ExternalIP and falling back to InternalIP.
+func getNodeIP(addresses []clusterv1.MachineAddress) string {
+	var internal string
+	for _, addr := range addresses {
+		if addr.Type == clusterv1.MachineExternalIP && addr.Address != "" {
+			return addr.Address
+		}
+		if addr.Type == clusterv1.MachineInternalIP && internal == "" {
+			internal = addr.Address
+		}
+	}
+	return internal
+}
+
+// cleanupStaleTagsAfterDeployment cleans up stale maintenance tags after successful machine deployment
+func (r *MaasMachineReconciler) cleanupStaleTagsAfterDeployment(machineScope *scope.MachineScope, clusterScope *scope.ClusterScope, systemID string) error {
+	// Only cleanup tags for bare metal machines (not VMs)
+	// Check if this is a VM by looking at the Parent field in MaasMachine spec
+	if machineScope.MaasMachine.Spec.Parent != nil && *machineScope.MaasMachine.Spec.Parent != "" {
+		return nil // This is a VM, skip tag cleanup
+	}
+
+	// Create MAAS client and services
+	maasClient, err := maintenance.NewMAASClient(r.Client, machineScope.MaasMachine.Namespace)
+	if err != nil {
+		machineScope.Error(err, "failed to create MAAS client for tag cleanup", "systemID", systemID)
+		return err
+	}
+	tagService := maintenance.NewTagService(maasClient)
+	inventoryService := maintenance.NewInventoryService(maasClient)
+
+	// Get current machine details to check existing tags and power type
+	machine, err := inventoryService.GetHost(systemID)
+	if err != nil {
+		machineScope.Error(err, "failed to get machine details for tag cleanup", "systemID", systemID)
+		return err
+	}
+
+	// Double-check: Skip if this is a VM based on PowerType (lxd VMs)
+	if machine.PowerType == "lxd" {
+		machineScope.Info("Skipping tag cleanup for LXD VM", "systemID", systemID, "powerType", machine.PowerType)
+		return nil
+	}
+
+	// Define static maintenance tags to clean up
+	maintenanceTags := []string{
+		maintenance.TagHostMaintenance,
+		maintenance.TagHostNoSchedule,
+		maintenance.TagVMControlPlane, // VM control plane tag
+	}
+
+	// Remove any existing static maintenance tags
+	for _, tag := range maintenanceTags {
+		if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+			machineScope.Error(err, "failed to remove stale maintenance tag", "tag", tag, "systemID", systemID)
+			// Continue with other tags even if one fails
+		} else {
+			machineScope.Info("Cleaned up stale maintenance tag", "tag", tag, "systemID", systemID)
+		}
+	}
+
+	// Remove any dynamic tags with prefixes (operation ID tags, VM cluster tags, VM ready tags)
+	for _, tag := range machine.Tags {
+		if strings.HasPrefix(tag, maintenance.TagHostOpPrefix) {
+			// Remove operation ID tags (maas-lxd-hcp-op-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove operation ID tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up operation ID tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMClusterPrefix) {
+			// Remove VM cluster tags (maas-lxd-wlc-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM cluster tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM cluster tag", "tag", tag, "systemID", systemID)
+			}
+		} else if strings.HasPrefix(tag, maintenance.TagVMReadyOpPrefix) {
+			// Remove VM ready operation tags (maas-lxd-ready-op-*)
+			if err := tagService.RemoveTagFromHost(systemID, tag); err != nil {
+				machineScope.Error(err, "failed to remove VM ready operation tag", "tag", tag, "systemID", systemID)
+				// Continue with other tags even if one fails
+			} else {
+				machineScope.Info("Cleaned up VM ready operation tag", "tag", tag, "systemID", systemID)
+			}
+		}
+	}
+
+	return nil
 }

@@ -1,0 +1,250 @@
+# Stage 2: Workload Cluster Example
+# This demonstrates how a workload cluster uses LXD VMs from an infrastructure cluster
+
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: workload-cluster
+  namespace: default
+spec:
+  dnsDomain: workload.maas.example.com
+  
+  # Reference to the infrastructure cluster that provides LXD hosts
+  infrastructureClusterRef:
+    name: infrastructure-cluster
+    namespace: default
+  
+  # Workload cluster specific configuration
+  workloadClusterConfig:
+    # Control plane pool configuration
+    controlPlanePool:
+      name: control-plane-pool
+      useLXD: true  # Use LXD VMs for control plane
+      staticIPs:
+      - "10.11.130.75"
+      - "10.11.130.76"
+      - "10.11.130.77"
+      availabilityZones:
+      - "zone-1"
+      - "zone-2"
+      - "zone-3"
+      resourcePool: "workload-cp-pool"
+    
+    # Worker pool configurations
+    workerPools:
+    - name: worker-pool-1
+      useLXD: true  # Use LXD VMs for workers
+      staticIPs:
+      - "10.11.130.80"
+      - "10.11.130.81"
+      - "10.11.130.82"
+      availabilityZones:
+      - "zone-1"
+      - "zone-2"
+      resourcePool: "workload-worker-pool"
+    
+    - name: worker-pool-2
+      useLXD: false  # Use bare metal for this worker pool
+      availabilityZones:
+      - "zone-1"
+      resourcePool: "bare-metal-pool"
+    
+    # AZ mapping from workload to infrastructure cluster
+    azMapping:
+      "zone-1": "infra-zone-1"
+      "zone-2": "infra-zone-2"
+      "zone-3": "infra-zone-3"
+    
+    # Resource pool mapping from workload to infrastructure cluster
+    resourcePoolMapping:
+      "workload-cp-pool": "infra-cp-pool"
+      "workload-worker-pool": "infra-worker-pool"
+      "bare-metal-pool": "infra-bare-metal-pool"
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: workload-cluster
+  namespace: default
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: workload-cluster-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: workload-cluster
+---
+# Control plane machine template for workload cluster
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: workload-cluster-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 4
+      minMemory: 8192
+      # Note: dynamicLXD and staticIP are determined by node pool configuration
+      # These fields are still supported for backward compatibility
+      # dynamicLXD: true  # Optional: can be set here or determined by node pool
+      # staticIP: "10.11.130.75"  # Optional: can be set here or determined by node pool
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: workload-cluster-control-plane
+  namespace: default
+spec:
+  replicas: 3  # Will create 3 CP VMs across different AZs
+  version: v1.26.4
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: workload-cluster-control-plane
+      namespace: default
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs:
+        - "workload-cluster.workload.maas.example.com"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+    joinConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          cloud-provider: external
+---
+# Worker machine template for workload cluster (LXD VMs)
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: workload-cluster-worker-lxd
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 4
+      minMemory: 8192
+      # Note: dynamicLXD and staticIP are determined by node pool configuration
+---
+# Worker machine template for workload cluster (Bare Metal)
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: workload-cluster-worker-baremetal
+  namespace: default
+spec:
+  template:
+    spec:
+      image: custom/ubuntu-22.04-k8s-1.26
+      minCPU: 8
+      minMemory: 16384
+      # Note: dynamicLXD is false for bare metal workers
+---
+# Machine deployment for LXD worker pool
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: workload-cluster-worker-lxd
+  namespace: default
+  labels:
+    node-pool: worker-pool-1  # This label is used to match node pool configuration
+spec:
+  clusterName: workload-cluster
+  replicas: 3
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: workload-cluster-worker-lxd
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: workload-cluster-worker-lxd
+        node-pool: worker-pool-1  # This label is used to match node pool configuration
+    spec:
+      clusterName: workload-cluster
+      version: v1.26.4
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: workload-cluster-worker-lxd
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: workload-cluster-worker-lxd
+        namespace: default
+---
+# Machine deployment for bare metal worker pool
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: workload-cluster-worker-baremetal
+  namespace: default
+  labels:
+    node-pool: worker-pool-2  # This label is used to match node pool configuration
+spec:
+  clusterName: workload-cluster
+  replicas: 2
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/deployment-name: workload-cluster-worker-baremetal
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/deployment-name: workload-cluster-worker-baremetal
+        node-pool: worker-pool-2  # This label is used to match node pool configuration
+    spec:
+      clusterName: workload-cluster
+      version: v1.26.4
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: workload-cluster-worker-baremetal
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: workload-cluster-worker-baremetal
+        namespace: default
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: workload-cluster-worker-lxd
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: workload-cluster-worker-baremetal
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: external 

@@ -1,0 +1,187 @@
+# HCP (Host Control Plane) cluster template.
+#
+# The MaasCluster registers bare-metal MAAS machines as LXD VM hosts
+# (spec.lxdConfig.enabled: true). Control-plane and worker machines are
+# provisioned on bare metal and host LXD VMs for downstream workload clusters.
+# The Host Maintenance Controller (HMC) acts on HCP clusters automatically.
+#
+# Render with envsubst, e.g.:
+#   export CLUSTER_NAME=hcp NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...
+#   envsubst < templates/cluster-template-hcp.yaml | kubectl apply -f -
+# Or with clusterctl: clusterctl generate cluster <name> --flavor hcp
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: MaasCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: ${CLUSTER_NAME}
+spec:
+  dnsDomain: ${DNS_DOMAIN}
+  failureDomains:
+    - default
+  # Enabling LXD on the cluster registers its machines as LXD VM hosts.
+  lxdConfig:
+    enabled: true
+    storageBackend: zfs
+    skipNetworkUpdate: true
+    storageSize: "${LXD_STORAGE_SIZE}"
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}
+  machineTemplate:
+    infrastructureRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: MaasMachineTemplate
+      name: ${CLUSTER_NAME}-control-plane
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          anonymous-auth: "true"
+          authorization-mode: RBAC,Node
+          default-not-ready-toleration-seconds: "60"
+          default-unreachable-toleration-seconds: "60"
+          disable-admission-plugins: AlwaysAdmit
+          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+        timeoutForControlPlane: 10m0s
+      controllerManager:
+        extraArgs:
+          feature-gates: RotateKubeletServerCertificate=true
+          terminated-pod-gc-threshold: "25"
+          use-service-account-credentials: "true"
+      dns: {}
+      etcd: {}
+      networking: {}
+      scheduler:
+        extraArgs:
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane: {}
+      discovery: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          event-qps: "0"
+          feature-gates: RotateKubeletServerCertificate=true
+          read-only-port: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+    useExperimentalRetryJoin: true
+---
+# Control-plane hosts run on bare metal (no spec.lxd block).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  template:
+    spec:
+      failureDomain: ${CONTROL_PLANE_ZONE}
+      image: ${MACHINE_IMAGE}
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      minDiskSize: ${CONTROL_PLANE_MACHINE_MINSTORAGE}
+      resourcePool: ${LXD_RESOURCE_POOL}
+      tags:
+      - lxd-host
+      - control-plane
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+      cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+  template:
+    metadata:
+      labels:
+        cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+        cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
+    spec:
+      clusterName: ${CLUSTER_NAME}
+      version: ${KUBERNETES_VERSION}
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+---
+# Worker hosts also run on bare metal and act as LXD VM hosts.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      failureDomain: ${WORKER_ZONE}
+      image: ${MACHINE_IMAGE}
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      minDiskSize: ${WORKER_MACHINE_MINSTORAGE}
+      resourcePool: ${LXD_RESOURCE_POOL}
+      tags:
+      - lxd-host
+      - worker
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            event-qps: "0"
+            feature-gates: RotateKubeletServerCertificate=true
+            read-only-port: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a
+      useExperimentalRetryJoin: true

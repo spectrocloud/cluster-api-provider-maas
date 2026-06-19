@@ -337,3 +337,11 @@ func (m *MachineScope) SetNodeProviderID() error {
 
 	return patchHelper.Patch(ctx, node)
 }
+
+// GetDynamicLXD returns whether this machine should be created as an LXD VM (driven by higher-level policy).
+func (m *MachineScope) GetDynamicLXD() bool {
+	if m.MaasMachine.Spec.LXD != nil && m.MaasMachine.Spec.LXD.Enabled != nil {
+		return *m.MaasMachine.Spec.LXD.Enabled
+	}
+	return false
+}

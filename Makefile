@@ -36,7 +36,7 @@ endif
 
 # Release images
 # Release docker variables
-RELEASE_REGISTRY := gcr.io/spectro-images-public/release/cluster-api-provider-maas
+RELEASE_REGISTRY := us-east1-docker.pkg.dev/spectro-public/release/cluster-api-provider-maas
 RELEASE_CONTROLLER_IMG := $(RELEASE_REGISTRY)/$(IMAGE_NAME)
 
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
@@ -58,16 +58,16 @@ endif
 all: manager
 
 # Run tests
-test: generate fmt vet manifests ## Run unit tests
+test: generate fmt vet manifests generate-lxd-template ## Run unit tests
 	# TODO bring back
 	go test ./... -coverprofile cover.out
 
 # Build manager binary
-manager: generate fmt vet ## Build manager binary
+manager: generate fmt vet generate-lxd-template ## Build manager binary
 	go build -o bin/manager main.go
 
 # Run against the configured Kubernetes cluster in ~/.kube/config
-run: generate fmt vet manifests
+run: generate fmt vet manifests generate-lxd-template
 	go run ./main.go
 
 # Install CRDs into a cluster
@@ -106,7 +106,8 @@ endif
 
 .PHONY: release-manifests
 release-manifests: test
-	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	$(MAKE) generate-lxd-template STAGE=release VERSION=$(VERSION)
+	$(MAKE) manifests STAGE=release MANIFEST_DIR=$(RELEASE_DIR) PULL_POLICY=IfNotPresent IMAGE=$(RELEASE_CONTROLLER_IMG):$(VERSION) VERSION=$(VERSION)
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 	$(MAKE) templates OUTPUT_DIR=$(RELEASE_DIR)
 
@@ -145,7 +146,7 @@ generate: $(CONTROLLER_GEN) $(CONVERSION_GEN)
 	$(MAKE) generate-manifests
 
 generate-go:
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./api/..."
 
 	$(CONVERSION_GEN) \
 		--extra-peer-dirs=github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1 \
@@ -154,18 +155,19 @@ generate-go:
 		./api/v1beta1
 
 generate-manifests:  ## Generate manifests
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./api/...;./controllers/..." output:crd:artifacts:config=config/crd/bases
 
 
 # Build the docker image
 .PHONY: docker-build
-docker-build: #test
-	docker buildx build --load --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
+docker-build: generate-lxd-template ## Build CAPMAAS controller image (ensures lxd-initializer template is processed first with correct image tag)
+	@# Template is already processed by generate-lxd-template with correct image tag via kustomize
+	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
 .PHONY: docker-push
 docker-push: ## Push the docker image to gcr
-	docker push  $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
+	docker push $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 ### --------------------------------------
 ### Docker — All ARCH
@@ -200,8 +202,13 @@ clean-release:
 	rm -rf $(RELEASE_DIR)
 
 release: release-manifests
-	$(MAKE) docker-build IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
-	$(MAKE) docker-push IMG=$(RELEASE_CONTROLLER_IMG):$(VERSION)
+	@# Ensure template is processed with release image before building controller
+	$(MAKE) generate-lxd-template STAGE=release VERSION=$(VERSION)
+	$(MAKE) docker-build STAGE=release VERSION=$(VERSION)
+	$(MAKE) docker-push STAGE=release VERSION=$(VERSION)
+	@echo "Building and pushing LXD initializer image for release..."
+	$(MAKE) lxd-initializer-docker-build STAGE=release VERSION=$(VERSION)
+	$(MAKE) lxd-initializer-docker-push STAGE=release VERSION=$(VERSION)
 
 .PHONY: templates
 templates: ## Generate release templates
@@ -209,3 +216,83 @@ templates: ## Generate release templates
 
 version: ## Prints version of current make
 	@echo $(VERSION)
+
+# --------------------------------------------------------------------
+# LXD-initializer image (privileged DaemonSet)
+# --------------------------------------------------------------------
+INIT_IMAGE_NAME ?= "lxd-initializer"
+INIT_IMG_TAG    ?= $(IMG_TAG)          # reuse the same tag as controller
+INIT_DRI_IMG    ?= us-east1-docker.pkg.dev/spectro-images/dev/$(USER)/cluster-api/$(INIT_IMAGE_NAME)
+# Release image for LXD initializer (without tag)
+INIT_RELEASE_IMG ?= us-east1-docker.pkg.dev/spectro-images/cluster-api/$(INIT_IMAGE_NAME)
+
+.PHONY: lxd-initializer-docker-build
+lxd-initializer-docker-build: generate-lxd-template ## Build LXD initializer image (ensures template is processed first)
+	@# Determine image to build: use INIT_DRI_IMG if explicitly set, otherwise use INIT_RELEASE_IMG for release
+	@if [ -n "$(VERSION)" ] && [ "$(STAGE)" = "release" ]; then \
+		BUILD_IMG="$(INIT_RELEASE_IMG):$(VERSION)"; \
+	else \
+		BUILD_IMG="$(INIT_DRI_IMG):$(INIT_IMG_TAG)"; \
+	fi; \
+	echo "Building LXD initializer image: $$BUILD_IMG"; \
+	docker buildx build --load --platform linux/$(ARCH) \
+	    -f lxd-initializer/Dockerfile \
+	    ${BUILD_ARGS} \
+	    lxd-initializer -t $$BUILD_IMG
+
+.PHONY: lxd-initializer-docker-push
+lxd-initializer-docker-push: lxd-initializer-docker-build ## Push LXD initializer image (builds first if needed)
+	@# Determine image to push: use INIT_DRI_IMG if explicitly set, otherwise use INIT_RELEASE_IMG for release
+	@if [ -n "$(VERSION)" ] && [ "$(STAGE)" = "release" ]; then \
+		PUSH_IMG="$(INIT_RELEASE_IMG):$(VERSION)"; \
+	else \
+		PUSH_IMG="$(INIT_DRI_IMG):$(INIT_IMG_TAG)"; \
+	fi; \
+	echo "Pushing LXD initializer image: $$PUSH_IMG"; \
+	docker push $$PUSH_IMG
+
+# File target for processed template - ensures it exists before Go compilation
+# This file target ensures the processed template exists, making it a proper dependency
+controllers/templates/lxd_initializer_ds.yaml.processed: controllers/templates/lxd_initializer_ds.yaml
+	@$(MAKE) process-lxd-initializer-template
+
+process-lxd-initializer-template: ## Process LXD initializer template with image substitution using envsubst
+	@# Check if envsubst is available
+	@command -v envsubst >/dev/null 2>&1 || { echo "ERROR: envsubst not found. Please install gettext package."; exit 1; }
+	@# Determine which image to use (dev or release) and check if already processed
+	@if [ -n "$(VERSION)" ] && [ "$(STAGE)" = "release" ]; then \
+		INIT_IMG="$(INIT_RELEASE_IMG):$(VERSION)"; \
+	else \
+		INIT_IMG="$(INIT_DRI_IMG):$(INIT_IMG_TAG)"; \
+	fi; \
+	if [ -f controllers/templates/lxd_initializer_ds.yaml.processed ]; then \
+		if grep -q "$$INIT_IMG" controllers/templates/lxd_initializer_ds.yaml.processed; then \
+			echo "Template already processed with image: $$INIT_IMG (skipping)"; \
+			exit 0; \
+		fi; \
+	fi; \
+	echo "Processing LXD initializer template with image: $$INIT_IMG"; \
+	LXD_INITIALIZER_IMAGE=$$INIT_IMG envsubst '$$LXD_INITIALIZER_IMAGE' \
+		< controllers/templates/lxd_initializer_ds.yaml > controllers/templates/lxd_initializer_ds.yaml.processed
+	@# Verify the image was substituted
+	@if [ -n "$(VERSION)" ] && [ "$(STAGE)" = "release" ]; then \
+		VERIFY_IMG="$(INIT_RELEASE_IMG):$(VERSION)"; \
+	else \
+		VERIFY_IMG="$(INIT_DRI_IMG):$(INIT_IMG_TAG)"; \
+	fi; \
+	if ! grep -q "$$VERIFY_IMG" controllers/templates/lxd_initializer_ds.yaml.processed; then \
+		if grep -q "\$${LXD_INITIALIZER_IMAGE}" controllers/templates/lxd_initializer_ds.yaml.processed; then \
+			echo "ERROR: Image substitution failed! Still contains placeholder '\$${LXD_INITIALIZER_IMAGE}'"; \
+			echo "Expected image: $$VERIFY_IMG"; \
+			exit 1; \
+		fi; \
+	fi
+
+.PHONY: generate-lxd-template
+generate-lxd-template: controllers/templates/lxd_initializer_ds.yaml.processed ## Generate processed LXD initializer template for embedding
+	@# Ensure processed file exists (required for go:embed)
+	@if [ ! -f controllers/templates/lxd_initializer_ds.yaml.processed ]; then \
+		echo "ERROR: Processed template not found"; \
+		exit 1; \
+	fi
+	@echo "LXD initializer template ready for embedding"

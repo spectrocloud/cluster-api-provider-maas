@@ -17,6 +17,32 @@ import (
 	"github.com/spectrocloud/maas-client-go/maasclient"
 )
 
+// fakeClientSet minimally satisfies maasclient.ClientSetInterface for tests
+type fakeClientSet struct{ dns maasclient.DNSResources }
+
+func (f *fakeClientSet) BootResources() maasclient.BootResources         { return nil }
+func (f *fakeClientSet) DNSResources() maasclient.DNSResources           { return f.dns }
+func (f *fakeClientSet) Domains() maasclient.Domains                     { return nil }
+func (f *fakeClientSet) IPAddresses() maasclient.IPAddresses             { return nil }
+func (f *fakeClientSet) Tags() maasclient.Tags                           { return nil }
+func (f *fakeClientSet) Machines() maasclient.Machines                   { return nil }
+func (f *fakeClientSet) NetworkInterfaces() maasclient.NetworkInterfaces { return nil }
+func (f *fakeClientSet) RackControllers() maasclient.RackControllers     { return nil }
+func (f *fakeClientSet) ResourcePools() maasclient.ResourcePools         { return nil }
+func (f *fakeClientSet) Spaces() maasclient.Spaces                       { return nil }
+func (f *fakeClientSet) Users() maasclient.Users                         { return nil }
+func (f *fakeClientSet) Zones() maasclient.Zones                         { return nil }
+func (f *fakeClientSet) SSHKeys() maasclient.SSHKeys                     { return nil }
+func (f *fakeClientSet) VMHosts() maasclient.VMHosts                     { return nil }
+func (f *fakeClientSet) IPRanges() maasclient.IPRanges                   { return nil }
+func (f *fakeClientSet) Subnets() maasclient.Subnets                     { return nil }
+
+// fakeIPAddress satisfies maasclient.IPAddress for tests
+type fakeIPAddress struct{ ip net.IP }
+
+func (f *fakeIPAddress) IP() net.IP                                  { return f.ip }
+func (f *fakeIPAddress) InterfaceSet() []maasclient.NetworkInterface { return nil }
+
 func TestDNS(t *testing.T) {
 	log := klogr.New()
 	cluster := &v1beta1.Cluster{

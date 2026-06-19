@@ -1,0 +1,175 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: lxd-initializer
+  labels:
+    app: lxd-initializer
+spec:
+  selector:
+    matchLabels:
+      app: lxd-initializer
+  template:
+    metadata:
+      labels:
+        app: lxd-initializer
+    spec:
+      hostNetwork: true
+      hostPID: true
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: node.kubernetes.io/memory-pressure
+        operator: "Exists"
+        effect: "NoSchedule"
+      - key: node-role.kubernetes.io/control-plane
+        operator: "Exists"
+        effect: "NoSchedule"
+      initContainers:
+      - name: ensure-lxd
+        # Pinned Ubuntu version: 22.04.3 (tested and verified)
+        # Using custom registry to avoid Docker Hub rate limits
+        image: us-docker.pkg.dev/palette-images/third-party/ubuntu:22.04
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -ex
+          # Check on the HOST, not in the container
+          if ! nsenter -t 1 -m -p -- bash -lc 'command -v lxd >/dev/null 2>&1'; then
+            echo "LXD not present on host, installing snapd and LXD on host";
+            # Pin snapd version to avoid unexpected updates
+            # Version 2.60+ is required for LXD 5.0 support
+            # Using specific version to ensure consistency across deployments
+            nsenter -t 1 -m -p -- bash -lc 'export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y snapd=2.60.*'
+            # Enable and start snapd on the host
+            nsenter -t 1 -m -p -- systemctl enable --now snapd.socket
+            # Install LXD 5.0.5 (hardcoded - revision 38113)
+            echo "Installing LXD 5.0.5 (revision 38113)"
+            nsenter -t 1 -m -p -- snap install lxd --revision=38113 || {
+              echo "ERROR: Failed to install LXD revision 38113 (5.0.5)"
+              exit 1
+            }
+            
+            # Verify both LXD and LXC are 5.0.5
+            LXD_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_CLIENT=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Client version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_SERVER=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Server version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            
+            echo "LXD version: ${LXD_VERSION}, LXC client: ${LXC_CLIENT}, LXC server: ${LXC_SERVER}"
+            
+            if [ "${LXD_VERSION}" != "5.0.5" ] || [ "${LXC_CLIENT}" != "5.0.5" ] || [ "${LXC_SERVER}" != "5.0.5" ]; then
+              echo "ERROR: Version mismatch! Expected 5.0.5, got LXD:${LXD_VERSION} LXC-client:${LXC_CLIENT} LXC-server:${LXC_SERVER}"
+              exit 1
+            fi
+            
+            # Hold snap to prevent updates
+            nsenter -t 1 -m -p -- snap refresh --hold lxd
+          else
+            # Verify existing installation is 5.0.5
+            LXD_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_CLIENT=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Client version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            LXC_SERVER=$(nsenter -t 1 -m -p -- /snap/bin/lxc version 2>&1 | grep "Server version:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "unknown")
+            echo "LXD version: ${LXD_VERSION}, LXC client: ${LXC_CLIENT}, LXC server: ${LXC_SERVER}"
+            
+            if [ "${LXD_VERSION}" != "5.0.5" ] || [ "${LXC_CLIENT}" != "5.0.5" ] || [ "${LXC_SERVER}" != "5.0.5" ]; then
+              echo "WARNING: Existing installation is not 5.0.5"
+            fi
+            
+            # Ensure snap is held
+            nsenter -t 1 -m -p -- snap refresh --hold lxd || true
+          fi
+          echo "Ensuring LXD daemon is running on host";
+          # Start/enable via snap (avoid systemd invocation from the pod)
+          nsenter -t 1 -m -p -- snap start --enable lxd.daemon || true
+          # Wait for LXD to report readiness (up to 5 minutes)
+          echo "Waiting for LXD to become ready on host (timeout 5 min)…"
+          if ! nsenter -t 1 -m -p -- /snap/bin/lxd waitready --timeout 300 ; then
+            echo "LXD did not become ready after 5 minutes"; exit 1;
+          fi
+          # Final version verification
+          FINAL_VERSION=$(nsenter -t 1 -m -p -- /snap/bin/lxd --version 2>&1 || echo "unknown")
+          echo "Host LXD is ready, version: ${FINAL_VERSION}";
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: var-lib-snapd
+          mountPath: /var/lib/snapd
+        - name: snap
+          mountPath: /snap
+        - name: run
+          mountPath: /run
+        - name: var-snap-lxd
+          mountPath: /var/snap/lxd
+          mountPropagation: HostToContainer
+        - name: var-snap-common-lxd
+          mountPath: /var/snap/lxd/common/lxd
+          mountPropagation: HostToContainer
+      containers:
+      - name: lxd-initializer
+        image: ${LXD_INITIALIZER_IMAGE}  # Will be replaced by envsubst during build
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: STORAGE_BACKEND
+          value: "${STORAGE_BACKEND}"
+        - name: NIC_TYPE
+          value: "${NIC_TYPE}"
+        - name: NIC_PARENT
+          value: "${NIC_PARENT}"
+        - name: STORAGE_SIZE
+          value: "${STORAGE_SIZE}"                   
+        - name: NETWORK_BRIDGE
+          value: "${NETWORK_BRIDGE}"
+        - name: SKIP_NETWORK_UPDATE
+          value: "${SKIP_NETWORK_UPDATE}"
+        - name: TRUST_PASSWORD
+          value: "${TRUST_PASSWORD}"
+        volumeMounts:
+        - name: var-lib-lxd
+          mountPath: /var/lib/lxd
+        - name: var-snap-lxd
+          mountPath: /var/snap/lxd
+          mountPropagation: HostToContainer
+        - name: var-snap-common-lxd
+          mountPath: /var/snap/lxd/common/lxd
+          mountPropagation: HostToContainer
+        - name: run
+          mountPath: /run
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: var-lib-lxd
+        hostPath:
+          path: /var/lib/lxd
+      - name: var-snap-lxd
+        hostPath:
+          path: /var/snap/lxd
+      - name: var-snap-common-lxd
+        hostPath:
+          path: /var/snap/lxd/common/lxd
+      - name: var-lib-snapd
+        hostPath:
+          path: /var/lib/snapd
+      - name: snap
+        hostPath:
+          path: /snap
+      - name: run
+        hostPath:
+          path: /run
+      - name: tmp
+        hostPath:
+          path: /tmp
+      serviceAccount: lxd-initializer
+      serviceAccountName: lxd-initializer
+      restartPolicy: Always

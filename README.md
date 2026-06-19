@@ -1,19 +1,18 @@
-# Cluster-API-Provider-MAAS
-Cluster API Provider for Canonical Metal-As-A-Service [maas.io](https://maas.io/)
+# Cluster API Provider MAAS
 
-You're welcome to join the upcoming [webinar](https://www.spectrocloud.com/webinars/managing-bare-metal-k8s-like-any-other-cluster/) for capmaas!
+This is a Cluster API infrastructure provider for MAAS.
 
+## Getting Started
 
-# Getting Started
+### Prerequisites
 
-## Public Images
-Spectro Cloud public images
+- Kubernetes v1.29.0+
+- MAAS 3.0+
+- Cluster API v1.5.0+
 
-| Kubernetes Version | URL                                                                        |
-|--------------------|----------------------------------------------------------------------------|
-| 1.25.6             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1256-0.tar.gz       |
-| 1.26.1             | https://maas-images-public.s3.amazonaws.com/u-2204-0-k-1261-0.tar.gz       |
+## Development
 
+### Building the provider
 
 
 ## Custom Image Generation
@@ -64,11 +63,10 @@ spec:
 
 - Create kind cluster
 ```bash
-kind create cluster --name=maas-cluster
+make docker-build
 ```
 
-- Install clusterctl v1beta1
-https://release-1-1.cluster-api.sigs.k8s.io/user/quick-start.html
+### Deploying the provider
 
 - Setup clusterctl configuration `~/.cluster-api/clusterctl.yaml`
 ```
@@ -96,18 +94,21 @@ WORKER_MACHINE_TAG: hello-world
 ```bash
 clusterctl init --infrastructure maas:v0.7.0
 ```
+  `clusterctl init` substitutes `MAAS_ENDPOINT`/`MAAS_API_KEY` into the
+  `capmaas-manager-bootstrap-credentials` secret (in the `capmaas-system` namespace)
+  and wires it into the controller — you do **not** need to create the secret by hand.
 - Generate and create cluster
 ```
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 | kubectl apply -f -
 ```
 
-## Developer Guide
-- Create kind cluster
-```shell
-kind create cluster --name=maas-cluster
+### Testing the provider
+
+```bash
+make test
 ```
 
-- Install clusterctl v1 depending on the version you are working with
+## LXD Integration
 
 - Set `IMG` to the controller image you control (registry + image + tag). This same image must be used for `docker-build`, `docker-push`, and `dev-manifests` so that the generated `infrastructure-components.yaml` points at the image you actually pushed. Export it once so every step picks it up:
 ```shell
@@ -137,6 +138,8 @@ make dev-manifests IMG=$IMG
 │           └── metadata.yaml
 └── version.yaml
 
+# Test MAAS API integration
+./maas-test-linux --test-vm-host --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
 ```
 
 - Run
@@ -161,3 +164,49 @@ or
 clusterctl generate cluster t-cluster --infrastructure=maas:v0.7.0 --kubernetes-version v1.33.5 --control-plane-machine-count=1 --worker-machine-count=3 > my_cluster.yaml
 kubectl apply -f my_cluster.yaml
 ```
+
+## LXD Integration (HCP & WLC)
+
+This provider supports dynamic LXD VM creation for workload clusters. This involves two main stages:
+
+1. **HCP — Host Control Plane**: convert bare-metal MAAS machines into LXD VM hosts.
+2. **WLC — Workload Cluster**: provision LXD VMs on those hosts for workload clusters.
+
+👉 **See [docs/HCP_WLC_GUIDE.md](docs/HCP_WLC_GUIDE.md) for a step-by-step guide**
+(prerequisites, templates, and field reference).
+
+### Testing LXD Integration
+
+We've created test utilities to validate the LXD integration:
+
+1. **LXD Initialization Test**: Tests LXD initialization using the official LXD Go client.
+2. **VM Host Registration Test**: Tests VM host registration with MAAS using direct API calls.
+3. **MAAS API Test**: Tests MAAS API integration for VM host management and VM creation.
+
+To build and transfer these test utilities to a target node:
+
+```bash
+cd lxd-test-tmp
+./build-and-transfer.sh --host <target-host> [--key <path/to/key.pem>] [--user <username>]
+```
+
+Then on the target node:
+
+```bash
+# Test LXD initialization
+sudo ./lxd-test-linux --storage-backend=zfs --storage-size=50 --network-bridge=br0
+
+# Test VM host registration
+./vmhost-test-linux --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
+
+# Test MAAS API integration
+./maas-test-linux --test-vm-host --node-ip=<node-ip> --maas-endpoint=http://<maas-server>:5240/MAAS --maas-api-key="YOUR_MAAS_API_KEY" --zone=default --resource-pool=default
+```
+
+## Architecture
+
+The provider uses the MAAS API to manage machines and LXD VMs. It does not use direct LXD socket connections or CLI commands, ensuring it works correctly even when the controller is running on a different host than the LXD host.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
