@@ -23,7 +23,7 @@ import (
 	"github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
 	corev1 "k8s.io/api/core/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -56,25 +56,25 @@ func (s *Service) ReconcileLXD() error {
 	cluster := s.clusterScope.MaasCluster
 
 	// Set the LXD setup pending condition
-	conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "LXD setup is pending")
+	conditions.Set(cluster, metav1.Condition{Type: v1beta1.LXDReadyCondition, Status: metav1.ConditionFalse, Reason: v1beta1.LXDSetupPendingReason, Message: "LXD setup is pending"})
 
 	// Get ALL machines in the cluster (control plane + worker nodes)
 	allMachines, err := s.clusterScope.GetClusterMaasMachines()
 	if err != nil {
-		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDFailedReason, clusterv1.ConditionSeverityError, "Failed to get cluster machines: %v", err)
+		conditions.Set(cluster, metav1.Condition{Type: v1beta1.LXDReadyCondition, Status: metav1.ConditionFalse, Reason: v1beta1.LXDFailedReason, Message: fmt.Sprintf("Failed to get cluster machines: %v", err)})
 		return errors.Wrap(err, "failed to get cluster machines")
 	}
 
 	// Check if there are any machines
 	if len(allMachines) == 0 {
-		conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "No machines found in cluster")
+		conditions.Set(cluster, metav1.Condition{Type: v1beta1.LXDReadyCondition, Status: metav1.ConditionFalse, Reason: v1beta1.LXDSetupPendingReason, Message: "No machines found in cluster"})
 		return nil
 	}
 
 	// Check if all machines are ready
 	for _, machine := range allMachines {
 		if !machine.Status.Ready {
-			conditions.MarkFalse(cluster, v1beta1.LXDReadyCondition, v1beta1.LXDSetupPendingReason, clusterv1.ConditionSeverityInfo, "Machine %s is not ready", machine.Name)
+			conditions.Set(cluster, metav1.Condition{Type: v1beta1.LXDReadyCondition, Status: metav1.ConditionFalse, Reason: v1beta1.LXDSetupPendingReason, Message: fmt.Sprintf("Machine %s is not ready", machine.Name)})
 			return nil
 		}
 	}
@@ -87,7 +87,7 @@ func (s *Service) ReconcileLXD() error {
 	}
 
 	// Mark LXD as ready
-	conditions.MarkTrue(cluster, v1beta1.LXDReadyCondition)
+	conditions.Set(cluster, metav1.Condition{Type: v1beta1.LXDReadyCondition, Status: metav1.ConditionTrue, Reason: v1beta1.LXDReadyReason})
 
 	// Update the cluster status
 	s.clusterScope.SetStatus(cluster.Status)

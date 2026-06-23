@@ -17,22 +17,22 @@ limitations under the License.
 package v1beta1
 
 import (
+	"context"
 	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var maasmachinetemplatelog = logf.Log.WithName("maasmachinetemplate-resource")
 
 func (r *MaasMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -40,42 +40,42 @@ func (r *MaasMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maasmachinetemplate,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasmachinetemplates,versions=v1beta1,name=vmaasmachinetemplate.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasMachineTemplate{}
-	_ webhook.Validator = &MaasMachineTemplate{}
+	_ admission.Defaulter[*MaasMachineTemplate] = &MaasMachineTemplate{}
+	_ admission.Validator[*MaasMachineTemplate] = &MaasMachineTemplate{}
 )
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasMachineTemplate) Default() {
+// Default implements admission.Defaulter so a webhook will be registered for the type
+func (r *MaasMachineTemplate) Default(_ context.Context, _ *MaasMachineTemplate) error {
 	maasmachinetemplatelog.Info("default", "name", r.Name)
+	return nil
 }
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateCreate() (admission.Warnings, error) {
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateCreate(_ context.Context, _ *MaasMachineTemplate) (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate create", "name", r.Name)
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	maasmachinetemplatelog.Info("validate update", "name", r.Name)
-	oldM := old.(*MaasMachineTemplate)
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateUpdate(_ context.Context, oldObj, newObj *MaasMachineTemplate) (admission.Warnings, error) {
+	maasmachinetemplatelog.Info("validate update", "name", newObj.Name)
 
-	if r.Spec.Template.Spec.Image != oldM.Spec.Template.Spec.Image {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldM.Spec.Template.Spec.Image, r.Spec.Template.Spec.Image))
+	if newObj.Spec.Template.Spec.Image != oldObj.Spec.Template.Spec.Image {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template image change is not allowed, old=%s, new=%s", oldObj.Spec.Template.Spec.Image, newObj.Spec.Template.Spec.Image))
 	}
 
-	if *r.Spec.Template.Spec.MinCPU != *oldM.Spec.Template.Spec.MinCPU {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", oldM.Spec.Template.Spec.MinCPU, r.Spec.Template.Spec.MinCPU))
+	if *newObj.Spec.Template.Spec.MinCPU != *oldObj.Spec.Template.Spec.MinCPU {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min cpu count change is not allowed, old=%d, new=%d", *oldObj.Spec.Template.Spec.MinCPU, *newObj.Spec.Template.Spec.MinCPU))
 	}
 
-	if *r.Spec.Template.Spec.MinMemoryInMB != *oldM.Spec.Template.Spec.MinMemoryInMB {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", oldM.Spec.Template.Spec.MinMemoryInMB, r.Spec.Template.Spec.MinMemoryInMB))
+	if *newObj.Spec.Template.Spec.MinMemoryInMB != *oldObj.Spec.Template.Spec.MinMemoryInMB {
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("maas machine template min memory change is not allowed, old=%d MB, new=%d MB", *oldObj.Spec.Template.Spec.MinMemoryInMB, *newObj.Spec.Template.Spec.MinMemoryInMB))
 	}
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasMachineTemplate) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type
+func (r *MaasMachineTemplate) ValidateDelete(_ context.Context, _ *MaasMachineTemplate) (admission.Warnings, error) {
 	maasmachinetemplatelog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }

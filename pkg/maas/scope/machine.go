@@ -28,8 +28,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	"k8s.io/utils/ptr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -47,7 +48,7 @@ type MachineScopeParams struct {
 	MaasMachine    *infrav1beta1.MaasMachine
 	ControllerName string
 
-	Tracker *remote.ClusterCacheTracker
+	Tracker clustercache.ClusterCache
 }
 
 // MachineScope defines the basic context for an actuator to operate upon.
@@ -63,7 +64,7 @@ type MachineScope struct {
 	MaasMachine *infrav1beta1.MaasMachine
 
 	controllerName string
-	tracker        *remote.ClusterCacheTracker
+	tracker        clustercache.ClusterCache
 }
 
 // NewMachineScope creates a new Scope from the supplied parameters.
@@ -90,7 +91,7 @@ func NewMachineScope(params MachineScopeParams) (*MachineScope, error) {
 // PatchObject persists the machine configuration and status.
 func (m *MachineScope) PatchObject() error {
 
-	applicableConditions := []clusterv1.ConditionType{
+	applicableConditions := []string{
 		infrav1beta1.MachineDeployedCondition,
 	}
 
@@ -98,17 +99,15 @@ func (m *MachineScope) PatchObject() error {
 		applicableConditions = append(applicableConditions, infrav1beta1.DNSAttachedCondition)
 	}
 	// Always update the readyCondition by summarizing the state of other conditions.
-	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(m.MaasMachine,
-		conditions.WithConditions(applicableConditions...),
-		conditions.WithStepCounterIf(m.MaasMachine.ObjectMeta.DeletionTimestamp.IsZero()),
+	_ = conditions.SetSummaryCondition(m.MaasMachine, m.MaasMachine, clusterv1.ReadyCondition,
+		conditions.ForConditionTypes(applicableConditions),
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return m.patchHelper.Patch(
 		context.TODO(),
 		m.MaasMachine,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
+		patch.WithOwnedConditions{Conditions: []string{
 			clusterv1.ReadyCondition,
 			infrav1beta1.MachineDeployedCondition,
 		}},
@@ -128,6 +127,7 @@ func (m *MachineScope) SetAddresses(addrs []clusterv1.MachineAddress) {
 // SetReady sets the MaasMachine Ready Status
 func (m *MachineScope) SetReady() {
 	m.MaasMachine.Status.Ready = true
+	m.MaasMachine.Status.Initialization.Provisioned = ptr.To(true)
 }
 
 // IsReady gets MaasMachine Ready Status
@@ -138,6 +138,7 @@ func (m *MachineScope) IsReady() bool {
 // SetNotReady sets the MaasMachine Ready Status to false
 func (m *MachineScope) SetNotReady() {
 	m.MaasMachine.Status.Ready = false
+	m.MaasMachine.Status.Initialization.Provisioned = ptr.To(false)
 }
 
 // SetFailureMessage sets the MaasMachine status failure message.
