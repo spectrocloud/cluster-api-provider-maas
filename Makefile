@@ -62,6 +62,50 @@ test: generate fmt vet manifests generate-lxd-template ## Run unit tests
 	# TODO bring back
 	go test ./... -coverprofile cover.out
 
+## --------------------------------------
+## E2E testing (see test/e2e/README.md)
+## --------------------------------------
+
+# Image loaded into the kind management cluster; must match the mustLoad image in
+# test/e2e/config/maas.yaml (the maas provider components are retagged to this via `replacements`).
+E2E_CONTROLLER_IMG ?= gcr.io/spectro-images-public/release/cluster-api-provider-maas:e2e
+
+# E2E knobs (all overridable on the command line).
+E2E_CONF_FILE ?= $(REPO_ROOT)/test/e2e/config/maas.yaml
+E2E_DATA_DIR ?= $(REPO_ROOT)/test/e2e/data
+ARTIFACTS ?= $(REPO_ROOT)/_artifacts
+GINKGO_FOCUS ?=
+GINKGO_SKIP ?=
+GINKGO_LABEL_FILTER ?=
+GINKGO_NODES ?= 1
+GINKGO_TIMEOUT ?= 3h
+USE_EXISTING_CLUSTER ?= false
+SKIP_RESOURCE_CLEANUP ?= false
+
+.PHONY: generate-e2e-templates
+generate-e2e-templates: $(KUSTOMIZE) ## Generate the e2e cluster-template flavor(s) from the kustomize sources
+	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/main" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template.yaml"
+
+.PHONY: e2e-images
+e2e-images: generate-lxd-template ## Build the CAPMAAS controller image used by the e2e tests
+	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH) --build-arg LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(E2E_CONTROLLER_IMG)
+
+.PHONY: test-e2e
+test-e2e: e2e-images generate-e2e-templates ## Run the e2e tests (requires Docker, kind, and a reachable MAAS deployment)
+	mkdir -p "$(ARTIFACTS)"
+	go run github.com/onsi/ginkgo/v2/ginkgo -tags=e2e -v --trace \
+		--nodes=$(GINKGO_NODES) --timeout=$(GINKGO_TIMEOUT) \
+		--focus="$(GINKGO_FOCUS)" --skip="$(GINKGO_SKIP)" --label-filter="$(GINKGO_LABEL_FILTER)" \
+		./test/e2e/... -- \
+		-e2e.config="$(E2E_CONF_FILE)" \
+		-e2e.artifacts-folder="$(ARTIFACTS)" \
+		-e2e.use-existing-cluster=$(USE_EXISTING_CLUSTER) \
+		-e2e.skip-resource-cleanup=$(SKIP_RESOURCE_CLEANUP)
+
+# Alias kept for parity with upstream CAPI providers.
+.PHONY: e2e
+e2e: test-e2e ## Alias for test-e2e
+
 # Build manager binary
 manager: generate fmt vet generate-lxd-template ## Build manager binary
 	go build -o bin/manager main.go
@@ -160,13 +204,13 @@ generate-manifests:  ## Generate manifests
 
 # Build the docker image
 .PHONY: docker-build
-docker-build: generate-lxd-template ## Build CAPMAAS controller image (ensures lxd-initializer template is processed first with correct image tag)
-	@# Template is already processed by generate-lxd-template with correct image tag via kustomize
+docker-build: generate-lxd-template lxd-initializer-docker-build ## Build CAPMAAS controller image and the companion lxd-initializer image baked into the DaemonSet template
+	@# Template is already processed by generate-lxd-template with the same image tag that lxd-initializer-docker-build builds
 	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH)  --build-arg  LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 # Push the docker image
 .PHONY: docker-push
-docker-push: ## Push the docker image to gcr
+docker-push: lxd-initializer-docker-push ## Push the controller image and the companion lxd-initializer image to the registry
 	docker push $(CONTROLLER_IMG)-$(ARCH):$(IMG_TAG)
 
 ### --------------------------------------
@@ -204,11 +248,9 @@ clean-release:
 release: release-manifests
 	@# Ensure template is processed with release image before building controller
 	$(MAKE) generate-lxd-template STAGE=release VERSION=$(VERSION)
+	@# docker-build / docker-push also build and push the companion lxd-initializer image
 	$(MAKE) docker-build STAGE=release VERSION=$(VERSION)
 	$(MAKE) docker-push STAGE=release VERSION=$(VERSION)
-	@echo "Building and pushing LXD initializer image for release..."
-	$(MAKE) lxd-initializer-docker-build STAGE=release VERSION=$(VERSION)
-	$(MAKE) lxd-initializer-docker-push STAGE=release VERSION=$(VERSION)
 
 .PHONY: templates
 templates: ## Generate release templates

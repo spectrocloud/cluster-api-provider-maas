@@ -1,0 +1,8 @@
+# Adds the "cni" label to the Cluster so the CNI ClusterResourceSet (cluster-resource-set.yaml)
+# selects it and applies Calico once the control plane is initialized.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+  labels:
+    cni: "${CLUSTER_NAME}-crs-cni"

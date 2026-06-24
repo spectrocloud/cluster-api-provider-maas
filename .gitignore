@@ -27,6 +27,12 @@ maas-credentials.env
 
 _build
 
+# e2e test artifacts (kind logs, generated clusterctl repository, resource dumps)
+_artifacts/
+
+# local Claude Code config
+.claude/
+
 # Generated processed templates (created by envsubst during build)
 controllers/templates/*.processed
 

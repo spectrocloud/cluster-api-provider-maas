@@ -1,0 +1,25 @@
+# CNI delivery for the e2e workload cluster.
+#
+# The shared capi_e2e specs do NOT install a CNI; they rely on the cluster-template flavor to do
+# it. We follow the upstream convention (e.g. cluster-api-provider-vsphere): a ConfigMap whose
+# data is the ${CNI_RESOURCES} placeholder (the CAPI test framework inlines the manifest pointed
+# to by the CNI config variable here at local-repository build time) plus a ClusterResourceSet
+# that applies it to any Cluster carrying the matching "cni" label (see cni-label-patch.yaml).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "cni-${CLUSTER_NAME}-crs-cni"
+data: ${CNI_RESOURCES}
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSet
+metadata:
+  name: "${CLUSTER_NAME}-crs-cni"
+spec:
+  strategy: ApplyOnce
+  clusterSelector:
+    matchLabels:
+      cni: "${CLUSTER_NAME}-crs-cni"
+  resources:
+    - name: "cni-${CLUSTER_NAME}-crs-cni"
+      kind: ConfigMap
