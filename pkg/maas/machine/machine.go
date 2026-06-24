@@ -35,7 +35,22 @@ const (
 	clusterNamespacePrefix    = "cluster-"
 	clusterNamespacePrefixLen = len(clusterNamespacePrefix)
 	hashIDLength              = 8 // Length of hash-based cluster ID
+
+	// customOSSystem is the MAAS osystem for legacy non-prefixed custom images.
+	customOSSystem = "custom"
 )
+
+// splitImage derives the MAAS osystem and distro_series from a boot-resource
+// image name. A prefixed name ("<osystem>/<series>", e.g. "rhel/rocky-92-0-k-1285-0")
+// deploys under that osystem so MAAS handles the OS correctly; a legacy
+// non-prefixed name keeps osystem "custom" (no behavior change for existing
+// Ubuntu images).
+func splitImage(image string) (osystem, distroSeries string) {
+	if os, series, found := strings.Cut(image, "/"); found {
+		return os, series
+	}
+	return customOSSystem, image
+}
 
 type Service struct {
 	scope      *scope.MachineScope
@@ -251,11 +266,12 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	}
 
 	s.scope.Info("Starting deployment", "system-id", m.SystemID())
+	osystem, distroSeries := splitImage(mm.Spec.Image)
 	deployingM, err := m.Deployer().
 		SetUserData(userDataB64).
-		SetOSSystem("custom").
+		SetOSSystem(osystem).
 		SetEphemeralDeploy(mm.Spec.DeployInMemory).
-		SetDistroSeries(mm.Spec.Image).Deploy(ctx)
+		SetDistroSeries(distroSeries).Deploy(ctx)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to deploy machine")
 	}
@@ -281,10 +297,11 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		vmName := fmt.Sprintf("vm-%s", machineName)
 		_, _ = m.Modifier().SetHostname(vmName).Update(ctx)
 
+		osystem, distroSeries := splitImage(mm.Spec.Image)
 		deployingM, err := m.Deployer().
 			SetUserData(userDataB64).
-			SetOSSystem("custom").
-			SetDistroSeries(mm.Spec.Image).Deploy(ctx)
+			SetOSSystem(osystem).
+			SetDistroSeries(distroSeries).Deploy(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to deploy existing VM")
 		}
