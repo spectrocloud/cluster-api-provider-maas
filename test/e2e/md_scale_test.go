@@ -27,7 +27,7 @@ import (
 // This spec reuses the shared CAPI MachineDeploymentScaleSpec to verify that a MAAS workload
 // cluster's MachineDeployment can be scaled out and back in. The default cluster-template flavor
 // must parameterize the worker replica count via ${WORKER_MACHINE_COUNT}.
-var _ = Describe("When testing MachineDeployment scale out/in [MachineDeployment]", func() {
+var _ = Describe("When testing MachineDeployment scale out/in [MachineDeployment]", Label("MachineDeployment"), func() {
 	capi_e2e.MachineDeploymentScaleSpec(ctx, func() capi_e2e.MachineDeploymentScaleSpecInput {
 		return capi_e2e.MachineDeploymentScaleSpecInput{
 			E2EConfig:             e2eConfig,

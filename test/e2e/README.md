@@ -20,23 +20,33 @@ default build.
 | Spec | Source | What it does |
 |------|--------|--------------|
 | `QuickStartSpec` | `quick_start_test.go` | Provisions a MAAS workload cluster from the default flavor and waits for it to become healthy (control plane up, CNI applied, nodes Ready). |
+| `QuickStartSpec` (lxd) | `wlc_test.go` | Provisions a WLC from the `lxd` flavor — the control plane is an LXD VM on a pre-existing MAAS LXD host, workers stay bare-metal — and waits for it to become healthy. Tagged `[WLC]`. |
+| `QuickStartSpec` (hcp) | `hcp_test.go` | Provisions an HCP (Host Control Plane) cluster from the `hcp` flavor (`lxdConfig.enabled=true`, machines registered as LXD hosts, **Cilium** CNI), then verifies the LXD host-registration flow: `MaasCluster` reports `LXDReady=True` and every workload node carries `lxdhost.cluster.com/initialized=true`. Tagged `[HCP]`. |
 | `MachineDeploymentScaleSpec` | `md_scale_test.go` | Scales the worker `MachineDeployment` out and back in. |
 
-Both are thin wrappers over the shared `capi_e2e` specs.
+All are thin wrappers over the shared `capi_e2e` specs.
 
 ## CNI
 
-The shared specs do **not** install a CNI. As with the other CAPI providers, Calico is delivered
-by a `ClusterResourceSet` baked into the cluster-template flavor:
+The shared specs do **not** install a CNI. The two CNIs are delivered differently:
 
-- `data/cni/calico/calico.yaml` — the Calico manifest, inlined into a `ConfigMap` via the
-  `${CNI_RESOURCES}` placeholder (the framework reads the path in the `CNI` config variable).
-- `data/infrastructure-maas/kustomize/main/cluster-resource-set.yaml` — the `ConfigMap` +
-  `ClusterResourceSet`.
-- `data/infrastructure-maas/kustomize/main/cni-label-patch.yaml` — adds the `cni` label to the
-  `Cluster` so the CRS selects it.
-
-This requires the `EXP_CLUSTER_RESOURCE_SET` feature gate, which is enabled in `config/maas.yaml`.
+- **Calico** (default + `lxd` flavors) — via a `ClusterResourceSet` baked into the flavor, the same
+  pattern CAPV uses: `data/cni/calico/calico.yaml` is inlined into a CRS `ConfigMap` through the
+  `${CNI_RESOURCES}` placeholder (the framework reads the path in the `CNI` config variable);
+  `kustomize/main/cluster-resource-set.yaml` + `cni-label-patch.yaml`. Requires the
+  `EXP_CLUSTER_RESOURCE_SET` feature gate (enabled in `config/maas.yaml`).
+- **Cilium** (`hcp` flavor) — applied **directly to the workload cluster** by the spec
+  (`hcp_test.go`'s `WaitForControlPlaneInitialized` hook reads `data/cni/cilium/cilium.yaml`, path in
+  the `CILIUM` config variable, and applies it via the workload `ClusterProxy`). This mirrors the
+  framework's built-in `CNIManifestPath` mechanism. It is **not** a CRS, because Cilium's manifest
+  contains runtime shell tokens (e.g. `${BIN_PATH}` in container args) that clusterctl's
+  cluster-template `envsubst` would reject. HCP clusters **must** use Cilium — Calico tears down the
+  bridge networking on the PXE-boot interface the lxd-initializer relies on. The Cilium manifest is
+  rendered once at build time (not during the test):
+  ```sh
+  helm template cilium oci://quay.io/cilium/charts/cilium --version 1.19.4 \
+    --namespace kube-system > data/cni/cilium/cilium.yaml
+  ```
 
 ## Layout
 
@@ -44,19 +54,30 @@ This requires the `EXP_CLUSTER_RESOURCE_SET` feature gate, which is enabled in `
 test/e2e/
 ├── config/maas.yaml                         # E2EConfig: providers, variables, intervals
 ├── data/
-│   ├── cni/calico/calico.yaml               # Calico manifest (applied via ClusterResourceSet)
+│   ├── cni/calico/calico.yaml               # Calico manifest (default + lxd flavors)
+│   ├── cni/cilium/cilium.yaml               # Cilium manifest (hcp flavor; rendered via helm template)
 │   ├── shared/main/metadata.yaml            # CAPI core/bootstrap/control-plane metadata
 │   └── infrastructure-maas/
 │       ├── kustomize/main/                  # kustomize SOURCES for the default flavor
 │       │   ├── kustomization.yaml
 │       │   ├── cluster-template.yaml        # base resources (${...} clusterctl vars)
-│       │   ├── cluster-resource-set.yaml    # CNI CRS + ConfigMap
-│       │   └── cni-label-patch.yaml         # cni label on the Cluster
+│       │   ├── cluster-resource-set.yaml    # Calico CRS + ConfigMap (shared with lxd flavor)
+│       │   └── cni-label-patch.yaml         # cni label on the Cluster (shared with lxd flavor)
+│       ├── kustomize/lxd/                   # kustomize SOURCES for the "lxd" (WLC) flavor
+│       │   ├── kustomization.yaml           # reuses ../main Calico CRS + label patch
+│       │   └── cluster-template.yaml        # control plane as LXD VM
+│       ├── kustomize/hcp/                   # kustomize SOURCES for the "hcp" flavor
+│       │   ├── kustomization.yaml           # no CNI CRS (Cilium applied directly by the spec)
+│       │   └── cluster-template.yaml        # lxdConfig.enabled, bare-metal LXD-host machines
 │       └── main/
 │           ├── cluster-template.yaml        # GENERATED by `make generate-e2e-templates`
+│           ├── cluster-template-lxd.yaml    # GENERATED (lxd flavor)
+│           ├── cluster-template-hcp.yaml    # GENERATED (hcp flavor)
 │           └── metadata.yaml                # MAAS provider metadata
 ├── e2e_suite_test.go                        # suite harness (kind bootstrap, clusterctl init)
 ├── quick_start_test.go
+├── wlc_test.go
+├── hcp_test.go
 └── md_scale_test.go
 ```
 
@@ -71,6 +92,24 @@ make generate-e2e-templates
 - Docker and `kind` for the management cluster.
 - A reachable **MAAS deployment** with bare-metal or LXD hosts available for allocation, plus a
   deployable OS image that includes the target Kubernetes version.
+- For the `[WLC]` spec specifically: the MAAS deployment must already have **registered LXD hosts**
+  (from an HCP / host control-plane cluster) with allocatable capacity in `FAILURE_DOMAIN`. The
+  suite does not provision those hosts. Override `LXD_VM_DISK_SIZE` (GB) to size the control-plane
+  VM's disk.
+- For the `[HCP]` spec specifically: the MAAS deployment must have **bare-metal machines** eligible
+  for LXD hosting in `FAILURE_DOMAIN` (enough CPU/memory/disk for the zfs storage pool). HCP installs
+  **Cilium** (not Calico). Tunables: `LXD_STORAGE_SIZE` (zfs pool GB), `LXD_HOST_MIN_DISK` (host
+  `minDiskSize` GB). To change the Cilium version, re-render `data/cni/cilium/cilium.yaml` with
+  `helm template` (see [CNI](#cni)); `helm` is only needed to regenerate the file, never at runtime.
+- Also for `[HCP]`: the **lxd-initializer** DaemonSet runs on the bare-metal workload nodes, which
+  pull its image from a registry. `make e2e-images` builds **and pushes** that image (default
+  `E2E_INIT_IMG=$(INIT_RELEASE_IMG):e2e`) and bakes it into the controller's embedded DaemonSet
+  template. Override `E2E_INIT_IMG` to a registry your MAAS nodes can pull from — do **not** rely on
+  the per-`$USER` dev image path:
+  ```sh
+  make test-e2e GINKGO_LABEL_FILTER="HCP" \
+    E2E_INIT_IMG=us-east1-docker.pkg.dev/spectro-images/cluster-api/lxd-initializer:e2e
+  ```
 
 ## Required configuration
 
@@ -96,6 +135,12 @@ make test-e2e
 # Run only a subset by focus string or label.
 make test-e2e GINKGO_FOCUS="QuickStart"
 make test-e2e GINKGO_LABEL_FILTER="PR-Blocking"
+
+# Run only the WLC (LXD workload cluster) spec.
+make test-e2e GINKGO_LABEL_FILTER="WLC"
+
+# Run only the HCP (Host Control Plane / LXD host) spec.
+make test-e2e GINKGO_LABEL_FILTER="HCP"
 
 # Reuse an existing management cluster / keep resources for debugging.
 make test-e2e USE_EXISTING_CLUSTER=true SKIP_RESOURCE_CLEANUP=true

@@ -56,6 +56,11 @@ import (
 	infrav1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 )
 
+// ciliumResourcesVar is the e2e config variable holding the path to the Cilium CNI manifest. The
+// "hcp" spec reads it and applies Cilium directly to the workload cluster (HCP must use Cilium, not
+// the Calico CRS used by the other flavors).
+const ciliumResourcesVar = "CILIUM"
+
 // Test suite flags.
 var (
 	// configPath is the path to the e2e config file.

@@ -1,0 +1,189 @@
+# Base resources for the "hcp" (Host Control Plane) MAAS e2e cluster-template flavor.
+# The MaasCluster enables LXD host registration (spec.lxdConfig.enabled: true): its bare-metal
+# control-plane and worker machines are registered as LXD VM hosts, providing the hosting capacity
+# that WLC (LXD workload cluster) VMs later land on.
+#
+# HCP clusters must use Cilium (Calico tears down the bridge networking on the PXE-boot interface
+# that the lxd-initializer relies on). Cilium is delivered by its own ClusterResourceSet (layered on
+# by the kustomization in this directory via cluster-resource-set.yaml + cilium-label-patch.yaml),
+# NOT the Calico CRS used by the other flavors. This file uses clusterctl ${...} substitution
+# variables resolved by clusterctl at apply time.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+  # Cluster-level failure domain (advertised in MaasCluster.status.FailureDomains); must contain the
+  # same value used on each machine's spec.failureDomain below.
+  failureDomains:
+    - ${FAILURE_DOMAIN}
+  # Enabling LXD on the cluster registers its machines as LXD VM hosts.
+  lxdConfig:
+    enabled: true
+    storageBackend: zfs
+    skipNetworkUpdate: true
+    storageSize: "${LXD_STORAGE_SIZE}"
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: "${CLUSTER_NAME}-control-plane"
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: MaasCluster
+    name: "${CLUSTER_NAME}"
+---
+# Control-plane hosts run on bare metal (no spec.lxd block) and act as LXD VM hosts. No tags are set
+# (the cluster-level lxdConfig.enabled drives LXD host registration).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      minDiskSize: ${LXD_HOST_MIN_DISK}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: "${KUBERNETES_VERSION}"
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          - name: anonymous-auth
+            value: "true"
+          - name: authorization-mode
+            value: RBAC,Node
+          - name: default-not-ready-toleration-seconds
+            value: "60"
+          - name: default-unreachable-toleration-seconds
+            value: "60"
+          - name: disable-admission-plugins
+            value: AlwaysAdmit
+          - name: enable-admission-plugins
+            value: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+      controllerManager:
+        extraArgs:
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: terminated-pod-gc-threshold
+            value: "25"
+          - name: use-service-account-credentials
+            value: "true"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+---
+# Worker hosts also run on bare metal and act as LXD VM hosts (no tags set).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      minDiskSize: ${LXD_HOST_MIN_DISK}
+      image: ${WORKER_MACHINE_IMAGE}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      failureDomain: ${FAILURE_DOMAIN}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: "${CLUSTER_NAME}-md-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: "${CLUSTER_NAME}-md-0"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: event-qps
+              value: "0"
+            - name: feature-gates
+              value: RotateKubeletServerCertificate=true
+            - name: read-only-port
+              value: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a

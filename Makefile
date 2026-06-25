@@ -70,6 +70,13 @@ test: generate fmt vet manifests generate-lxd-template ## Run unit tests
 # test/e2e/config/maas.yaml (the maas provider components are retagged to this via `replacements`).
 E2E_CONTROLLER_IMG ?= gcr.io/spectro-images-public/release/cluster-api-provider-maas:e2e
 
+# lxd-initializer image for e2e. Unlike the controller image (loaded into kind), this DaemonSet runs
+# on the bare-metal HCP workload nodes, which pull it from a registry — so it is built AND pushed by
+# `make e2e-images` and baked into the embedded DaemonSet template. Override to a registry your MAAS
+# nodes can pull from (NOT the per-$(USER) dev path), e.g.
+#   make test-e2e E2E_INIT_IMG=us-east1-docker.pkg.dev/spectro-images/cluster-api/lxd-initializer:e2e
+E2E_INIT_IMG ?= $(INIT_RELEASE_IMG):e2e
+
 # E2E knobs (all overridable on the command line).
 E2E_CONF_FILE ?= $(REPO_ROOT)/test/e2e/config/maas.yaml
 E2E_DATA_DIR ?= $(REPO_ROOT)/test/e2e/data
@@ -85,9 +92,27 @@ SKIP_RESOURCE_CLEANUP ?= false
 .PHONY: generate-e2e-templates
 generate-e2e-templates: $(KUSTOMIZE) ## Generate the e2e cluster-template flavor(s) from the kustomize sources
 	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/main" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template.yaml"
+	"$(KUSTOMIZE)" build --load_restrictor LoadRestrictionsNone "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/lxd" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-lxd.yaml"
+	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/hcp" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-hcp.yaml"
+
+.PHONY: e2e-process-lxd-template
+e2e-process-lxd-template: ## Bake the e2e lxd-initializer image (E2E_INIT_IMG) into the embedded DaemonSet template
+	@command -v envsubst >/dev/null 2>&1 || { echo "ERROR: envsubst not found. Please install gettext package."; exit 1; }
+	@echo "Processing LXD initializer template with e2e image: $(E2E_INIT_IMG)"
+	LXD_INITIALIZER_IMAGE="$(E2E_INIT_IMG)" envsubst '$$LXD_INITIALIZER_IMAGE' \
+		< controllers/templates/lxd_initializer_ds.yaml > controllers/templates/lxd_initializer_ds.yaml.processed
+	@grep -q "$(E2E_INIT_IMG)" controllers/templates/lxd_initializer_ds.yaml.processed || { echo "ERROR: failed to bake $(E2E_INIT_IMG) into the processed template"; exit 1; }
+
+.PHONY: e2e-lxd-initializer-image
+e2e-lxd-initializer-image: ## Build and push the lxd-initializer image used by the e2e HCP workload nodes
+	@echo "Building and pushing e2e lxd-initializer image: $(E2E_INIT_IMG)"
+	docker buildx build --push --platform linux/$(ARCH) ${BUILD_ARGS} -f lxd-initializer/Dockerfile lxd-initializer -t $(E2E_INIT_IMG)
 
 .PHONY: e2e-images
-e2e-images: generate-lxd-template ## Build the CAPMAAS controller image used by the e2e tests
+# Order matters: bake the initializer image into the embedded template BEFORE building the controller
+# image (go:embed picks up the .processed file from the build context), and push the initializer image
+# so the bare-metal HCP workload nodes can pull it.
+e2e-images: e2e-process-lxd-template e2e-lxd-initializer-image ## Build the CAPMAAS controller image (+ lxd-initializer image) used by the e2e tests
 	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH) --build-arg LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(E2E_CONTROLLER_IMG)
 
 .PHONY: test-e2e
