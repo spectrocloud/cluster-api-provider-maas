@@ -4,10 +4,10 @@
 # that WLC (LXD workload cluster) VMs later land on.
 #
 # HCP clusters must use Cilium (Calico tears down the bridge networking on the PXE-boot interface
-# that the lxd-initializer relies on). Cilium is delivered by its own ClusterResourceSet (layered on
-# by the kustomization in this directory via cluster-resource-set.yaml + cilium-label-patch.yaml),
-# NOT the Calico CRS used by the other flavors. This file uses clusterctl ${...} substitution
-# variables resolved by clusterctl at apply time.
+# that the lxd-initializer relies on). Cilium is NOT delivered via a ClusterResourceSet here: its
+# manifest contains runtime shell tokens (e.g. "${BIN_PATH}") that clusterctl's template envsubst
+# would reject. Instead, the hcp e2e spec applies the Cilium manifest directly to the workload
+# cluster (see test/e2e/hcp_test.go). This file uses clusterctl ${...} substitution variables resolved by clusterctl at apply time.
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasCluster
 metadata:
