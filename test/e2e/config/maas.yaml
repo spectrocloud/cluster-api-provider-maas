@@ -90,10 +90,10 @@ variables:
   # CNI: path (relative to the test/e2e package dir, where ginkgo runs) to the manifest whose
   # content is inlined into the ClusterResourceSet ConfigMap via ${CNI_RESOURCES}.
   CNI: "./data/cni/calico/calico.yaml"
-  # CILIUM: the CNI for the "hcp" flavor (Calico breaks the LXD bridge on the PXE interface). Inlined
-  # into the hcp ClusterResourceSet ConfigMap via ${CILIUM_RESOURCES}. Regenerate with:
-  #   helm template cilium oci://quay.io/cilium/charts/cilium --version 1.19.4 \
-  #     --namespace kube-system > test/e2e/data/cni/cilium/cilium.yaml
+  # CILIUM: the CNI for the "hcp" flavor (Calico breaks the LXD bridge on the PXE interface).
+  # Applied directly to the workload cluster by the hcp e2e spec (test/e2e/hcp_test.go), not via a CRS.
+  # Rendered ahead of time (not during tests). Regenerate with:
+  #   helm template cilium oci://quay.io/cilium/charts/cilium --version 1.19.4 --namespace kube-system > test/e2e/data/cni/cilium/cilium.yaml
   CILIUM: "./data/cni/cilium/cilium.yaml"
 
   # Feature gates. EXP_CLUSTER_RESOURCE_SET is required for the CNI ClusterResourceSet.
