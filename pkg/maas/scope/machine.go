@@ -138,7 +138,10 @@ func (m *MachineScope) IsReady() bool {
 // SetNotReady sets the MaasMachine Ready Status to false
 func (m *MachineScope) SetNotReady() {
 	m.MaasMachine.Status.Ready = false
-	m.MaasMachine.Status.Initialization.Provisioned = ptr.To(false)
+	// Do not reset Provisioned back to false once it has been set true.
+	if m.MaasMachine.Status.Initialization.Provisioned == nil {
+		m.MaasMachine.Status.Initialization.Provisioned = ptr.To(false)
+	}
 }
 
 // SetFailureMessage sets the MaasMachine status failure message.
