@@ -93,6 +93,8 @@ func (mr *MockClientSetInterfaceMockRecorder) Domains() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Domains", reflect.TypeOf((*MockClientSetInterface)(nil).Domains))
 }
 
+
+
 // Machines mocks base method.
 func (m *MockClientSetInterface) Machines() maasclient.Machines {
 	m.ctrl.T.Helper()
@@ -161,6 +163,123 @@ func (m *MockClientSetInterface) Spaces() maasclient.Spaces {
 func (mr *MockClientSetInterfaceMockRecorder) Spaces() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Spaces", reflect.TypeOf((*MockClientSetInterface)(nil).Spaces))
+}
+
+
+
+
+
+// MockSubnets is a mock of Subnets interface.
+type MockSubnets struct {
+	ctrl     *gomock.Controller
+	recorder *MockSubnetsMockRecorder
+}
+
+// MockSubnetsMockRecorder is the mock recorder for MockSubnets.
+type MockSubnetsMockRecorder struct {
+	mock *MockSubnets
+}
+
+// NewMockSubnets creates a new mock instance.
+func NewMockSubnets(ctrl *gomock.Controller) *MockSubnets {
+	mock := &MockSubnets{ctrl: ctrl}
+	mock.recorder = &MockSubnetsMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSubnets) EXPECT() *MockSubnetsMockRecorder {
+	return m.recorder
+}
+
+// List mocks base method.
+func (m *MockSubnets) List(arg0 context.Context) ([]maasclient.Subnet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", arg0)
+	ret0, _ := ret[0].([]maasclient.Subnet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockSubnetsMockRecorder) List(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockSubnets)(nil).List), arg0)
+}
+
+// GetIDByCIDR mocks base method.
+func (m *MockSubnets) GetIDByCIDR(arg0 context.Context, arg1 string) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIDByCIDR", arg0, arg1)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIDByCIDR indicates an expected call of GetIDByCIDR.
+func (mr *MockSubnetsMockRecorder) GetIDByCIDR(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDByCIDR", reflect.TypeOf((*MockSubnets)(nil).GetIDByCIDR), arg0, arg1)
+}
+
+// GetIPAddresses mocks base method.
+func (m *MockSubnets) GetIPAddresses(arg0 context.Context, arg1 int) ([]maasclient.SubnetIPAddress, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPAddresses", arg0, arg1)
+	ret0, _ := ret[0].([]maasclient.SubnetIPAddress)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPAddresses indicates an expected call of GetIPAddresses.
+func (mr *MockSubnetsMockRecorder) GetIPAddresses(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPAddresses", reflect.TypeOf((*MockSubnets)(nil).GetIPAddresses), arg0, arg1)
+}
+
+// IsIPInUse mocks base method.
+func (m *MockSubnets) IsIPInUse(arg0 context.Context, arg1 int, arg2 string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsIPInUse", arg0, arg1, arg2)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IsIPInUse indicates an expected call of IsIPInUse.
+func (mr *MockSubnetsMockRecorder) IsIPInUse(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsIPInUse", reflect.TypeOf((*MockSubnets)(nil).IsIPInUse), arg0, arg1, arg2)
+}
+
+// GetReservedIPRanges mocks base method.
+func (m *MockSubnets) GetReservedIPRanges(arg0 context.Context, arg1 int) ([]maasclient.SubnetIPRange, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetReservedIPRanges", arg0, arg1)
+	ret0, _ := ret[0].([]maasclient.SubnetIPRange)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetReservedIPRanges indicates an expected call of GetReservedIPRanges.
+func (mr *MockSubnetsMockRecorder) GetReservedIPRanges(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetReservedIPRanges", reflect.TypeOf((*MockSubnets)(nil).GetReservedIPRanges), arg0, arg1)
+}
+
+// GetUnreservedIPRanges mocks base method.
+func (m *MockSubnets) GetUnreservedIPRanges(arg0 context.Context, arg1 int) ([]maasclient.SubnetIPRange, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnreservedIPRanges", arg0, arg1)
+	ret0, _ := ret[0].([]maasclient.SubnetIPRange)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUnreservedIPRanges indicates an expected call of GetUnreservedIPRanges.
+func (mr *MockSubnetsMockRecorder) GetUnreservedIPRanges(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnreservedIPRanges", reflect.TypeOf((*MockSubnets)(nil).GetUnreservedIPRanges), arg0, arg1)
 }
 
 // Users mocks base method.
@@ -1168,6 +1287,20 @@ func (m *MockIPAddress) IP() net.IP {
 func (mr *MockIPAddressMockRecorder) IP() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IP", reflect.TypeOf((*MockIPAddress)(nil).IP))
+}
+
+// InterfaceSet mocks base method.
+func (m *MockIPAddress) InterfaceSet() []maasclient.NetworkInterface {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InterfaceSet")
+	ret0, _ := ret[0].([]maasclient.NetworkInterface)
+	return ret0
+}
+
+// InterfaceSet indicates an expected call of InterfaceSet.
+func (mr *MockIPAddressMockRecorder) InterfaceSet() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InterfaceSet", reflect.TypeOf((*MockIPAddress)(nil).InterfaceSet))
 }
 
 // MockZone is a mock of Zone interface.
