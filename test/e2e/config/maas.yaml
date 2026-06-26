@@ -1,0 +1,141 @@
+# E2E test configuration for cluster-api-provider-maas.
+#
+# The format of this file follows:
+#   https://pkg.go.dev/sigs.k8s.io/cluster-api/test/framework/clusterctl#E2EConfig
+#
+# It declares the providers (CAPI core + kubeadm bootstrap/control-plane from upstream releases,
+# and the MAAS infrastructure provider built from this working tree), the variables used to render
+# the cluster-template flavor, and the timeout/poll intervals consumed by the specs.
+#
+# Sensitive / environment-specific values (MAAS endpoint, API key, resource pool, OS image, ...)
+# are intentionally NOT hard-coded here. clusterctl also reads variables from the OS environment,
+# so export them before running `make e2e` (see test/e2e/README.md).
+
+managementClusterName: capmaas-e2e
+
+images:
+  # The MAAS controller image built locally by `make e2e-images`. Must be loaded into the kind
+  # management cluster, hence loadBehavior: mustLoad. The tag is injected into the provider
+  # components via the `replacements` block below.
+  - name: gcr.io/spectro-images-public/release/cluster-api-provider-maas:e2e
+    loadBehavior: mustLoad
+  # Best-effort preloads (won't fail the run if not present locally).
+  - name: quay.io/brancz/kube-rbac-proxy:v0.19.1
+    loadBehavior: tryLoad
+  - name: quay.io/jetstack/cert-manager-cainjector:v1.16.2
+    loadBehavior: tryLoad
+  - name: quay.io/jetstack/cert-manager-webhook:v1.16.2
+    loadBehavior: tryLoad
+  - name: quay.io/jetstack/cert-manager-controller:v1.16.2
+    loadBehavior: tryLoad
+
+providers:
+  - name: cluster-api
+    type: CoreProvider
+    versions:
+      - name: v1.13.2
+        value: "https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/core-components.yaml"
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: "../data/shared/main/metadata.yaml"
+
+  - name: kubeadm
+    type: BootstrapProvider
+    versions:
+      - name: v1.13.2
+        value: "https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/bootstrap-components.yaml"
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: "../data/shared/main/metadata.yaml"
+
+  - name: kubeadm
+    type: ControlPlaneProvider
+    versions:
+      - name: v1.13.2
+        value: "https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.13.2/control-plane-components.yaml"
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: "../data/shared/main/metadata.yaml"
+
+  - name: maas
+    type: InfrastructureProvider
+    versions:
+      # "next" version built from the working tree (config/default), so e2e exercises local code.
+      - name: v0.9.99
+        value: "../../../config/default"
+        contract: v1beta2
+        replacements:
+          # Retag the controller image so it matches the mustLoad image built by `make e2e-images`.
+          - old: "gcr.io/spectro-images-public/release/cluster-api-provider-maas:latest"
+            new: "gcr.io/spectro-images-public/release/cluster-api-provider-maas:e2e"
+        files:
+          - sourcePath: "../data/infrastructure-maas/main/metadata.yaml"
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template.yaml"
+          # "lxd" (WLC) flavor: control-plane provisioned as an LXD VM (clusterctl resolves the
+          # Flavor "lxd" to this cluster-template-lxd.yaml filename).
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template-lxd.yaml"
+          # "hcp" (Host Control Plane) flavor: lxdConfig.enabled, machines registered as LXD hosts,
+          # CNI = Cilium via its own ClusterResourceSet.
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template-hcp.yaml"
+
+variables:
+  # Kubernetes version used for both the kind management cluster and the workload cluster.
+  KUBERNETES_VERSION_MANAGEMENT: "v1.32.0"
+  KUBERNETES_VERSION: "v1.32.0"
+  IP_FAMILY: "IPv4"
+
+  # CNI: path (relative to the test/e2e package dir, where ginkgo runs) to the manifest whose
+  # content is inlined into the ClusterResourceSet ConfigMap via ${CNI_RESOURCES}.
+  CNI: "./data/cni/calico/calico.yaml"
+  # CILIUM: the CNI for the "hcp" flavor (Calico breaks the LXD bridge on the PXE interface).
+  # Applied directly to the workload cluster by the hcp e2e spec (test/e2e/hcp_test.go), not via a CRS.
+  # Rendered ahead of time (not during tests). Regenerate with:
+  #   helm template cilium oci://quay.io/cilium/charts/cilium --version 1.19.4 --namespace kube-system > test/e2e/data/cni/cilium/cilium.yaml
+  CILIUM: "./data/cni/cilium/cilium.yaml"
+
+  # Feature gates. EXP_CLUSTER_RESOURCE_SET is required for the CNI ClusterResourceSet.
+  EXP_CLUSTER_RESOURCE_SET: "true"
+  CLUSTER_TOPOLOGY: "false"
+
+  # Workload cluster machine counts (overridable via env).
+  CONTROL_PLANE_MACHINE_COUNT: "1"
+  WORKER_MACHINE_COUNT: "1"
+
+  # MAAS-specific template inputs. Override these via environment variables to match the target
+  # MAAS deployment (these defaults are placeholders).
+  MAAS_DNS_DOMAIN: "maas"
+  FAILURE_DOMAIN: "az1"
+  CONTROL_PLANE_MACHINE_MINCPU: "2"
+  CONTROL_PLANE_MACHINE_MINMEMORY: "4096"
+  CONTROL_PLANE_MACHINE_IMAGE: "u-2204-0-k-1320-0"
+  CONTROL_PLANE_MACHINE_RESOURCEPOOL: ""
+  WORKER_MACHINE_MINCPU: "2"
+  WORKER_MACHINE_MINMEMORY: "4096"
+  WORKER_MACHINE_IMAGE: "u-2204-0-k-1320-0"
+  WORKER_MACHINE_RESOURCEPOOL: ""
+
+  # Disk size (GB) for LXD VMs in the "lxd" (WLC) flavor; consumed only by cluster-template-lxd.yaml.
+  LXD_VM_DISK_SIZE: "60"
+
+  # "hcp" (Host Control Plane) flavor inputs.
+  LXD_STORAGE_SIZE: "50"     # zfs storage-pool size (GB) for lxdConfig.storageSize
+  LXD_HOST_MIN_DISK: "100"   # minDiskSize (GB) for the bare-metal LXD-host machines
+
+intervals:
+  # MAAS provisions bare-metal/LXD hosts, which is slower than cloud VMs; intervals are generous.
+  default/wait-controllers: ["5m", "10s"]
+  default/wait-cluster: ["10m", "10s"]
+  default/wait-control-plane: ["30m", "10s"]
+  default/wait-worker-nodes: ["30m", "10s"]
+  default/wait-machine-pool-nodes: ["30m", "10s"]
+  default/wait-nodes-ready: ["15m", "10s"]
+  default/wait-delete-cluster: ["20m", "10s"]
+  default/wait-machine-remediation: ["10m", "10s"]
+  default/wait-machine-upgrade: ["30m", "10s"]
+  default/wait-control-plane-upgrade: ["30m", "10s"]
+  # HCP LXD host registration lags node-Ready: the controller deploys the lxd-initializer DaemonSet
+  # only after the control plane is up, then each node installs LXD and registers with MAAS.
+  default/wait-lxd-ready: ["20m", "15s"]

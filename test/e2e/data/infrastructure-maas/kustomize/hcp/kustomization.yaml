@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# HCP clusters must use Cilium, not Calico (Calico breaks the LXD bridge on the PXE interface). Cilium
+# is NOT delivered via a ClusterResourceSet here: its manifest contains runtime shell tokens (e.g.
+# "${BIN_PATH}") that clusterctl's template envsubst would reject. Instead the hcp spec applies the
+# Cilium manifest directly to the workload cluster (see test/e2e/hcp_test.go). So this flavor is just
+# the cluster template — no CNI CRS / cni label.
+resources:
+  - cluster-template.yaml
