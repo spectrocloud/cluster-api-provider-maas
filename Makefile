@@ -114,6 +114,7 @@ e2e-lxd-initializer-image: ## Build and push the lxd-initializer image used by t
 # so the bare-metal HCP workload nodes can pull it.
 e2e-images: e2e-process-lxd-template e2e-lxd-initializer-image ## Build the CAPMAAS controller image (+ lxd-initializer image) used by the e2e tests
 	docker buildx build --load --provenance=false --sbom=false --platform linux/$(ARCH) ${BUILD_ARGS} --build-arg ARCH=$(ARCH) --build-arg LDFLAGS="$(LDFLAGS)" --build-arg CRYPTO_LIB=${FIPS_ENABLE} . -t $(E2E_CONTROLLER_IMG)
+	@rm -f controllers/templates/lxd_initializer_ds.yaml.processed
 
 .PHONY: test-e2e
 test-e2e: e2e-images generate-e2e-templates ## Run the e2e tests (requires Docker, kind, and a reachable MAAS deployment)
