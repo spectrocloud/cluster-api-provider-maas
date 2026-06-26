@@ -80,6 +80,11 @@ providers:
           # "hcp" (Host Control Plane) flavor: lxdConfig.enabled, machines registered as LXD hosts,
           # CNI = Cilium via its own ClusterResourceSet.
           - sourcePath: "../data/infrastructure-maas/main/cluster-template-hcp.yaml"
+          # K8s version-upgrade flavors (ClusterUpgradeConformanceSpec). Each ships a second pair of
+          # MaasMachineTemplates (control-plane-upgrade / md-0-upgrade) carrying the UPGRADE_TO image.
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template-upgrades.yaml"
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template-lxd-upgrades.yaml"
+          - sourcePath: "../data/infrastructure-maas/main/cluster-template-hcp-upgrades.yaml"
 
 variables:
   # Kubernetes version used for both the kind management cluster and the workload cluster.
@@ -123,6 +128,20 @@ variables:
   # "hcp" (Host Control Plane) flavor inputs.
   LXD_STORAGE_SIZE: "50"     # zfs storage-pool size (GB) for lxdConfig.storageSize
   LXD_HOST_MIN_DISK: "100"   # minDiskSize (GB) for the bare-metal LXD-host machines
+
+  # K8s version-upgrade flavor inputs (used by the [Upgrade] specs / ClusterUpgradeConformanceSpec).
+  # The cluster is created at *_UPGRADE_FROM and rolled to *_UPGRADE_TO. The target MAAS must have a
+  # deployable OS image for BOTH versions (the image string encodes the k8s version). The
+  # *_TEMPLATE_UPGRADE_TO values are the fixed names of the upgrade-target MaasMachineTemplates the
+  # flavors define; they are used literally (no ${CLUSTER_NAME} expansion).
+  KUBERNETES_VERSION_UPGRADE_FROM: "v1.33.5"
+  KUBERNETES_VERSION_UPGRADE_TO: "v1.34.1"
+  CONTROL_PLANE_MACHINE_TEMPLATE_UPGRADE_TO: "control-plane-upgrade"
+  WORKERS_MACHINE_TEMPLATE_UPGRADE_TO: "md-0-upgrade"
+  CONTROL_PLANE_MACHINE_IMAGE_UPGRADE_FROM: "u-2204-0-k-1335-0"
+  CONTROL_PLANE_MACHINE_IMAGE_UPGRADE_TO: "u-2204-0-k-1341-0"
+  WORKER_MACHINE_IMAGE_UPGRADE_FROM: "u-2204-0-k-1335-0"
+  WORKER_MACHINE_IMAGE_UPGRADE_TO: "u-2204-0-k-1341-0"
 
 intervals:
   # MAAS provisions bare-metal/LXD hosts, which is slower than cloud VMs; intervals are generous.
