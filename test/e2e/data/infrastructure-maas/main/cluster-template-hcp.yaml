@@ -144,7 +144,7 @@ spec:
     enabled: true
     skipNetworkUpdate: true
     storageBackend: zfs
-    storageSize: ${LXD_STORAGE_SIZE}
+    storageSize: "${LXD_STORAGE_SIZE}"
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: MaasMachineTemplate
