@@ -1,0 +1,208 @@
+# Base resources for the "upgrades" (standard bare-metal) MAAS e2e cluster-template flavor.
+# Same as the default flavor, but parameterized for a K8s version upgrade:
+#   * the initial control-plane / md-0 MaasMachineTemplates use the UPGRADE_FROM image,
+#   * two extra MaasMachineTemplates (control-plane-upgrade / md-0-upgrade) carry the UPGRADE_TO image.
+# ClusterUpgradeConformanceSpec deploys at KUBERNETES_VERSION_UPGRADE_FROM (injected into
+# ${KUBERNETES_VERSION}), then repoints the KCP/MachineDeployment to the *-upgrade templates (named by
+# CONTROL_PLANE_MACHINE_TEMPLATE_UPGRADE_TO / WORKERS_MACHINE_TEMPLATE_UPGRADE_TO) and bumps the version
+# to KUBERNETES_VERSION_UPGRADE_TO. MaasMachineTemplate.image is immutable, so the upgrade must roll
+# onto new templates rather than mutate the existing ones. The Calico CRS + cni label are layered on
+# by the kustomization in this directory.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+  failureDomains:
+    - ${FAILURE_DOMAIN}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: "${CLUSTER_NAME}-control-plane"
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: MaasCluster
+    name: "${CLUSTER_NAME}"
+---
+# Initial control-plane template (UPGRADE_FROM image).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE_UPGRADE_FROM}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+# Upgrade-target control-plane template (UPGRADE_TO image). Fixed name (no ${CLUSTER_NAME}): the
+# CONTROL_PLANE_MACHINE_TEMPLATE_UPGRADE_TO config value is used literally; the per-test namespace
+# keeps it unique.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "control-plane-upgrade"
+spec:
+  template:
+    spec:
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE_UPGRADE_TO}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: "${KUBERNETES_VERSION}"
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+          - name: anonymous-auth
+            value: "true"
+          - name: authorization-mode
+            value: RBAC,Node
+          - name: default-not-ready-toleration-seconds
+            value: "60"
+          - name: default-unreachable-toleration-seconds
+            value: "60"
+          - name: disable-admission-plugins
+            value: AlwaysAdmit
+          - name: enable-admission-plugins
+            value: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+      controllerManager:
+        extraArgs:
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: terminated-pod-gc-threshold
+            value: "25"
+          - name: use-service-account-credentials
+            value: "true"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+---
+# Initial worker template (UPGRADE_FROM image).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE_UPGRADE_FROM}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+# Upgrade-target worker template (UPGRADE_TO image). Fixed name.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: "md-0-upgrade"
+spec:
+  template:
+    spec:
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      image: ${WORKER_MACHINE_IMAGE_UPGRADE_TO}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}
+      failureDomain: ${FAILURE_DOMAIN}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: "${CLUSTER_NAME}"
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      failureDomain: ${FAILURE_DOMAIN}
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: "${CLUSTER_NAME}-md-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: "${CLUSTER_NAME}-md-0"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            - name: event-qps
+              value: "0"
+            - name: feature-gates
+              value: RotateKubeletServerCertificate=true
+            - name: read-only-port
+              value: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+        - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+          sleep 1; done
+        - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+        - swapoff -a

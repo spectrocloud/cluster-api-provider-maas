@@ -66,25 +66,30 @@ var _ = Describe("When following the Cluster API quick-start for an LXD host clu
 			ArtifactFolder:        artifactFolder,
 			SkipCleanup:           skipCleanup,
 			Flavor:                ptr.To("hcp"),
-			ControlPlaneWaiters: clusterctl.ControlPlaneWaiters{
-				// Replicate the default control-plane-initialized wait, then install Cilium on the
-				// workload cluster before QuickStartSpec waits for nodes to become Ready (nodes only
-				// go Ready once a CNI is present).
-				WaitForControlPlaneInitialized: func(ctx context.Context, input clusterctl.ApplyCustomClusterTemplateAndWaitInput, result *clusterctl.ApplyCustomClusterTemplateAndWaitResult) {
-					result.ControlPlane = framework.DiscoveryAndWaitForControlPlaneInitialized(ctx, framework.DiscoveryAndWaitForControlPlaneInitializedInput{
-						Lister:  input.ClusterProxy.GetClient(),
-						Cluster: result.Cluster,
-					}, input.WaitForControlPlaneIntervals...)
-
-					installCilium(input.ClusterProxy.GetWorkloadCluster(ctx, result.Cluster.Namespace, result.Cluster.Name))
-				},
-			},
+			ControlPlaneWaiters:   ciliumControlPlaneWaiters(),
 			PostMachinesProvisioned: func(mgmt framework.ClusterProxy, ns, clusterName string) {
 				assertLXDHostsReady(mgmt, ns, clusterName)
 			},
 		}
 	})
 })
+
+// ciliumControlPlaneWaiters returns ControlPlaneWaiters that replicate the default
+// control-plane-initialized wait, then install Cilium on the workload cluster before the spec waits
+// for nodes to become Ready (nodes only go Ready once a CNI is present). Shared by the HCP
+// quick-start and upgrade specs.
+func ciliumControlPlaneWaiters() clusterctl.ControlPlaneWaiters {
+	return clusterctl.ControlPlaneWaiters{
+		WaitForControlPlaneInitialized: func(ctx context.Context, input clusterctl.ApplyCustomClusterTemplateAndWaitInput, result *clusterctl.ApplyCustomClusterTemplateAndWaitResult) {
+			result.ControlPlane = framework.DiscoveryAndWaitForControlPlaneInitialized(ctx, framework.DiscoveryAndWaitForControlPlaneInitializedInput{
+				Lister:  input.ClusterProxy.GetClient(),
+				Cluster: result.Cluster,
+			}, input.WaitForControlPlaneIntervals...)
+
+			installCilium(input.ClusterProxy.GetWorkloadCluster(ctx, result.Cluster.Namespace, result.Cluster.Name))
+		},
+	}
+}
 
 // installCilium applies the Cilium manifest (referenced by the CILIUM config variable, rendered with
 // `helm template` — see data/cni/cilium/cilium.yaml) directly to the workload cluster. Applying the

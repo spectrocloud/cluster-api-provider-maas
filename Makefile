@@ -18,13 +18,13 @@ ALL_ARCH = amd64 arm64
 ## Image URL to use all building/pushing image targets
 #IMAGE_NAME := cluster-api-provider-maas-controller
 #IMG_URL ?= gcr.io/spectro-dev-public/release/cluster-api
-#IMG_TAG ?= v0.8.0
+#IMG_TAG ?= v0.9.0
 #IMG ?= ${IMG_URL}/${IMAGE_NAME}:${IMG_TAG}
 
 # Image URL to use all building/pushing image targets
 IMAGE_NAME := cluster-api-provider-maas-controller
 REGISTRY ?= "us-east1-docker.pkg.dev/spectro-images/dev/${USER}/cluster-api"
-IMG_TAG ?= v0.8.0
+IMG_TAG ?= v0.9.0
 CONTROLLER_IMG ?= ${REGISTRY}/${IMAGE_NAME}
 
 # Set --output-base for conversion-gen if we are not within GOPATH
@@ -94,6 +94,9 @@ generate-e2e-templates: $(KUSTOMIZE) ## Generate the e2e cluster-template flavor
 	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/main" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template.yaml"
 	"$(KUSTOMIZE)" build --load_restrictor LoadRestrictionsNone "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/lxd" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-lxd.yaml"
 	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/hcp" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-hcp.yaml"
+	"$(KUSTOMIZE)" build --load_restrictor LoadRestrictionsNone "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/upgrades" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-upgrades.yaml"
+	"$(KUSTOMIZE)" build --load_restrictor LoadRestrictionsNone "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/lxd-upgrades" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-lxd-upgrades.yaml"
+	"$(KUSTOMIZE)" build "$(E2E_DATA_DIR)/infrastructure-maas/kustomize/hcp-upgrades" > "$(E2E_DATA_DIR)/infrastructure-maas/main/cluster-template-hcp-upgrades.yaml"
 
 .PHONY: e2e-process-lxd-template
 e2e-process-lxd-template: ## Bake the e2e lxd-initializer image (E2E_INIT_IMG) into the embedded DaemonSet template
