@@ -18,7 +18,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/errors"
 )
 
@@ -128,6 +128,10 @@ type MaasMachineStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 
+	// initialization provides observations of the MaasMachine initialization process.
+	// +optional
+	Initialization MaasMachineInitializationStatus `json:"initialization,omitempty"`
+
 	// MachineState is the state of this MAAS machine.
 	MachineState *MachineState `json:"machineState,omitempty"`
 
@@ -144,7 +148,7 @@ type MaasMachineStatus struct {
 	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 
 	// Conditions defines current service state of the MaasMachine.
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// FailureReason will be set in the event that there is a terminal problem
 	// reconciling the Machine and will contain a succinct value suitable
@@ -155,6 +159,15 @@ type MaasMachineStatus struct {
 	// reconciling the Machine and will contain a more verbose string suitable
 	// for logging and human consumption.
 	FailureMessage *string `json:"failureMessage,omitempty"`
+}
+
+// MaasMachineInitializationStatus provides observations of the MaasMachine
+// initialization process, as required by the Cluster API v1beta2 contract.
+type MaasMachineInitializationStatus struct {
+	// provisioned is true when the infrastructure provider reports that the
+	// Machine's infrastructure is fully provisioned.
+	// +optional
+	Provisioned *bool `json:"provisioned,omitempty"`
 }
 
 // +kubebuilder:resource:path=maasmachines,scope=Namespaced,categories=cluster-api
@@ -171,11 +184,11 @@ type MaasMachine struct {
 	Status MaasMachineStatus `json:"status,omitempty"`
 }
 
-func (c *MaasMachine) GetConditions() clusterv1.Conditions {
+func (c *MaasMachine) GetConditions() []metav1.Condition {
 	return c.Status.Conditions
 }
 
-func (c *MaasMachine) SetConditions(conditions clusterv1.Conditions) {
+func (c *MaasMachine) SetConditions(conditions []metav1.Condition) {
 	c.Status.Conditions = conditions
 }
 

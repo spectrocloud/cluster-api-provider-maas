@@ -16,21 +16,26 @@ limitations under the License.
 
 package v1beta1
 
-import clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-
-// Conditions and condition Reasons for the MAAS Machine object
+// Conditions and condition Reasons for the MAAS Machine object.
+// Condition types are plain strings to match metav1.Condition.Type, and every
+// condition must carry a non-empty Reason (metav1.Condition requirement).
 
 const (
 	// MachineDeployedCondition documents the status of the deployment of a machine
+	MachineDeployedCondition string = "MachineDeployed"
 
-	MachineDeployedCondition clusterv1.ConditionType = "MachineDeployed"
+	// MachineDeployedReason documents a machine that has been successfully deployed.
+	MachineDeployedReason = "MachineDeployed"
 
-	// WaitingForClusterInfrastructureReason (Severity=Info) documents a MachineMachine waiting for the cluster
+	// DeletedReason documents an object that is being deleted.
+	DeletedReason = "Deleted"
+
+	// WaitingForClusterInfrastructureReason documents a MachineMachine waiting for the cluster
 	// infrastructure to be ready before starting to deploy the machine that provides the MachineMachine
 	// infrastructure.
 	WaitingForClusterInfrastructureReason = "WaitingForClusterInfrastructure"
 
-	// WaitingForBootstrapDataReason (Severity=Info) documents a MachineMachine waiting for the bootstrap
+	// WaitingForBootstrapDataReason documents a MachineMachine waiting for the bootstrap
 	// script to be ready before starting to create the container that provides the MachineMachine infrastructure.
 	WaitingForBootstrapDataReason = "WaitingForBootstrapData"
 
@@ -40,25 +45,28 @@ const (
 	// MachineTerminatedReason
 	MachineTerminatedReason = "MachineTerminatedReason"
 
-	// MachineDeployingReason
+	// MachinePoweredOffReason
 	MachinePoweredOffReason = "MachinePoweredOff"
 
 	// MachineNotFoundReason used when the machine couldn't be retrieved.
 	MachineNotFoundReason = "MachineNotFound"
 
-	// MachineDeployFailedReason (Severity=Warning) documents a MachineMachine controller detecting
+	// MachineDeployFailedReason documents a MachineMachine controller detecting
 	// an error while deploying the MaaS machine that provides the MachineMachine infrastructure; those kind of
 	// errors are usually transient and failed provisioning are automatically re-tried by the controller.
 	MachineDeployFailedReason = "MachineDeployFailed"
 
-	// MachineDeployStartedReason (Severity=Info) documents a MachineMachine controller started deploying
+	// MachineDeployStartedReason documents a MachineMachine controller started deploying
 	MachineDeployStartedReason = "MachineDeployStartedReason"
 )
 
 const (
 	// Only applicable to control plane machines. DNSAttachedCondition will report true when a control plane is successfully registered with an DNS
 	// When set to false, severity can be an Error if the subnet is not found or unavailable in the instance's AZ
-	DNSAttachedCondition clusterv1.ConditionType = "DNSAttached"
+	DNSAttachedCondition string = "DNSAttached"
+
+	// DNSAttachedReason documents a control plane that is registered with DNS.
+	DNSAttachedReason = "DNSAttached"
 
 	DNSDetachPending = "DNSDetachPending"
 	DNSAttachPending = "DNSAttachPending"
@@ -68,9 +76,12 @@ const (
 
 const (
 	// DNSReadyCondition documents the availability of the container that implements the cluster DNS.
-	DNSReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
+	DNSReadyCondition string = "LoadBalancerReady"
 
-	// LoadBalancerProvisioningFailedReason (Severity=Warning) documents a MAASCluster controller detecting
+	// DNSReadyReason documents that the cluster DNS is ready.
+	DNSReadyReason = "LoadBalancerReady"
+
+	// DNSFailedReason documents a MAASCluster controller detecting
 	// dns reconcile failure will be retried
 	DNSFailedReason = "LoadBalancerFailed"
 
@@ -79,7 +90,10 @@ const (
 
 const (
 	// APIServerAvailableCondition documents whether API server is reachable
-	APIServerAvailableCondition clusterv1.ConditionType = "APIServerAvailable"
+	APIServerAvailableCondition string = "APIServerAvailable"
+
+	// APIServerAvailableReason documents that the API server is reachable.
+	APIServerAvailableReason = "APIServerAvailable"
 
 	// APIServerNotReadyReason api server isn't responding
 	APIServerNotReadyReason = "APIServerNotReady"
@@ -87,7 +101,10 @@ const (
 
 const (
 	// LXDReadyCondition documents whether LXD hosts are properly configured
-	LXDReadyCondition clusterv1.ConditionType = "LXDReady"
+	LXDReadyCondition string = "LXDReady"
+
+	// LXDReadyReason documents that LXD hosts are properly configured.
+	LXDReadyReason = "LXDReady"
 
 	// LXDFailedReason documents LXD host setup failure
 	LXDFailedReason = "LXDFailed"

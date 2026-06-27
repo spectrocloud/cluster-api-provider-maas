@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The CNI ClusterResourceSet wiring is shared with the default flavor; reference the files in the
+# sibling main/ source dir instead of duplicating them.
+resources:
+  - cluster-template.yaml
+  - ../main/cluster-resource-set.yaml
+patches:
+  - path: ../main/cni-label-patch.yaml
+    target:
+      group: cluster.x-k8s.io
+      version: v1beta2
+      kind: Cluster
+      name: ".*"

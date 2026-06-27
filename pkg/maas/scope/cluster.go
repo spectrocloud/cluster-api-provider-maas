@@ -34,8 +34,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	"k8s.io/utils/ptr"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -54,7 +55,7 @@ type ClusterScopeParams struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	ControllerName      string
-	Tracker             *remote.ClusterCacheTracker
+	Tracker             clustercache.ClusterCache
 	ClusterEventChannel chan event.GenericEvent
 }
 
@@ -67,7 +68,7 @@ type ClusterScope struct {
 	Cluster             *clusterv1.Cluster
 	MaasCluster         *infrav1beta1.MaasCluster
 	controllerName      string
-	tracker             *remote.ClusterCacheTracker
+	tracker             clustercache.ClusterCache
 	clusterEventChannel chan event.GenericEvent
 }
 
@@ -100,19 +101,18 @@ func (s *ClusterScope) Client() client.Client {
 func (s *ClusterScope) PatchObject() error {
 	// Always update the readyCondition by summarizing the state of other conditions.
 	// A step counter is added to represent progress during the provisioning process (instead we are hiding it during the deletion process).
-	conditions.SetSummary(s.MaasCluster,
-		conditions.WithConditions(
+	_ = conditions.SetSummaryCondition(s.MaasCluster, s.MaasCluster, clusterv1.ReadyCondition,
+		conditions.ForConditionTypes{
 			infrav1beta1.DNSReadyCondition,
 			infrav1beta1.APIServerAvailableCondition,
-		),
-		conditions.WithStepCounterIf(s.MaasCluster.ObjectMeta.DeletionTimestamp.IsZero()),
+		},
 	)
 
 	// Patch the object, ignoring conflicts on the conditions owned by this controller.
 	return s.patchHelper.Patch(
 		context.TODO(),
 		s.MaasCluster,
-		patch.WithOwnedConditions{Conditions: []clusterv1.ConditionType{
+		patch.WithOwnedConditions{Conditions: []string{
 			clusterv1.ReadyCondition,
 			infrav1beta1.DNSReadyCondition,
 			infrav1beta1.APIServerAvailableCondition,
@@ -127,8 +127,8 @@ func (s *ClusterScope) Close() error {
 
 // APIServerPort returns the APIServerPort to use when creating the load balancer.
 func (s *ClusterScope) APIServerPort() int {
-	if s.Cluster.Spec.ClusterNetwork != nil && s.Cluster.Spec.ClusterNetwork.APIServerPort != nil {
-		return int(*s.Cluster.Spec.ClusterNetwork.APIServerPort)
+	if s.Cluster.Spec.ClusterNetwork.APIServerPort != 0 {
+		return int(s.Cluster.Spec.ClusterNetwork.APIServerPort)
 	}
 	return 6443
 }
@@ -278,7 +278,7 @@ var (
 )
 
 func (s *ClusterScope) ReconcileMaasClusterWhenAPIServerIsOnline() {
-	if s.Cluster.Status.ControlPlaneReady {
+	if ptr.Deref(s.Cluster.Status.Initialization.ControlPlaneInitialized, false) {
 		s.Info("skipping reconcile when API server is online",
 			"reason", "ControlPlaneReady")
 		return

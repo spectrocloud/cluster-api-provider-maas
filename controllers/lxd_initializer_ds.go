@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/yaml"
@@ -282,20 +283,16 @@ func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, 
 func (r *MaasClusterReconciler) controlPlaneReady(ctx context.Context, clusterScope *scope.ClusterScope) bool {
 	cluster := clusterScope.Cluster
 	cpRef := cluster.Spec.ControlPlaneRef
-	if cpRef == nil {
+	if !cpRef.IsDefined() {
 		r.Log.Info("Cluster has no controlPlaneRef; control plane not ready", "cluster", cluster.Name)
 		return false
 	}
 
-	namespace := cpRef.Namespace
-	if namespace == "" {
-		namespace = cluster.Namespace
-	}
-
-	cp := &unstructured.Unstructured{}
-	cp.SetGroupVersionKind(cpRef.GroupVersionKind())
-	if err := r.Client.Get(ctx, client.ObjectKey{Namespace: namespace, Name: cpRef.Name}, cp); err != nil {
-		r.Log.Info("Control plane object not found yet; control plane not ready", "ref", cpRef.Name, "namespace", namespace, "error", err.Error())
+	// controlPlaneRef is contract-versioned (no namespace/apiVersion); resolve via the
+	// contract helper, which determines the stored apiVersion. Refs are same-namespace.
+	cp, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, cpRef, cluster.Namespace)
+	if err != nil {
+		r.Log.Info("Control plane object not found yet; control plane not ready", "ref", cpRef.Name, "namespace", cluster.Namespace, "error", err.Error())
 		return false
 	}
 

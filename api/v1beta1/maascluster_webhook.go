@@ -17,22 +17,21 @@ limitations under the License.
 package v1beta1
 
 import (
-	"fmt"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
 // log is for logging in this package.
 var maasclusterlog = logf.Log.WithName("maascluster-resource")
 
 func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(r).
+	return ctrl.NewWebhookManagedBy(mgr, r).
+		WithDefaulter(r).
+		WithValidator(r).
 		Complete()
 }
 
@@ -40,37 +39,33 @@ func (r *MaasCluster) SetupWebhookWithManager(mgr ctrl.Manager) error {
 //+kubebuilder:webhook:verbs=create;update,path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-maascluster,mutating=false,failurePolicy=fail,groups=infrastructure.cluster.x-k8s.io,resources=maasclusters,versions=v1beta1,name=vmaascluster.kb.io,sideEffects=None,admissionReviewVersions=v1beta1;v1
 
 var (
-	_ webhook.Defaulter = &MaasCluster{}
-	_ webhook.Validator = &MaasCluster{}
+	_ admission.Defaulter[*MaasCluster] = &MaasCluster{}
+	_ admission.Validator[*MaasCluster] = &MaasCluster{}
 )
 
-// Default implements webhook.Defaulter so a webhook will be registered for the type
-func (r *MaasCluster) Default() {
+// Default implements admission.Defaulter so a webhook will be registered for the type
+func (r *MaasCluster) Default(_ context.Context, _ *MaasCluster) error {
 	maasclusterlog.Info("default", "name", r.Name)
+	return nil
 }
 
-// ValidateCreate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateCreate() (admission.Warnings, error) {
+// ValidateCreate implements admission.Validator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateCreate(_ context.Context, _ *MaasCluster) (admission.Warnings, error) {
 	maasclusterlog.Info("validate create", "name", r.Name)
 	return nil, nil
 }
 
-// ValidateUpdate implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateUpdate(old runtime.Object) (admission.Warnings, error) {
-	maasclusterlog.Info("validate update", "name", r.Name)
-	oldC, ok := old.(*MaasCluster)
-	if !ok {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("expected a MaasCluster but got a %T", old))
-	}
-
-	if r.Spec.DNSDomain != oldC.Spec.DNSDomain {
+// ValidateUpdate implements admission.Validator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateUpdate(_ context.Context, oldObj, newObj *MaasCluster) (admission.Warnings, error) {
+	maasclusterlog.Info("validate update", "name", newObj.Name)
+	if newObj.Spec.DNSDomain != oldObj.Spec.DNSDomain {
 		return nil, apierrors.NewBadRequest("changing cluster DNS Domain not allowed")
 	}
 	return nil, nil
 }
 
-// ValidateDelete implements webhook.Validator so a webhook will be registered for the type
-func (r *MaasCluster) ValidateDelete() (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator so a webhook will be registered for the type
+func (r *MaasCluster) ValidateDelete(_ context.Context, _ *MaasCluster) (admission.Warnings, error) {
 	maasclusterlog.Info("validate delete", "name", r.Name)
 	return nil, nil
 }

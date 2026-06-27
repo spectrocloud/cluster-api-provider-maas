@@ -1,0 +1,21 @@
+# Maps the Cluster API core/bootstrap/control-plane release series to their contract version.
+# Used by the e2e config for the cluster-api (CoreProvider) and kubeadm (Bootstrap/ControlPlane)
+# providers. Keep the entry for the version referenced in config/maas.yaml in sync with go.mod
+# (sigs.k8s.io/cluster-api).
+#
+# IMPORTANT: the highest release series per contract must correspond to a version actually present
+# in the generated local repository (i.e. the version pinned in config/maas.yaml). clusterctl
+# resolves "latest" for a contract to the newest matching series; if that series (e.g. 1.14) has no
+# release folder, init fails with "failed to find releases tagged with a valid semantic version
+# number". So do NOT list a newer series than the one pinned in config/maas.yaml (currently 1.13).
+apiVersion: clusterctl.cluster.x-k8s.io/v1alpha3
+releaseSeries:
+  - major: 1
+    minor: 11
+    contract: v1beta1
+  - major: 1
+    minor: 12
+    contract: v1beta1
+  - major: 1
+    minor: 13
+    contract: v1beta2

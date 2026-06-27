@@ -11,7 +11,7 @@ import (
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2/klogr"
 	"k8s.io/utils/pointer"
-	"sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	mockclientset "github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/client/mock"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/scope"
@@ -20,7 +20,7 @@ import (
 
 func TestMachine(t *testing.T) {
 	log := klogr.New()
-	cluster := &v1beta1.Cluster{
+	cluster := &clusterv1.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name: "a",
 		},
@@ -81,11 +81,11 @@ func TestMachine(t *testing.T) {
 		g.Expect(machine.Powered).To(BeTrue())
 		g.Expect(machine.State).To(BeEquivalentTo("Deployed"))
 		g.Expect(machine.AvailabilityZone).To(BeEquivalentTo("zone1"))
-		g.Expect(machine.Addresses).To(ContainElements(v1beta1.MachineAddress{
-			Type:    v1beta1.MachineExternalDNS,
+		g.Expect(machine.Addresses).To(ContainElements(clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalDNS,
 			Address: "abc123.domain.local",
-		}, v1beta1.MachineAddress{
-			Type:    v1beta1.MachineExternalIP,
+		}, clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalIP,
 			Address: "1.2.3.4",
 		}))
 	})
@@ -130,11 +130,11 @@ func TestMachine(t *testing.T) {
 		g.Expect(machine.Powered).To(BeTrue())
 		g.Expect(machine.State).To(BeEquivalentTo("Deployed"))
 		g.Expect(machine.AvailabilityZone).To(BeEquivalentTo("zone2"))
-		g.Expect(machine.Addresses).To(ContainElements(v1beta1.MachineAddress{
-			Type:    v1beta1.MachineExternalDNS,
+		g.Expect(machine.Addresses).To(ContainElements(clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalDNS,
 			Address: "abc456.domain.local",
-		}, v1beta1.MachineAddress{
-			Type:    v1beta1.MachineExternalIP,
+		}, clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalIP,
 			Address: "5.6.7.8",
 		}))
 	})
@@ -192,8 +192,8 @@ func TestMachine(t *testing.T) {
 				Logger:      log,
 				Cluster:     cluster,
 				MaasMachine: maasMachine,
-				Machine: &v1beta1.Machine{
-					Spec: v1beta1.MachineSpec{},
+				Machine: &clusterv1.Machine{
+					Spec: clusterv1.MachineSpec{},
 				},
 			},
 			maasClient: mockClientSetInterface,
