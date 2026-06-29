@@ -521,10 +521,9 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 
 // createNewMaasMachineTemplate clones the current MaasMachineTemplate with a new name
 func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Context, kcp *unstructured.Unstructured, log logr.Logger) (string, error) {
-	// Get current template reference from KCP
-	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "infrastructureRef")
+	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "spec", "infrastructureRef")
 	if err != nil || !found {
-		return "", fmt.Errorf("failed to get machineTemplate.infrastructureRef from KCP")
+		return "", fmt.Errorf("failed to get machineTemplate.spec.infrastructureRef from KCP")
 	}
 
 	currentTemplateName, ok := templateRef["name"].(string)
@@ -532,10 +531,7 @@ func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Contex
 		return "", fmt.Errorf("invalid template name in KCP")
 	}
 
-	templateNamespace, ok := templateRef["namespace"].(string)
-	if !ok || templateNamespace == "" {
-		templateNamespace = kcp.GetNamespace()
-	}
+	templateNamespace := kcp.GetNamespace()
 
 	// Get the current MaasMachineTemplate
 	currentTemplate := &infrav1beta1.MaasMachineTemplate{}
@@ -591,13 +587,12 @@ func (r *VMEvacuationReconciler) swapKCPTemplateWithMaxSurge(ctx context.Context
 		return fmt.Errorf("KCP is nil")
 	}
 
-	// Set new template name
-	if err := unstructured.SetNestedField(kcp.Object, newTemplateName, "spec", "machineTemplate", "infrastructureRef", "name"); err != nil {
+	if err := unstructured.SetNestedField(kcp.Object, newTemplateName, "spec", "machineTemplate", "spec", "infrastructureRef", "name"); err != nil {
 		return errors.Wrap(err, "failed to set new template name")
 	}
 
-	// Set maxSurge=1
-	if err := unstructured.SetNestedField(kcp.Object, int64(1), "spec", "rolloutStrategy", "rollingUpdate", "maxSurge"); err != nil {
+	// Set maxSurge=1 (v1beta2 renamed spec.rolloutStrategy → spec.rollout.strategy)
+	if err := unstructured.SetNestedField(kcp.Object, int64(1), "spec", "rollout", "strategy", "rollingUpdate", "maxSurge"); err != nil {
 		return errors.Wrap(err, "failed to set maxSurge")
 	}
 
@@ -769,7 +764,8 @@ func (r *VMEvacuationReconciler) isWLCCluster(ctx context.Context, cluster *clus
 	if err != nil {
 		return false, err
 	}
-	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "infrastructureRef")
+
+	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "spec", "infrastructureRef")
 	if err != nil || !found {
 		return false, nil // malformed/absent ref → treat as not-WLC (standard)
 	}
@@ -777,12 +773,8 @@ func (r *VMEvacuationReconciler) isWLCCluster(ctx context.Context, cluster *clus
 	if name == "" {
 		return false, nil
 	}
-	ns, _ := templateRef["namespace"].(string)
-	if ns == "" {
-		ns = kcp.GetNamespace()
-	}
 	tmpl := &infrav1beta1.MaasMachineTemplate{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: name}, tmpl); err != nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: kcp.GetNamespace(), Name: name}, tmpl); err != nil {
 		return false, err
 	}
 	return templateHasLXDEnabled(tmpl), nil

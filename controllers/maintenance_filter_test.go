@@ -187,10 +187,11 @@ func newKCP(name, ns, templateName string) *unstructured.Unstructured {
 	kcp.SetName(name)
 	kcp.SetNamespace(ns)
 	if templateName != "" {
+		// v1beta2 contract: infrastructureRef lives under spec.machineTemplate.spec
+		// and is a ContractVersionedObjectReference (no namespace — same as the KCP).
 		_ = unstructured.SetNestedMap(kcp.Object, map[string]interface{}{
-			"name":      templateName,
-			"namespace": ns,
-		}, "spec", "machineTemplate", "infrastructureRef")
+			"name": templateName,
+		}, "spec", "machineTemplate", "spec", "infrastructureRef")
 	}
 	return kcp
 }
