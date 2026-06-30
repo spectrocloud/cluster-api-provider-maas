@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -87,7 +88,8 @@ func main() {
 
 	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restCfg := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsBindAddr,
@@ -188,6 +190,20 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
+
+	// One-time upgrade migration (v0.8.0->v0.9.0): rewrite any MaasCluster whose
+	// status.failureDomains is still the pre-v0.9.0 map into a slice, otherwise the
+	// typed cache List fails and the controller can never reconcile. Runs before
+	// mgr.Start (and thus before the typed cache) using a direct unstructured client.
+	directClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create client for failureDomains migration")
+		os.Exit(1)
+	}
+	if err := controllers.MigrateMaasClusterFailureDomains(ctx, directClient, setupLog); err != nil {
+		setupLog.Error(err, "failed to migrate MaasCluster status.failureDomains")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	// v1alpha4 change to "ctx"
