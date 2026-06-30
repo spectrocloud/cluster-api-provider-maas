@@ -255,7 +255,7 @@ func (r *MaasClusterReconciler) computeDesiredControlPlane(ctx context.Context, 
 
 	// Use KubeadmControlPlane as the authoritative source
 	kcpList := &unstructured.UnstructuredList{}
-	kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta1", Kind: "KubeadmControlPlaneList"})
+	kcpList.SetGroupVersionKind(schema.GroupVersionKind{Group: "controlplane.cluster.x-k8s.io", Version: "v1beta2", Kind: "KubeadmControlPlaneList"})
 	if err := r.Client.List(ctx, kcpList, client.InNamespace(namespace), client.MatchingLabels{
 		"cluster.x-k8s.io/cluster-name": clusterName,
 	}); err == nil {
@@ -327,7 +327,7 @@ func (r *MaasClusterReconciler) controlPlaneReady(ctx context.Context, clusterSc
 // Used to avoid deleting the initializer DaemonSet before worker nodes have joined.
 func (r *MaasClusterReconciler) desiredWorkerReplicas(ctx context.Context, namespace, clusterName string) int32 {
 	mdList := &unstructured.UnstructuredList{}
-	mdList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.x-k8s.io", Version: "v1beta1", Kind: "MachineDeploymentList"})
+	mdList.SetGroupVersionKind(schema.GroupVersionKind{Group: "cluster.x-k8s.io", Version: "v1beta2", Kind: "MachineDeploymentList"})
 	if err := r.Client.List(ctx, mdList, client.InNamespace(namespace), client.MatchingLabels{
 		"cluster.x-k8s.io/cluster-name": clusterName,
 	}); err != nil {
