@@ -1,0 +1,16 @@
+# Maps the cluster-api-provider-maas release series to the Cluster API contract version.
+# This is the infrastructure provider metadata consumed by clusterctl for the e2e tests.
+# The e2e config (config/maas.yaml) declares the provider under a "next" version (v0.9.99) built
+# from the working tree; its minor (9) must appear here with the current contract (v1beta2, which
+# matches sigs.k8s.io/cluster-api v1.13.x).
+apiVersion: clusterctl.cluster.x-k8s.io/v1alpha3
+releaseSeries:
+  - major: 0
+    minor: 7
+    contract: v1beta1
+  - major: 0
+    minor: 8
+    contract: v1beta2
+  - major: 0
+    minor: 9
+    contract: v1beta2

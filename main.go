@@ -26,6 +26,7 @@ import (
 	"k8s.io/klog/v2/textlogger"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
+	"sigs.k8s.io/cluster-api/controllers/clustercache"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
 	"github.com/spectrocloud/cluster-api-provider-maas/controllers"
@@ -35,10 +36,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/feature"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
@@ -86,7 +88,8 @@ func main() {
 
 	ctrl.SetLogger(textlogger.NewLogger(textlogger.NewConfig()))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restCfg := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(restCfg, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: metricsBindAddr,
@@ -121,26 +124,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Set up a ClusterCacheTracker and ClusterCacheReconciler to provide to controllers
-	// requiring a connection to a remote cluster
-	log := ctrl.Log.WithName("remote").WithName("ClusterCacheTracker")
-	tracker, err := remote.NewClusterCacheTracker(
-		mgr,
-		remote.ClusterCacheTrackerOptions{
-			Log:     &log,
-			Indexes: []remote.Index{remote.NodeProviderIDIndex},
+	// Set up a ClusterCache to provide to controllers requiring a connection to a remote cluster.
+	clusterCache, err := clustercache.SetupWithManager(ctx, mgr, clustercache.Options{
+		SecretClient: mgr.GetClient(),
+		Client: clustercache.ClientOptions{
+			UserAgent: remote.DefaultClusterAPIUserAgent("cluster-api-provider-maas"),
 		},
-	)
+	}, concurrency(1))
 	if err != nil {
-		setupLog.Error(err, "unable to create cluster cache tracker")
-		os.Exit(1)
-	}
-	if err := (&remote.ClusterCacheReconciler{
-		Client: mgr.GetClient(),
-		//Log:     ctrl.Log.WithName("remote").WithName("ClusterCacheReconciler"),
-		Tracker: tracker,
-	}).SetupWithManager(ctx, mgr, concurrency(1)); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "ClusterCacheReconciler")
+		setupLog.Error(err, "unable to create cluster cache")
 		os.Exit(1)
 	}
 
@@ -148,7 +140,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasMachine"),
 		Recorder: mgr.GetEventRecorderFor("maasmachine-controller"),
-		Tracker:  tracker,
+		Tracker:  clusterCache,
 	}).SetupWithManager(ctx, mgr, concurrency(machineConcurrency)); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasMachine")
 		os.Exit(1)
@@ -159,7 +151,7 @@ func main() {
 		Log:      ctrl.Log.WithName("controllers").WithName("MaasCluster"),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("maascluster-controller"),
-		Tracker:  tracker,
+		Tracker:  clusterCache,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MaasCluster")
 		os.Exit(1)
@@ -198,6 +190,20 @@ func main() {
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
+
+	// One-time upgrade migration (v0.8.0->v0.9.0): rewrite any MaasCluster whose
+	// status.failureDomains is still the pre-v0.9.0 map into a slice, otherwise the
+	// typed cache List fails and the controller can never reconcile. Runs before
+	// mgr.Start (and thus before the typed cache) using a direct unstructured client.
+	directClient, err := client.New(restCfg, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Error(err, "unable to create client for failureDomains migration")
+		os.Exit(1)
+	}
+	if err := controllers.MigrateMaasClusterFailureDomains(ctx, directClient, setupLog); err != nil {
+		setupLog.Error(err, "failed to migrate MaasCluster status.failureDomains")
+		os.Exit(1)
+	}
 
 	setupLog.Info("starting manager")
 	// v1alpha4 change to "ctx"

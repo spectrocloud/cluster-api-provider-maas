@@ -18,7 +18,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 const (
@@ -99,16 +99,29 @@ type MaasClusterStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready"`
 
+	// initialization provides observations of the MaasCluster initialization process.
+	// +optional
+	Initialization MaasClusterInitializationStatus `json:"initialization,omitempty"`
+
 	// Network represents the network
 	Network Network `json:"network,omitempty"`
 
 	// FailureDomains don't mean much in CAPMAAS since it's all local, but we can see how the rest of cluster API
 	// will use this if we populate it.
-	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
+	FailureDomains []clusterv1.FailureDomain `json:"failureDomains,omitempty"`
 
 	// Conditions defines current service state of the MaasCluster.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// MaasClusterInitializationStatus provides observations of the MaasCluster
+// initialization process, as required by the Cluster API v1beta2 contract.
+type MaasClusterInitializationStatus struct {
+	// provisioned is true when the infrastructure provider reports that the
+	// Cluster's infrastructure is fully provisioned.
+	// +optional
+	Provisioned *bool `json:"provisioned,omitempty"`
 }
 
 // Network encapsulates the Cluster Network
@@ -146,11 +159,11 @@ type MaasCluster struct {
 	Status MaasClusterStatus `json:"status,omitempty"`
 }
 
-func (in *MaasCluster) GetConditions() clusterv1.Conditions {
+func (in *MaasCluster) GetConditions() []metav1.Condition {
 	return in.Status.Conditions
 }
 
-func (in *MaasCluster) SetConditions(conditions clusterv1.Conditions) {
+func (in *MaasCluster) SetConditions(conditions []metav1.Condition) {
 	in.Status.Conditions = conditions
 }
 

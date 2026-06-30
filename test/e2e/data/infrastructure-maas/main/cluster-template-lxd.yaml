@@ -1,0 +1,194 @@
+apiVersion: v1
+data: ${CNI_RESOURCES}
+kind: ConfigMap
+metadata:
+  name: cni-${CLUSTER_NAME}-crs-cni
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSet
+metadata:
+  name: ${CLUSTER_NAME}-crs-cni
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: ${CLUSTER_NAME}-crs-cni
+  resources:
+  - kind: ConfigMap
+    name: cni-${CLUSTER_NAME}-crs-cni
+  strategy: ApplyOnce
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
+          name: '{{ v1.local_hostname }}'
+      preKubeadmCommands:
+      - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+        sleep 1; done
+      - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      - swapoff -a
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  labels:
+    cni: ${CLUSTER_NAME}-crs-cni
+  name: ${CLUSTER_NAME}
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - 192.168.0.0/16
+    serviceDomain: cluster.local
+    services:
+      cidrBlocks:
+      - 10.96.0.0/12
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: MaasCluster
+    name: ${CLUSTER_NAME}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: ${CLUSTER_NAME}-md-0
+      clusterName: ${CLUSTER_NAME}
+      failureDomain: ${FAILURE_DOMAIN}
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-md-0
+      version: ${KUBERNETES_VERSION}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        extraArgs:
+        - name: anonymous-auth
+          value: "true"
+        - name: authorization-mode
+          value: RBAC,Node
+        - name: default-not-ready-toleration-seconds
+          value: "60"
+        - name: default-unreachable-toleration-seconds
+          value: "60"
+        - name: disable-admission-plugins
+          value: AlwaysAdmit
+        - name: enable-admission-plugins
+          value: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
+      controllerManager:
+        extraArgs:
+        - name: feature-gates
+          value: RotateKubeletServerCertificate=true
+        - name: terminated-pod-gc-threshold
+          value: "25"
+        - name: use-service-account-credentials
+          value: "true"
+    initConfiguration:
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: event-qps
+          value: "0"
+        - name: feature-gates
+          value: RotateKubeletServerCertificate=true
+        - name: read-only-port
+          value: "0"
+        name: '{{ v1.local_hostname }}'
+    joinConfiguration:
+      controlPlane: {}
+      nodeRegistration:
+        kubeletExtraArgs:
+        - name: event-qps
+          value: "0"
+        - name: feature-gates
+          value: RotateKubeletServerCertificate=true
+        - name: read-only-port
+          value: "0"
+        name: '{{ v1.local_hostname }}'
+    preKubeadmCommands:
+    - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
+      sleep 1; done
+    - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+    - swapoff -a
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-control-plane
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasCluster
+metadata:
+  name: ${CLUSTER_NAME}
+spec:
+  dnsDomain: ${MAAS_DNS_DOMAIN}
+  failureDomains:
+  - ${FAILURE_DOMAIN}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  template:
+    spec:
+      failureDomain: ${FAILURE_DOMAIN}
+      image: ${CONTROL_PLANE_MACHINE_IMAGE}
+      lxd:
+        enabled: true
+        vmConfig:
+          autoStart: true
+          diskSize: ${LXD_VM_DISK_SIZE}
+      minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
+      minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
+      resourcePool: ${CONTROL_PLANE_MACHINE_RESOURCEPOOL}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: MaasMachineTemplate
+metadata:
+  name: ${CLUSTER_NAME}-md-0
+spec:
+  template:
+    spec:
+      failureDomain: ${FAILURE_DOMAIN}
+      image: ${WORKER_MACHINE_IMAGE}
+      minCPU: ${WORKER_MACHINE_MINCPU}
+      minMemory: ${WORKER_MACHINE_MINMEMORY}
+      resourcePool: ${WORKER_MACHINE_RESOURCEPOOL}

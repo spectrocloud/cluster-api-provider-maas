@@ -48,9 +48,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
+	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -105,6 +105,20 @@ func (r *VMEvacuationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	cluster, err := util.GetOwnerCluster(ctx, r.Client, maasCluster.ObjectMeta)
 	if err != nil || cluster == nil {
 		log.Info("Cluster not found or not ready")
+		return ctrl.Result{}, nil
+	}
+
+	// VEC only services LXD workload clusters. Standard clusters (bare-metal, or with
+	// user-created LXD VMs) and clusters whose CP is not LXD must be skipped — otherwise
+	// VEC looks up a non-existent VM parent host and logs spurious errors.
+	isWLC, err := r.isWLCCluster(ctx, cluster)
+	if err != nil {
+		// KCP/template not resolvable yet (e.g. still provisioning) — retry, don't skip.
+		log.V(1).Info("Cannot determine cluster type yet; will retry", "error", err.Error())
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+	if !isWLC {
+		log.V(1).Info("Not an LXD workload cluster; VEC has nothing to do", "cluster", cluster.Name)
 		return ctrl.Result{}, nil
 	}
 
@@ -290,7 +304,7 @@ func (r *VMEvacuationReconciler) findCPMachinesOnMaintenanceHosts(ctx context.Co
 
 		maasMachine := &infrav1beta1.MaasMachine{}
 		key := client.ObjectKey{
-			Namespace: machine.Spec.InfrastructureRef.Namespace,
+			Namespace: machine.Namespace,
 			Name:      machine.Spec.InfrastructureRef.Name,
 		}
 
@@ -406,23 +420,14 @@ func extractSystemIDFromProviderID(providerID string) string {
 
 // getKubeadmControlPlane retrieves the KubeadmControlPlane for the cluster
 func (r *VMEvacuationReconciler) getKubeadmControlPlane(ctx context.Context, cluster *clusterv1.Cluster) (*unstructured.Unstructured, error) {
-	if cluster.Spec.ControlPlaneRef == nil {
+	if !cluster.Spec.ControlPlaneRef.IsDefined() {
 		return nil, fmt.Errorf("cluster has no controlPlaneRef")
 	}
 
-	kcp := &unstructured.Unstructured{}
-	kcp.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "controlplane.cluster.x-k8s.io",
-		Version: "v1beta1",
-		Kind:    "KubeadmControlPlane",
-	})
-
-	key := client.ObjectKey{
-		Namespace: cluster.Spec.ControlPlaneRef.Namespace,
-		Name:      cluster.Spec.ControlPlaneRef.Name,
-	}
-
-	if err := r.Get(ctx, key, kcp); err != nil {
+	// controlPlaneRef is contract-versioned (no namespace/apiVersion); resolve via the
+	// contract helper. Refs are same-namespace as the owning Cluster.
+	kcp, err := external.GetObjectFromContractVersionedRef(ctx, r.Client, cluster.Spec.ControlPlaneRef, cluster.Namespace)
+	if err != nil {
 		return nil, errors.Wrap(err, "failed to get KubeadmControlPlane")
 	}
 
@@ -516,10 +521,9 @@ func (r *VMEvacuationReconciler) deleteCPMachine(ctx context.Context, machine *c
 
 // createNewMaasMachineTemplate clones the current MaasMachineTemplate with a new name
 func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Context, kcp *unstructured.Unstructured, log logr.Logger) (string, error) {
-	// Get current template reference from KCP
-	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "infrastructureRef")
+	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "spec", "infrastructureRef")
 	if err != nil || !found {
-		return "", fmt.Errorf("failed to get machineTemplate.infrastructureRef from KCP")
+		return "", fmt.Errorf("failed to get machineTemplate.spec.infrastructureRef from KCP")
 	}
 
 	currentTemplateName, ok := templateRef["name"].(string)
@@ -527,10 +531,7 @@ func (r *VMEvacuationReconciler) createNewMaasMachineTemplate(ctx context.Contex
 		return "", fmt.Errorf("invalid template name in KCP")
 	}
 
-	templateNamespace, ok := templateRef["namespace"].(string)
-	if !ok || templateNamespace == "" {
-		templateNamespace = kcp.GetNamespace()
-	}
+	templateNamespace := kcp.GetNamespace()
 
 	// Get the current MaasMachineTemplate
 	currentTemplate := &infrav1beta1.MaasMachineTemplate{}
@@ -586,13 +587,12 @@ func (r *VMEvacuationReconciler) swapKCPTemplateWithMaxSurge(ctx context.Context
 		return fmt.Errorf("KCP is nil")
 	}
 
-	// Set new template name
-	if err := unstructured.SetNestedField(kcp.Object, newTemplateName, "spec", "machineTemplate", "infrastructureRef", "name"); err != nil {
+	if err := unstructured.SetNestedField(kcp.Object, newTemplateName, "spec", "machineTemplate", "spec", "infrastructureRef", "name"); err != nil {
 		return errors.Wrap(err, "failed to set new template name")
 	}
 
-	// Set maxSurge=1
-	if err := unstructured.SetNestedField(kcp.Object, int64(1), "spec", "rolloutStrategy", "rollingUpdate", "maxSurge"); err != nil {
+	// Set maxSurge=1 (v1beta2 renamed spec.rolloutStrategy → spec.rollout.strategy)
+	if err := unstructured.SetNestedField(kcp.Object, int64(1), "spec", "rollout", "strategy", "rollingUpdate", "maxSurge"); err != nil {
 		return errors.Wrap(err, "failed to set maxSurge")
 	}
 
@@ -740,4 +740,42 @@ func isHCPMaasCluster(mc *infrav1beta1.MaasCluster) bool {
 		mc.Spec.LXDConfig != nil &&
 		mc.Spec.LXDConfig.Enabled != nil &&
 		*mc.Spec.LXDConfig.Enabled
+}
+
+// templateHasLXDEnabled reports whether a control-plane MaasMachineTemplate
+// provisions LXD VMs (spec.template.spec.lxd.enabled=true). This is the WLC
+// discriminator: only workload clusters whose CP machines are LXD VMs are VEC
+// evacuation targets.
+func templateHasLXDEnabled(tmpl *infrav1beta1.MaasMachineTemplate) bool {
+	if tmpl == nil {
+		return false
+	}
+	lxd := tmpl.Spec.Template.Spec.LXD
+	return lxd != nil && lxd.Enabled != nil && *lxd.Enabled
+}
+
+// isWLCCluster reports whether the cluster is an LXD workload cluster — i.e. its
+// control-plane MaasMachineTemplate has lxd.enabled=true. HCP clusters are already
+// excluded by the watch predicate; the remaining clusters are WLC or standard.
+// Returns an error only on transient/indeterminate lookups (e.g. KCP/template not
+// ready) so the caller can retry rather than permanently skip a still-provisioning WLC.
+func (r *VMEvacuationReconciler) isWLCCluster(ctx context.Context, cluster *clusterv1.Cluster) (bool, error) {
+	kcp, err := r.getKubeadmControlPlane(ctx, cluster)
+	if err != nil {
+		return false, err
+	}
+
+	templateRef, found, err := unstructured.NestedMap(kcp.Object, "spec", "machineTemplate", "spec", "infrastructureRef")
+	if err != nil || !found {
+		return false, nil // malformed/absent ref → treat as not-WLC (standard)
+	}
+	name, _ := templateRef["name"].(string)
+	if name == "" {
+		return false, nil
+	}
+	tmpl := &infrav1beta1.MaasMachineTemplate{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: kcp.GetNamespace(), Name: name}, tmpl); err != nil {
+		return false, err
+	}
+	return templateHasLXDEnabled(tmpl), nil
 }

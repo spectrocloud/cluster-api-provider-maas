@@ -9,7 +9,7 @@
 #   export CLUSTER_NAME=hcp NAMESPACE=default KUBERNETES_VERSION=v1.26.4 ...
 #   envsubst < templates/cluster-template-hcp.yaml | kubectl apply -f -
 # Or with clusterctl: clusterctl generate cluster <name> --flavor hcp
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -21,11 +21,11 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: KubeadmControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: MaasCluster
     name: ${CLUSTER_NAME}
 ---
@@ -36,6 +36,7 @@ metadata:
 spec:
   dnsDomain: ${DNS_DOMAIN}
   failureDomains:
+    - ${CONTROL_PLANE_ZONE}
     - default
   # Enabling LXD on the cluster registers its machines as LXD VM hosts.
   lxdConfig:
@@ -44,7 +45,7 @@ spec:
     skipNetworkUpdate: true
     storageSize: "${LXD_STORAGE_SIZE}"
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   name: ${CLUSTER_NAME}-control-plane
@@ -52,53 +53,61 @@ spec:
   replicas: ${CONTROL_PLANE_MACHINE_COUNT}
   version: ${KUBERNETES_VERSION}
   machineTemplate:
-    infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: MaasMachineTemplate
-      name: ${CLUSTER_NAME}-control-plane
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: MaasMachineTemplate
+        name: ${CLUSTER_NAME}-control-plane
   kubeadmConfigSpec:
     clusterConfiguration:
       apiServer:
         extraArgs:
-          anonymous-auth: "true"
-          authorization-mode: RBAC,Node
-          default-not-ready-toleration-seconds: "60"
-          default-unreachable-toleration-seconds: "60"
-          disable-admission-plugins: AlwaysAdmit
-          enable-admission-plugins: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
-        timeoutForControlPlane: 10m0s
+          - name: anonymous-auth
+            value: "true"
+          - name: authorization-mode
+            value: RBAC,Node
+          - name: default-not-ready-toleration-seconds
+            value: "60"
+          - name: default-unreachable-toleration-seconds
+            value: "60"
+          - name: disable-admission-plugins
+            value: AlwaysAdmit
+          - name: enable-admission-plugins
+            value: AlwaysPullImages,NamespaceLifecycle,ServiceAccount,NodeRestriction
       controllerManager:
         extraArgs:
-          feature-gates: RotateKubeletServerCertificate=true
-          terminated-pod-gc-threshold: "25"
-          use-service-account-credentials: "true"
-      dns: {}
-      etcd: {}
-      networking: {}
-      scheduler:
-        extraArgs:
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: terminated-pod-gc-threshold
+            value: "25"
+          - name: use-service-account-credentials
+            value: "true"
     initConfiguration:
       nodeRegistration:
         kubeletExtraArgs:
-          event-qps: "0"
-          feature-gates: RotateKubeletServerCertificate=true
-          read-only-port: "0"
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
         name: '{{ v1.local_hostname }}'
     joinConfiguration:
       controlPlane: {}
-      discovery: {}
       nodeRegistration:
         kubeletExtraArgs:
-          event-qps: "0"
-          feature-gates: RotateKubeletServerCertificate=true
-          read-only-port: "0"
+          - name: event-qps
+            value: "0"
+          - name: feature-gates
+            value: RotateKubeletServerCertificate=true
+          - name: read-only-port
+            value: "0"
         name: '{{ v1.local_hostname }}'
     preKubeadmCommands:
       - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
         sleep 1; done
       - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
       - swapoff -a
-    useExperimentalRetryJoin: true
 ---
 # Control-plane hosts run on bare metal (no spec.lxd block).
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -108,17 +117,14 @@ metadata:
 spec:
   template:
     spec:
-      failureDomain: ${CONTROL_PLANE_ZONE}
       image: ${MACHINE_IMAGE}
       minCPU: ${CONTROL_PLANE_MACHINE_MINCPU}
       minMemory: ${CONTROL_PLANE_MACHINE_MINMEMORY}
       minDiskSize: ${CONTROL_PLANE_MACHINE_MINSTORAGE}
       resourcePool: ${LXD_RESOURCE_POOL}
-      tags:
-      - lxd-host
-      - control-plane
+
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineDeployment
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -136,14 +142,15 @@ spec:
         cluster.x-k8s.io/deployment-name: ${CLUSTER_NAME}-md-0
     spec:
       clusterName: ${CLUSTER_NAME}
+      failureDomain: ${WORKER_ZONE}
       version: ${KUBERNETES_VERSION}
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiGroup: bootstrap.cluster.x-k8s.io
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-md-0
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: MaasMachineTemplate
         name: ${CLUSTER_NAME}-md-0
 ---
@@ -155,17 +162,13 @@ metadata:
 spec:
   template:
     spec:
-      failureDomain: ${WORKER_ZONE}
       image: ${MACHINE_IMAGE}
       minCPU: ${WORKER_MACHINE_MINCPU}
       minMemory: ${WORKER_MACHINE_MINMEMORY}
       minDiskSize: ${WORKER_MACHINE_MINSTORAGE}
       resourcePool: ${LXD_RESOURCE_POOL}
-      tags:
-      - lxd-host
-      - worker
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: ${CLUSTER_NAME}-md-0
@@ -175,13 +178,15 @@ spec:
       joinConfiguration:
         nodeRegistration:
           kubeletExtraArgs:
-            event-qps: "0"
-            feature-gates: RotateKubeletServerCertificate=true
-            read-only-port: "0"
+            - name: event-qps
+              value: "0"
+            - name: feature-gates
+              value: RotateKubeletServerCertificate=true
+            - name: read-only-port
+              value: "0"
           name: '{{ v1.local_hostname }}'
       preKubeadmCommands:
         - while [ ! -S /var/run/containerd/containerd.sock ]; do echo 'Waiting for containerd...';
           sleep 1; done
         - sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
         - swapoff -a
-      useExperimentalRetryJoin: true

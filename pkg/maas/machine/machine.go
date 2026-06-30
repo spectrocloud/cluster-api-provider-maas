@@ -19,7 +19,8 @@ import (
 
 	infrav1beta1 "github.com/spectrocloud/cluster-api-provider-maas/api/v1beta1"
 	"github.com/spectrocloud/cluster-api-provider-maas/pkg/maas/lxd"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/conditions"
 )
 
@@ -142,8 +143,9 @@ func (s *Service) DeployMachine(userDataB64 string) (_ *infrav1beta1.Machine, re
 	s.scope.Info("Using standard MAAS machine allocation path", "machine", mm.Name)
 
 	failureDomain := mm.Spec.FailureDomain
-	if failureDomain == nil {
-		failureDomain = s.scope.Machine.Spec.FailureDomain
+	if failureDomain == nil && s.scope.Machine.Spec.FailureDomain != "" {
+		fd := s.scope.Machine.Spec.FailureDomain
+		failureDomain = &fd
 	}
 
 	var m maasclient.Machine
@@ -313,8 +315,8 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 		if fallbackZone == "" {
 			if mm.Spec.FailureDomain != nil && *mm.Spec.FailureDomain != "" {
 				fallbackZone = *mm.Spec.FailureDomain
-			} else if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
-				fallbackZone = *s.scope.Machine.Spec.FailureDomain
+			} else if s.scope.Machine.Spec.FailureDomain != "" {
+				fallbackZone = s.scope.Machine.Spec.FailureDomain
 			}
 		}
 		s.scope.SetSystemID(deployingM.SystemID())
@@ -343,7 +345,7 @@ func (s *Service) createVMViaMAAS(ctx context.Context, userDataB64 string) (*inf
 	if _, err := s.PrepareLXDVM(ctx); err != nil {
 		return nil, errors.Wrap(err, "compose failed prior to deploy")
 	}
-	conditions.MarkFalse(s.scope.MaasMachine, infrav1beta1.MachineDeployedCondition, infrav1beta1.MachineDeployingReason, clusterv1.ConditionSeverityInfo, "VM composed; commissioning")
+	conditions.Set(s.scope.MaasMachine, metav1.Condition{Type: infrav1beta1.MachineDeployedCondition, Status: metav1.ConditionFalse, Reason: infrav1beta1.MachineDeployingReason, Message: "VM composed; commissioning"})
 	_ = s.scope.PatchObject()
 	return nil, ErrVMComposing
 }
@@ -374,8 +376,8 @@ func (s *Service) PrepareLXDVM(ctx context.Context) (*infrav1beta1.Machine, erro
 	var zone string
 	if mm.Spec.FailureDomain != nil && *mm.Spec.FailureDomain != "" {
 		zone = *mm.Spec.FailureDomain
-	} else if s.scope.Machine.Spec.FailureDomain != nil && *s.scope.Machine.Spec.FailureDomain != "" {
-		zone = *s.scope.Machine.Spec.FailureDomain
+	} else if s.scope.Machine.Spec.FailureDomain != "" {
+		zone = s.scope.Machine.Spec.FailureDomain
 	}
 
 	var resourcePool string
