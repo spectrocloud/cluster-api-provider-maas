@@ -521,7 +521,7 @@ func (r *MaasMachineReconciler) reconcileNormal(ctx context.Context, machineScop
 		r.Recorder.Eventf(machineScope.MaasMachine, corev1.EventTypeWarning, "MachineUnhandledState", "MaaS m state is undefined")
 		machineScope.SetFailureReason(capierrors.UpdateMachineError)
 		machineScope.SetFailureMessage(errors.Errorf("MaaS m state %q is undefined", m.State))
-		conditions.Set(machineScope.MaasMachine, metav1.Condition{Type: infrav1beta1.MachineDeployedCondition, Status: metav1.ConditionUnknown, Reason: "MachineStateUndefined"})
+		conditions.Set(machineScope.MaasMachine, metav1.Condition{Type: infrav1beta1.MachineDeployedCondition, Status: metav1.ConditionUnknown, Reason: infrav1beta1.MachineStateUndefinedReason})
 	}
 
 	// tasks that can take place during all known instance states

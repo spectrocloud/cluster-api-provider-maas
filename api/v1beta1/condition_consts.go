@@ -48,6 +48,9 @@ const (
 	// MachinePoweredOffReason
 	MachinePoweredOffReason = "MachinePoweredOff"
 
+	// MachineStateUndefinedReason documents a machine in an unhandled/undefined MAAS state.
+	MachineStateUndefinedReason = "MachineStateUndefined"
+
 	// MachineNotFoundReason used when the machine couldn't be retrieved.
 	MachineNotFoundReason = "MachineNotFound"
 
