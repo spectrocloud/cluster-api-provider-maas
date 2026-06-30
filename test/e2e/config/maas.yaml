@@ -78,8 +78,7 @@ providers:
           # Flavor "lxd" to this cluster-template-lxd.yaml filename).
           - sourcePath: "../data/infrastructure-maas/main/cluster-template-lxd.yaml"
           # "hcp" (Host Control Plane) flavor: lxdConfig.enabled, machines registered as LXD hosts,
-          # CNI = Cilium via its own ClusterResourceSet.
-          - sourcePath: "../data/infrastructure-maas/main/cluster-template-hcp.yaml"
+          # CNI = Cilium applied directly by the HCP e2e spec (not via a ClusterResourceSet).
           # K8s version-upgrade flavors (ClusterUpgradeConformanceSpec). Each ships a second pair of
           # MaasMachineTemplates (control-plane-upgrade / md-0-upgrade) carrying the UPGRADE_TO image.
           - sourcePath: "../data/infrastructure-maas/main/cluster-template-upgrades.yaml"
